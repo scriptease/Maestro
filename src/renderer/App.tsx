@@ -858,6 +858,7 @@ function MaestroConsoleInner() {
 
 	// --- TERMINAL TAB HANDLERS ---
 	const {
+		handleOpenTerminalTab,
 		handleSelectTerminalTab,
 		handleCloseTerminalTab,
 	} = useTerminalTabHandlers();
@@ -2121,6 +2122,12 @@ function MaestroConsoleInner() {
 
 		// Close current tab (Cmd+W) - works with both file and AI tabs
 		handleCloseCurrentTab,
+
+		// Terminal tab handlers for keyboard shortcuts (Phase 9)
+		handleOpenTerminalTab,
+		handleSelectTerminalTab,
+		handleCloseTerminalTab,
+		mainPanelRef,
 
 		// Session bookmark toggle
 		toggleBookmark,
