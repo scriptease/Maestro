@@ -266,6 +266,9 @@ export function useMainKeyboardHandler(): UseMainKeyboardHandlerReturn {
 				if (activeTab?.wizardState?.isActive) return;
 				e.preventDefault();
 				ctx.toggleInputMode();
+				// Auto-focus the input so user can start typing immediately
+				ctx.setActiveFocus('main');
+				setTimeout(() => ctx.inputRef.current?.focus(), 50);
 				trackShortcut('toggleMode');
 			} else if (ctx.isShortcut(e, 'quickAction')) {
 				e.preventDefault();
