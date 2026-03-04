@@ -218,6 +218,11 @@ function ActivityLog({ log, theme }: { log: CueRunResult[]; theme: Theme }) {
 					eventType === 'file.changed' && entry.event.payload?.file
 						? ` (${String(entry.event.payload.file).split('/').pop()})`
 						: '';
+				const githubPayload =
+					(eventType === 'github.pull_request' || eventType === 'github.issue') &&
+					entry.event.payload?.number
+						? ` (#${String(entry.event.payload.number)} ${String(entry.event.payload.title ?? '')})`
+						: '';
 				const isReconciled = entry.event.payload?.reconciled === true;
 
 				return (
@@ -238,7 +243,8 @@ function ActivityLog({ log, theme }: { log: CueRunResult[]; theme: Theme }) {
 							)}
 							<span style={{ color: theme.colors.textDim }}>
 								{' '}
-								triggered ({eventType}){filePayload} →{' '}
+								triggered ({eventType}){filePayload}
+								{githubPayload} →{' '}
 							</span>
 							{isFailed ? (
 								<span style={{ color: '#ef4444' }}>{entry.status} ✗</span>
