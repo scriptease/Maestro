@@ -1046,6 +1046,7 @@ interface MaestroAPI {
 		confirmQuit: () => void;
 		cancelQuit: () => void;
 		onSystemResume: (callback: () => void) => () => void;
+		onDeepLink: (callback: (deepLink: { action: 'focus' | 'session' | 'group'; sessionId?: string; tabId?: string; groupId?: string }) => void) => () => void;
 	};
 	platform: string;
 	logger: {
@@ -1326,7 +1327,7 @@ interface MaestroAPI {
 		reload: () => Promise<boolean>;
 	};
 	notification: {
-		show: (title: string, body: string) => Promise<{ success: boolean; error?: string }>;
+		show: (title: string, body: string, sessionId?: string, tabId?: string) => Promise<{ success: boolean; error?: string }>;
 		speak: (
 			text: string,
 			command?: string
