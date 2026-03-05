@@ -322,6 +322,7 @@ export function AgentSelectionScreen({ theme }: AgentSelectionScreenProps): JSX.
 	const setCustomEnvVars = (val: Record<string, string>) =>
 		setWizardCustomEnvVars(Object.keys(val).length > 0 ? val : undefined);
 	const [agentConfig, setAgentConfig] = useState<Record<string, any>>({});
+	const agentConfigRef = useRef<Record<string, any>>({});
 	const [availableModels, setAvailableModels] = useState<string[]>([]);
 	const [loadingModels, setLoadingModels] = useState(false);
 	const [refreshingAgent, setRefreshingAgent] = useState(false);
@@ -703,6 +704,7 @@ export function AgentSelectionScreen({ theme }: AgentSelectionScreenProps): JSX.
 		async (agentId: string) => {
 			// Load agent config (model selection only - per-agent path/args/envVars are in wizard state)
 			const config = await window.maestro.agents.getConfig(agentId);
+			agentConfigRef.current = config || {};
 			setAgentConfig(config || {});
 			setConfiguringAgentId(agentId);
 
@@ -1014,12 +1016,16 @@ export function AgentSelectionScreen({ theme }: AgentSelectionScreenProps): JSX.
 							}}
 							agentConfig={agentConfig}
 							onConfigChange={(key, value) => {
-								setAgentConfig((prev) => ({ ...prev, [key]: value }));
+								const updatedConfig = { ...agentConfigRef.current, [key]: value };
+								agentConfigRef.current = updatedConfig;
+								setAgentConfig(updatedConfig);
 							}}
 							onConfigBlur={async (key, value) => {
-								const updatedConfig = { ...agentConfig, [key]: value };
+								if (!configuringAgentId) return;
+								const updatedConfig = { ...agentConfigRef.current, [key]: value };
+								agentConfigRef.current = updatedConfig;
 								setAgentConfig(updatedConfig);
-								await window.maestro.agents.setConfig(configuringAgentId!, updatedConfig);
+								await window.maestro.agents.setConfig(configuringAgentId, updatedConfig);
 							}}
 							availableModels={availableModels}
 							loadingModels={loadingModels}

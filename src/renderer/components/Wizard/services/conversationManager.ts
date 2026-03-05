@@ -588,9 +588,14 @@ class ConversationManager {
 					isSshSession,
 					supportsStreamJsonInput: agent?.capabilities?.supportsStreamJsonInput ?? false,
 				});
-			if (sendViaStdin && !argsForSpawn.includes('--input-format')) {
+			if (sendViaStdin) {
 				// Ensure the agent uses stream-json input format when sending JSON via stdin
-				argsForSpawn.push('--input-format', 'stream-json');
+				const inputFormatIndex = argsForSpawn.findIndex((arg) => arg === '--input-format');
+				if (inputFormatIndex === -1) {
+					argsForSpawn.push('--input-format', 'stream-json');
+				} else if (argsForSpawn[inputFormatIndex + 1] !== 'stream-json') {
+					argsForSpawn[inputFormatIndex + 1] = 'stream-json';
+				}
 			}
 
 			// Use the agent's resolved path if available, falling back to command name
