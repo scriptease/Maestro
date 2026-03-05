@@ -1558,8 +1558,8 @@ describe('useMainKeyboardHandler', () => {
 			});
 		});
 
-		describe('tab shortcuts disabled in terminal mode', () => {
-			it('should not execute tab shortcuts when in terminal/shell mode', () => {
+		describe('tab shortcuts in terminal mode', () => {
+			it('Cmd+T creates a new AI tab even in terminal mode', () => {
 				const { result } = renderHook(() => useMainKeyboardHandler());
 
 				const mockCreateTab = vi.fn();
@@ -1576,7 +1576,7 @@ describe('useMainKeyboardHandler', () => {
 						filePreviewTabs: [],
 						activeFileTabId: null,
 						unifiedTabOrder: ['ai-tab-1'],
-						inputMode: 'terminal', // Terminal mode - tabs not applicable
+						inputMode: 'terminal',
 					},
 				});
 
@@ -1590,8 +1590,8 @@ describe('useMainKeyboardHandler', () => {
 					);
 				});
 
-				// Tab shortcuts should be disabled in terminal mode
-				expect(mockCreateTab).not.toHaveBeenCalled();
+				// Cmd+T creates a new AI tab from terminal mode
+				expect(mockCreateTab).toHaveBeenCalledTimes(1);
 			});
 		});
 

@@ -2308,6 +2308,7 @@ function MaestroConsoleInner() {
 		handleFileTabClose: handleCloseFileTab,
 
 		// Terminal tab callbacks (Phase 8)
+		handleOpenTerminalTab,
 		handleTerminalTabSelect: handleSelectTerminalTab,
 		handleTerminalTabClose: handleCloseTerminalTab,
 		handleTerminalTabRename: handleRequestTerminalTabRename,
