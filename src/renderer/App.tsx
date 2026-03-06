@@ -2779,6 +2779,7 @@ function MaestroConsoleInner() {
 					onCloseTabSwitcher={handleCloseTabSwitcher}
 					onTabSelect={handleUtilityTabSelect}
 					onFileTabSelect={handleUtilityFileTabSelect}
+					onTerminalTabSelect={handleSelectTerminalTab}
 					onNamedSessionSelect={handleNamedSessionSelect}
 					filteredFileTree={filteredFileTree}
 					fileExplorerExpanded={activeSession?.fileExplorerExpanded}
