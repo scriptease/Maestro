@@ -9,6 +9,7 @@ import { aggregateModelUsage } from '../../main/parsers/usage-aggregator';
 import { getAgentCustomPath } from './storage';
 import { generateUUID } from '../../shared/uuid';
 import { buildExpandedPath, buildExpandedEnv } from '../../shared/pathUtils';
+import { isWindows, getWhichCommand } from '../../shared/platformDetection';
 
 // Claude Code default command and arguments (same as Electron app)
 const CLAUDE_DEFAULT_COMMAND = 'claude';
@@ -60,7 +61,7 @@ async function isExecutable(filePath: string): Promise<boolean> {
 		if (!stats.isFile()) return false;
 
 		// On Unix, check executable permission
-		if (process.platform !== 'win32') {
+		if (!isWindows()) {
 			try {
 				await fs.promises.access(filePath, fs.constants.X_OK);
 			} catch {
@@ -79,7 +80,7 @@ async function isExecutable(filePath: string): Promise<boolean> {
 async function findClaudeInPath(): Promise<string | undefined> {
 	return new Promise((resolve) => {
 		const env = { ...process.env, PATH: getExpandedPath() };
-		const command = process.platform === 'win32' ? 'where' : 'which';
+		const command = getWhichCommand();
 
 		const proc = spawn(command, [CLAUDE_DEFAULT_COMMAND], { env });
 		let stdout = '';
@@ -108,7 +109,7 @@ async function findClaudeInPath(): Promise<string | undefined> {
 async function findCodexInPath(): Promise<string | undefined> {
 	return new Promise((resolve) => {
 		const env = { ...process.env, PATH: getExpandedPath() };
-		const command = process.platform === 'win32' ? 'where' : 'which';
+		const command = getWhichCommand();
 
 		const proc = spawn(command, [CODEX_DEFAULT_COMMAND], { env });
 		let stdout = '';
@@ -218,7 +219,12 @@ export function getCodexCommand(): string {
 }
 
 /**
- * Spawn Claude Code with a prompt and return the result
+ * Spawn Claude Code with a prompt and return the result.
+ *
+ * NOTE: CLI spawner does not apply applyAgentConfigOverrides() or SSH wrapping.
+ * Designed for headless batch execution without access to the Electron settings
+ * store or per-session agent configuration. Custom model, args, env vars, and
+ * SSH remote execution are not supported in CLI mode.
  */
 async function spawnClaudeAgent(
 	cwd: string,
@@ -371,7 +377,10 @@ function mergeUsageStats(
 }
 
 /**
- * Spawn Codex with a prompt and return the result
+ * Spawn Codex with a prompt and return the result.
+ *
+ * NOTE: Same limitations as spawnClaudeAgent — no applyAgentConfigOverrides()
+ * or SSH wrapping in CLI mode.
  */
 async function spawnCodexAgent(
 	cwd: string,

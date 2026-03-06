@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, powerMonitor } from 'electron';
+import { isMacOS } from '../shared/platformDetection';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
@@ -375,7 +376,7 @@ app.whenReady().then(async () => {
 	// "Show Previous Tab" (Cmd+Shift+{) and "Show Next Tab" (Cmd+Shift+})
 	// menu items into the default Window menu. Without this, those keyboard
 	// events are intercepted at the NSMenu level and never reach the renderer.
-	if (process.platform === 'darwin') {
+	if (isMacOS()) {
 		const template: Electron.MenuItemConstructorOptions[] = [
 			{ role: 'appMenu' },
 			{ role: 'editMenu' },
@@ -420,7 +421,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-	if (process.platform !== 'darwin') {
+	if (!isMacOS()) {
 		app.quit();
 	}
 });
@@ -481,6 +482,7 @@ function setupIpcHandlers() {
 	registerDirectorNotesHandlers({
 		getProcessManager: () => processManager,
 		getAgentDetector: () => agentDetector,
+		agentConfigsStore,
 	});
 
 	// Agent management operations - extracted to src/main/ipc/handlers/agents.ts
@@ -577,6 +579,7 @@ function setupIpcHandlers() {
 		getMainWindow: () => mainWindow,
 		getProcessManager: () => processManager,
 		getAgentDetector: () => agentDetector,
+		agentConfigsStore,
 	});
 
 	// Register Marketplace handlers for fetching and importing playbooks
