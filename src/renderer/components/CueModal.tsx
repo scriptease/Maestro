@@ -7,7 +7,7 @@ import { MODAL_PRIORITIES } from '../constants/modalPriorities';
 import { useCue } from '../hooks/useCue';
 import type { CueSessionStatus, CueRunResult } from '../hooks/useCue';
 import { CueYamlEditor } from './CueYamlEditor';
-import { CueHelpModal } from './CueHelpModal';
+import { CueHelpContent } from './CueHelpModal';
 
 interface CueModalProps {
 	theme: Theme;
@@ -518,13 +518,7 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 					theme={theme}
 				/>
 			)}
-			{showHelp && (
-				<CueHelpModal
-					theme={theme}
-					onClose={() => setShowHelp(false)}
-					cueShortcutKeys={cueShortcutKeys}
-				/>
-			)}
+			{showHelp && <CueHelpContent theme={theme} cueShortcutKeys={cueShortcutKeys} />}
 		</>
 	);
 }
