@@ -15,6 +15,7 @@ import { send } from './commands/send';
 import { listSessions } from './commands/list-sessions';
 import { openFile } from './commands/open-file';
 import { refreshFiles } from './commands/refresh-files';
+import { refreshAutoRun } from './commands/refresh-auto-run';
 
 // Read version from package.json at runtime
 function getVersion(): string {
@@ -125,5 +126,12 @@ program
 	.description('Refresh the file tree in the Maestro desktop app')
 	.option('-s, --session <id>', 'Target session (defaults to active)')
 	.action(refreshFiles);
+
+// Refresh auto-run command - refresh Auto Run documents in the Maestro desktop app
+program
+	.command('refresh-auto-run')
+	.description('Refresh Auto Run documents in the Maestro desktop app')
+	.option('-s, --session <id>', 'Target session (defaults to active)')
+	.action(refreshAutoRun);
 
 program.parse();
