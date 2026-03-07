@@ -406,12 +406,14 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 	} = useCue();
 
 	const allSessions = useSessionStore((state) => state.sessions);
+	const groups = useSessionStore((state) => state.groups);
 	const setActiveSessionId = useSessionStore((state) => state.setActiveSessionId);
 
 	const sessionInfoList = useMemo(
 		() =>
 			allSessions.map((s) => ({
 				id: s.id,
+				groupId: s.groupId,
 				name: s.name,
 				toolType: s.toolType,
 				projectRoot: s.projectRoot,
@@ -745,6 +747,7 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 						) : (
 							<CuePipelineEditor
 								sessions={sessionInfoList}
+								groups={groups}
 								graphSessions={graphSessions}
 								onSwitchToSession={handleSwitchToSession}
 								onClose={onClose}
