@@ -156,6 +156,7 @@ const defaultShortcuts: Record<string, any> = {
 	processMonitor: { keys: ['meta', 'shift', 'p'], description: 'Process monitor' },
 	usageDashboard: { keys: ['alt', 'meta', 'u'], description: 'Usage dashboard' },
 	toggleSidebar: { keys: ['meta', 'b'], description: 'Toggle sidebar' },
+	filterUnreadAgents: { keys: ['meta', 'shift', 'u'], description: 'Filter unread agents' },
 };
 
 // Create mock session
