@@ -830,7 +830,11 @@ describe('Logger', () => {
 			const expectedTarget = path.join(logsDir, `maestro-debug-${expectedDateStr}.log`);
 
 			// Make sure target doesn't exist yet
-			try { fs.unlinkSync(expectedTarget); } catch { /* ignore */ }
+			try {
+				fs.unlinkSync(expectedTarget);
+			} catch {
+				/* ignore */
+			}
 
 			try {
 				logger.enableFileLogging();
@@ -843,7 +847,9 @@ describe('Logger', () => {
 
 				// Console should log the migration
 				expect(consoleLogSpy).toHaveBeenCalledWith(
-					expect.stringContaining(`[Logger] Migrated legacy log file to maestro-debug-${expectedDateStr}.log`)
+					expect.stringContaining(
+						`[Logger] Migrated legacy log file to maestro-debug-${expectedDateStr}.log`
+					)
 				);
 
 				logger.disableFileLogging();
@@ -972,7 +978,9 @@ describe('Logger', () => {
 			} finally {
 				try {
 					if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
-				} catch { /* ignore */ }
+				} catch {
+					/* ignore */
+				}
 			}
 		});
 
