@@ -1752,15 +1752,22 @@ function MaestroConsoleInner() {
 	useEffect(() => {
 		const handler = async (e: Event) => {
 			const { sessionId, filePath } = (e as CustomEvent).detail;
+			const session = sessionsRef.current.find((s) => s.id === sessionId);
+			if (!session) {
+				console.error('[Remote] Session not found for openFileTab:', sessionId);
+				return;
+			}
+			const sshRemoteId =
+				session.sshRemoteId || session.sessionSshRemoteConfig?.remoteId || undefined;
 			// Switch to the target session
 			setActiveSessionId(sessionId);
 			try {
 				const [content, stat] = await Promise.all([
-					window.maestro.fs.readFile(filePath),
-					window.maestro.fs.stat(filePath).catch(() => null),
+					window.maestro.fs.readFile(filePath, sshRemoteId),
+					window.maestro.fs.stat(filePath, sshRemoteId).catch(() => null),
 				]);
 				if (content !== null) {
-					const filename = filePath.split('/').pop() || filePath;
+					const filename = filePath.split(/[\\/]/).pop() || filePath;
 					const lastModified = stat?.modifiedAt
 						? new Date(stat.modifiedAt).getTime()
 						: undefined;
@@ -1777,7 +1784,7 @@ function MaestroConsoleInner() {
 		};
 		window.addEventListener('maestro:openFileTab', handler);
 		return () => window.removeEventListener('maestro:openFileTab', handler);
-	}, [handleOpenFileTab, setActiveSessionId]);
+	}, [handleOpenFileTab, setActiveSessionId, sessionsRef]);
 
 	// Handle remote refresh file tree events from CLI/web interface
 	useEffect(() => {
@@ -1792,12 +1799,16 @@ function MaestroConsoleInner() {
 	// Handle remote refresh auto-run docs events from CLI/web interface
 	useEffect(() => {
 		const handler = (e: Event) => {
-			// handleAutoRunRefresh refreshes for the currently active session
+			const { sessionId } = (e as CustomEvent).detail;
+			// Switch to the target session - the autoRunFolderPath useEffect
+			// will trigger handleAutoRunRefresh for the newly active session
+			setActiveSessionId(sessionId);
+			// Also refresh immediately in case it's already the active session
 			handleAutoRunRefresh();
 		};
 		window.addEventListener('maestro:refreshAutoRunDocs', handler);
 		return () => window.removeEventListener('maestro:refreshAutoRunDocs', handler);
-	}, [handleAutoRunRefresh]);
+	}, [handleAutoRunRefresh, setActiveSessionId]);
 
 	// Handle remote configure auto-run events from CLI/web interface
 	useEffect(() => {
@@ -1863,8 +1874,11 @@ function MaestroConsoleInner() {
 				}
 
 				// Case 3: Just configure (no launch, no save)
+				// Without --launch or --save-as, there is no persistent state to update.
+				// Return an error guiding the user to use one of those flags.
 				window.maestro.process.sendRemoteConfigureAutoRunResponse(responseChannel, {
-					success: true,
+					success: false,
+					error: 'Use --launch to start auto-run immediately, or --save-as to save as a playbook',
 				});
 			} catch (error) {
 				console.error('[Remote] Failed to configure auto-run:', error);

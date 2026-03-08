@@ -471,8 +471,25 @@ export function createProcessApi() {
 		onRemoteConfigureAutoRun: (
 			callback: (sessionId: string, config: any, responseChannel: string) => void
 		): (() => void) => {
-			const handler = (_: unknown, sessionId: string, config: any, responseChannel: string) =>
-				callback(sessionId, config, responseChannel);
+			const handler = (_: unknown, sessionId: string, config: any, responseChannel: string) => {
+				try {
+					const result = callback(sessionId, config, responseChannel);
+					// Handle async callbacks - catch rejections and send error response
+					if (result && typeof (result as any).catch === 'function') {
+						(result as Promise<unknown>).catch((error) => {
+							ipcRenderer.send(responseChannel, {
+								success: false,
+								error: error instanceof Error ? error.message : String(error),
+							});
+						});
+					}
+				} catch (error) {
+					ipcRenderer.send(responseChannel, {
+						success: false,
+						error: error instanceof Error ? error.message : String(error),
+					});
+				}
+			};
 			ipcRenderer.on('remote:configureAutoRun', handler);
 			return () => ipcRenderer.removeListener('remote:configureAutoRun', handler);
 		},

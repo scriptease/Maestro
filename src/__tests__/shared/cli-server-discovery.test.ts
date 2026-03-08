@@ -96,14 +96,20 @@ describe('cli-server-discovery', () => {
 			const originalAppdata = process.env.APPDATA;
 			process.env.APPDATA = 'C:\\Users\\testuser\\AppData\\Roaming';
 
-			readCliServerInfo();
+			try {
+				readCliServerInfo();
 
-			expect(mockFs.readFileSync).toHaveBeenCalledWith(
-				path.join('C:\\Users\\testuser\\AppData\\Roaming', 'maestro', 'cli-server.json'),
-				'utf-8'
-			);
-
-			process.env.APPDATA = originalAppdata;
+				expect(mockFs.readFileSync).toHaveBeenCalledWith(
+					path.join('C:\\Users\\testuser\\AppData\\Roaming', 'maestro', 'cli-server.json'),
+					'utf-8'
+				);
+			} finally {
+				if (originalAppdata === undefined) {
+					delete process.env.APPDATA;
+				} else {
+					process.env.APPDATA = originalAppdata;
+				}
+			}
 		});
 
 		it('should construct correct config path for Windows without APPDATA', () => {
@@ -112,14 +118,20 @@ describe('cli-server-discovery', () => {
 			const originalAppdata = process.env.APPDATA;
 			delete process.env.APPDATA;
 
-			readCliServerInfo();
+			try {
+				readCliServerInfo();
 
-			expect(mockFs.readFileSync).toHaveBeenCalledWith(
-				path.join('C:\\Users\\testuser', 'AppData', 'Roaming', 'maestro', 'cli-server.json'),
-				'utf-8'
-			);
-
-			process.env.APPDATA = originalAppdata;
+				expect(mockFs.readFileSync).toHaveBeenCalledWith(
+					path.join('C:\\Users\\testuser', 'AppData', 'Roaming', 'maestro', 'cli-server.json'),
+					'utf-8'
+				);
+			} finally {
+				if (originalAppdata === undefined) {
+					delete process.env.APPDATA;
+				} else {
+					process.env.APPDATA = originalAppdata;
+				}
+			}
 		});
 
 		it('should construct correct config path for Linux with XDG_CONFIG_HOME', () => {
@@ -128,14 +140,20 @@ describe('cli-server-discovery', () => {
 			const originalXdg = process.env.XDG_CONFIG_HOME;
 			process.env.XDG_CONFIG_HOME = '/home/testuser/.custom-config';
 
-			readCliServerInfo();
+			try {
+				readCliServerInfo();
 
-			expect(mockFs.readFileSync).toHaveBeenCalledWith(
-				path.join('/home/testuser/.custom-config', 'maestro', 'cli-server.json'),
-				'utf-8'
-			);
-
-			process.env.XDG_CONFIG_HOME = originalXdg;
+				expect(mockFs.readFileSync).toHaveBeenCalledWith(
+					path.join('/home/testuser/.custom-config', 'maestro', 'cli-server.json'),
+					'utf-8'
+				);
+			} finally {
+				if (originalXdg === undefined) {
+					delete process.env.XDG_CONFIG_HOME;
+				} else {
+					process.env.XDG_CONFIG_HOME = originalXdg;
+				}
+			}
 		});
 
 		it('should construct correct config path for Linux without XDG_CONFIG_HOME', () => {
@@ -144,14 +162,20 @@ describe('cli-server-discovery', () => {
 			const originalXdg = process.env.XDG_CONFIG_HOME;
 			delete process.env.XDG_CONFIG_HOME;
 
-			readCliServerInfo();
+			try {
+				readCliServerInfo();
 
-			expect(mockFs.readFileSync).toHaveBeenCalledWith(
-				path.join('/home/testuser', '.config', 'maestro', 'cli-server.json'),
-				'utf-8'
-			);
-
-			process.env.XDG_CONFIG_HOME = originalXdg;
+				expect(mockFs.readFileSync).toHaveBeenCalledWith(
+					path.join('/home/testuser', '.config', 'maestro', 'cli-server.json'),
+					'utf-8'
+				);
+			} finally {
+				if (originalXdg === undefined) {
+					delete process.env.XDG_CONFIG_HOME;
+				} else {
+					process.env.XDG_CONFIG_HOME = originalXdg;
+				}
+			}
 		});
 	});
 

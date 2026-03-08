@@ -747,6 +747,22 @@ export class WebSocketMessageHandler {
 			return;
 		}
 
+		// Validate each document entry
+		for (const doc of documents) {
+			if (typeof doc !== 'object' || doc === null) {
+				this.sendError(client, 'Each document must be an object');
+				return;
+			}
+			if (typeof doc.filename !== 'string' || doc.filename.trim() === '') {
+				this.sendError(client, 'Each document must have a non-empty string filename');
+				return;
+			}
+			if (doc.resetOnCompletion !== undefined && typeof doc.resetOnCompletion !== 'boolean') {
+				this.sendError(client, 'resetOnCompletion must be a boolean if provided');
+				return;
+			}
+		}
+
 		if (!this.callbacks.configureAutoRun) {
 			this.sendError(client, 'Auto-run configuration not configured');
 			return;

@@ -36,17 +36,24 @@ export class MaestroClient {
 		const url = `ws://localhost:${info.port}/${info.token}/ws`;
 
 		return new Promise<void>((resolve, reject) => {
-			const timeout = setTimeout(() => {
-				if (this.ws) {
-					this.ws.close();
-					this.ws = null;
-				}
-				reject(new Error('Connection to Maestro timed out'));
-			}, CONNECT_TIMEOUT_MS);
+			let settled = false;
 
 			const ws = new WebSocket(url);
 
+			const timeout = setTimeout(() => {
+				if (!settled) {
+					settled = true;
+					ws.close();
+					reject(new Error('Connection to Maestro timed out'));
+				}
+			}, CONNECT_TIMEOUT_MS);
+
 			ws.on('open', () => {
+				if (settled) {
+					ws.close();
+					return;
+				}
+				settled = true;
 				clearTimeout(timeout);
 				this.ws = ws;
 				this.setupMessageHandler();
@@ -54,8 +61,9 @@ export class MaestroClient {
 			});
 
 			ws.on('error', (err) => {
+				if (settled) return;
+				settled = true;
 				clearTimeout(timeout);
-				this.ws = null;
 				reject(new Error(`Failed to connect to Maestro: ${err.message}`));
 			});
 		});
@@ -88,7 +96,7 @@ export class MaestroClient {
 				expectedType: responseType,
 			});
 
-			this.ws!.send(JSON.stringify(message));
+			this.ws!.send(JSON.stringify({ ...message, requestId }));
 		});
 	}
 
@@ -115,8 +123,18 @@ export class MaestroClient {
 			try {
 				const msg = JSON.parse(data.toString()) as Record<string, unknown>;
 				const msgType = msg.type as string;
+				const msgRequestId = msg.requestId as string | undefined;
 
-				// Match response to the first pending request expecting this type
+				// Try matching by requestId first (exact match)
+				if (msgRequestId && this.pendingRequests.has(msgRequestId)) {
+					const pending = this.pendingRequests.get(msgRequestId)!;
+					clearTimeout(pending.timeout);
+					this.pendingRequests.delete(msgRequestId);
+					pending.resolve(msg);
+					return;
+				}
+
+				// Fall back to matching by response type
 				for (const [requestId, pending] of this.pendingRequests) {
 					if (pending.expectedType === msgType) {
 						clearTimeout(pending.timeout);

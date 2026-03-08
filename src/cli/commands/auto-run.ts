@@ -41,7 +41,7 @@ export async function autoRun(docs: string[], options: AutoRunOptions): Promise<
 	const sessionId = resolveSessionId(options);
 
 	const documents = resolvedPaths.map((d) => ({
-		filename: path.basename(d),
+		filename: d,
 		resetOnCompletion: options.resetOnCompletion || false,
 	}));
 
