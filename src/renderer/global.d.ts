@@ -2783,7 +2783,8 @@ interface MaestroAPI {
 				subscriptions: Array<{
 					name: string;
 					event:
-						| 'time.interval'
+						| 'time.heartbeat'
+						| 'time.scheduled'
 						| 'file.changed'
 						| 'agent.completed'
 						| 'github.pull_request'
@@ -2792,6 +2793,8 @@ interface MaestroAPI {
 					enabled: boolean;
 					prompt: string;
 					interval_minutes?: number;
+					schedule_times?: string[];
+					schedule_days?: string[];
 					watch?: string;
 					source_session?: string | string[];
 					fan_out?: string[];
@@ -2809,7 +2812,7 @@ interface MaestroAPI {
 				subscriptionName: string;
 				event: {
 					id: string;
-					type: 'time.interval' | 'file.changed' | 'agent.completed';
+					type: 'time.heartbeat' | 'time.scheduled' | 'file.changed' | 'agent.completed';
 					timestamp: string;
 					triggerName: string;
 					payload: Record<string, unknown>;
@@ -2831,7 +2834,7 @@ interface MaestroAPI {
 				subscriptionName: string;
 				event: {
 					id: string;
-					type: 'time.interval' | 'file.changed' | 'agent.completed';
+					type: 'time.heartbeat' | 'time.scheduled' | 'file.changed' | 'agent.completed';
 					timestamp: string;
 					triggerName: string;
 					payload: Record<string, unknown>;
@@ -2869,7 +2872,7 @@ interface MaestroAPI {
 				subscriptionName: string;
 				event: {
 					id: string;
-					type: 'time.interval' | 'file.changed' | 'agent.completed';
+					type: 'time.heartbeat' | 'time.scheduled' | 'file.changed' | 'agent.completed';
 					timestamp: string;
 					triggerName: string;
 					payload: Record<string, unknown>;
