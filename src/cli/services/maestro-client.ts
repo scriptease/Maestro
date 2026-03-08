@@ -119,6 +119,15 @@ export class MaestroClient {
 	private setupMessageHandler(): void {
 		if (!this.ws) return;
 
+		this.ws.on('close', () => {
+			for (const [, pending] of this.pendingRequests) {
+				clearTimeout(pending.timeout);
+				pending.reject(new Error('Client disconnected'));
+			}
+			this.pendingRequests.clear();
+			this.ws = null;
+		});
+
 		this.ws.on('message', (data) => {
 			try {
 				const msg = JSON.parse(data.toString()) as Record<string, unknown>;

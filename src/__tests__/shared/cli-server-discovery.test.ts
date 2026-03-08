@@ -333,12 +333,14 @@ describe('cli-server-discovery', () => {
 			const originalKill = process.kill;
 			process.kill = vi.fn().mockReturnValue(true) as unknown as typeof process.kill;
 
-			const result = isCliServerRunning();
+			try {
+				const result = isCliServerRunning();
 
-			expect(result).toBe(true);
-			expect(process.kill).toHaveBeenCalledWith(12345, 0);
-
-			process.kill = originalKill;
+				expect(result).toBe(true);
+				expect(process.kill).toHaveBeenCalledWith(12345, 0);
+			} finally {
+				process.kill = originalKill;
+			}
 		});
 
 		it('should return false for non-existent PID', () => {
@@ -349,11 +351,13 @@ describe('cli-server-discovery', () => {
 				throw new Error('ESRCH: No such process');
 			}) as unknown as typeof process.kill;
 
-			const result = isCliServerRunning();
+			try {
+				const result = isCliServerRunning();
 
-			expect(result).toBe(false);
-
-			process.kill = originalKill;
+				expect(result).toBe(false);
+			} finally {
+				process.kill = originalKill;
+			}
 		});
 
 		it('should return false when discovery file is missing', () => {

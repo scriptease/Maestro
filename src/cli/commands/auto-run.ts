@@ -46,7 +46,12 @@ export async function autoRun(docs: string[], options: AutoRunOptions): Promise<
 	}));
 
 	const loopEnabled = options.loop || options.maxLoops !== undefined;
-	const maxLoops = options.maxLoops !== undefined ? parseInt(options.maxLoops, 10) : undefined;
+	const maxLoops =
+		options.maxLoops !== undefined
+			? Number.isInteger(Number(options.maxLoops)) && Number(options.maxLoops) > 0
+				? Number(options.maxLoops)
+				: NaN
+			: undefined;
 
 	if (maxLoops !== undefined && (isNaN(maxLoops) || maxLoops < 1)) {
 		console.error('Error: --max-loops must be a positive integer');
