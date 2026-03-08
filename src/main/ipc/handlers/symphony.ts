@@ -2040,51 +2040,53 @@ This PR will be updated automatically when the Auto Run completes.`;
 					}
 				}
 
-				// First, sync PR info from metadata.json for any active contributions missing it
+				// First, sync PR info and fork info from metadata.json for active contributions
 				// This handles cases where PR was created but state.json wasn't updated (migration)
 				let prInfoSynced = false;
 				for (const contribution of state.active) {
-					if (!contribution.draftPrNumber) {
-						try {
-							const metadataPath = path.join(
-								getSymphonyDir(app),
-								'contributions',
-								contribution.id,
-								'metadata.json'
-							);
-							const metadataContent = await fs.readFile(metadataPath, 'utf-8');
-							const metadata = JSON.parse(metadataContent) as {
-								prCreated?: boolean;
-								draftPrNumber?: number;
-								draftPrUrl?: string;
-								isFork?: boolean;
-								forkSlug?: string;
-								upstreamSlug?: string;
-							};
-							if (metadata.prCreated && metadata.draftPrNumber) {
-								// Sync PR info from metadata to state
-								contribution.draftPrNumber = metadata.draftPrNumber;
-								contribution.draftPrUrl = metadata.draftPrUrl;
-								prInfoSynced = true;
-								logger.info('Synced PR info from metadata to state', LOG_CONTEXT, {
-									contributionId: contribution.id,
-									draftPrNumber: metadata.draftPrNumber,
-								});
-							}
-							// Sync fork info from metadata to state
-							if (
-								metadata.isFork &&
-								metadata.forkSlug &&
-								metadata.upstreamSlug &&
-								!contribution.isFork
-							) {
-								contribution.isFork = metadata.isFork;
-								contribution.forkSlug = metadata.forkSlug;
-								contribution.upstreamSlug = metadata.upstreamSlug;
-							}
-						} catch {
-							// Metadata file might not exist - that's okay
+					// Skip if both PR info and fork info are already synced
+					if (contribution.draftPrNumber && contribution.isFork !== undefined) {
+						continue;
+					}
+					try {
+						const metadataPath = path.join(
+							getSymphonyDir(app),
+							'contributions',
+							contribution.id,
+							'metadata.json'
+						);
+						const metadataContent = await fs.readFile(metadataPath, 'utf-8');
+						const metadata = JSON.parse(metadataContent) as {
+							prCreated?: boolean;
+							draftPrNumber?: number;
+							draftPrUrl?: string;
+							isFork?: boolean;
+							forkSlug?: string;
+							upstreamSlug?: string;
+						};
+						if (!contribution.draftPrNumber && metadata.prCreated && metadata.draftPrNumber) {
+							// Sync PR info from metadata to state
+							contribution.draftPrNumber = metadata.draftPrNumber;
+							contribution.draftPrUrl = metadata.draftPrUrl;
+							prInfoSynced = true;
+							logger.info('Synced PR info from metadata to state', LOG_CONTEXT, {
+								contributionId: contribution.id,
+								draftPrNumber: metadata.draftPrNumber,
+							});
 						}
+						// Sync fork info from metadata to state (independent of PR info)
+						if (
+							metadata.isFork &&
+							metadata.forkSlug &&
+							metadata.upstreamSlug &&
+							!contribution.isFork
+						) {
+							contribution.isFork = metadata.isFork;
+							contribution.forkSlug = metadata.forkSlug;
+							contribution.upstreamSlug = metadata.upstreamSlug;
+						}
+					} catch {
+						// Metadata file might not exist - that's okay
 					}
 				}
 
@@ -2237,8 +2239,8 @@ This PR will be updated automatically when the Auto Run completes.`;
 				let prClosed = false;
 
 				try {
-					// Step 1: Check if we have PR info in metadata but not in state
-					if (!contribution.draftPrNumber) {
+					// Step 1: Check if we have PR info or fork info in metadata but not in state
+					if (!contribution.draftPrNumber || !contribution.isFork) {
 						const metadataPath = path.join(
 							getSymphonyDir(app),
 							'contributions',
@@ -2255,7 +2257,7 @@ This PR will be updated automatically when the Auto Run completes.`;
 								forkSlug?: string;
 								upstreamSlug?: string;
 							};
-							if (metadata.prCreated && metadata.draftPrNumber) {
+							if (!contribution.draftPrNumber && metadata.prCreated && metadata.draftPrNumber) {
 								contribution.draftPrNumber = metadata.draftPrNumber;
 								contribution.draftPrUrl = metadata.draftPrUrl;
 								prCreated = true;
@@ -2265,7 +2267,7 @@ This PR will be updated automatically when the Auto Run completes.`;
 									draftPrNumber: metadata.draftPrNumber,
 								});
 							}
-							// Sync fork info from metadata to state
+							// Sync fork info from metadata to state (independent of PR info)
 							if (
 								metadata.isFork &&
 								metadata.forkSlug &&
@@ -2602,7 +2604,10 @@ This PR will be updated automatically when the Auto Run completes.`;
 						return { success: false, error: `Failed to create branch: ${branchResult.error}` };
 					}
 
-					// 1b. Set up fork if user doesn't have push access
+					// 1b. Capture upstream default branch before fork setup rewrites origin
+					const upstreamDefaultBranch = await getDefaultBranch(localPath);
+
+					// 1c. Set up fork if user doesn't have push access
 					logger.info('Checking fork requirements', LOG_CONTEXT, { repoSlug });
 					const forkResult = await ensureForkSetup(localPath, repoSlug);
 					if (forkResult.error) {
@@ -2725,7 +2730,7 @@ This PR will be updated automatically when the Auto Run completes.`;
 					let draftPrNumber: number | undefined;
 					let draftPrUrl: string | undefined;
 
-					const baseBranch = await getDefaultBranch(localPath);
+					const baseBranch = upstreamDefaultBranch;
 					const commitMsg = `[Symphony] Start contribution for #${issueNumber}`;
 					const emptyCommitResult = await execFileNoThrow(
 						'git',
@@ -2941,7 +2946,7 @@ This PR will be updated automatically when the Auto Run completes.`;
 
 				// Create draft PR (this also pushes the branch)
 				const metaForkOwner = metadata.isFork ? metadata.forkSlug?.split('/')[0] : undefined;
-				if (metadata.isFork) {
+				if (metadata.isFork || metadata.upstreamSlug) {
 					logger.info('Creating cross-fork draft PR', LOG_CONTEXT, {
 						upstreamSlug: metadata.upstreamSlug,
 						forkSlug: metadata.forkSlug,
@@ -2953,7 +2958,7 @@ This PR will be updated automatically when the Auto Run completes.`;
 					baseBranch,
 					prTitle,
 					prBody,
-					metadata.isFork ? metadata.upstreamSlug : undefined,
+					metadata.upstreamSlug,
 					metaForkOwner
 				);
 				if (!prResult.success) {

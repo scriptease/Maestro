@@ -1290,7 +1290,7 @@ describe('Symphony Runner Service', () => {
 			);
 		});
 
-		it('handles PR close failure gracefully (warns but continues)', async () => {
+		it('returns failure when PR close fails', async () => {
 			vi.mocked(execFileNoThrow).mockResolvedValueOnce({
 				stdout: '',
 				stderr: 'pr close failed',
@@ -1304,8 +1304,8 @@ describe('Symphony Runner Service', () => {
 				expect.any(String),
 				expect.objectContaining({ prNumber: 42 })
 			);
-			// Should still return success
-			expect(result.success).toBe(true);
+			expect(result.success).toBe(false);
+			expect(result.error).toContain('pr close failed');
 		});
 
 		it('removes local directory when cleanup=true', async () => {
@@ -1332,7 +1332,7 @@ describe('Symphony Runner Service', () => {
 			expect(fs.rm).not.toHaveBeenCalled();
 		});
 
-		it('returns success:true even if PR close fails', async () => {
+		it('does not clean up local directory when PR close fails', async () => {
 			vi.mocked(execFileNoThrow).mockResolvedValueOnce({
 				stdout: '',
 				stderr: 'error',
@@ -1341,7 +1341,8 @@ describe('Symphony Runner Service', () => {
 
 			const result = await cancelContribution('/tmp/test-repo', 42, true);
 
-			expect(result.success).toBe(true);
+			expect(result.success).toBe(false);
+			expect(fs.rm).not.toHaveBeenCalled();
 		});
 
 		it('adds --repo flag without --delete-branch for fork contributions', async () => {
@@ -1384,6 +1385,11 @@ describe('Symphony Runner Service', () => {
 				await startContribution(defaultOptions);
 
 				expect(ensureForkSetup).toHaveBeenCalledWith('/tmp/test-repo', 'upstream-owner/repo');
+
+				// Verify ensureForkSetup runs after checkout -b (2nd execFileNoThrow call)
+				const checkoutOrder = vi.mocked(execFileNoThrow).mock.invocationCallOrder[1]; // checkout -b
+				const forkSetupOrder = vi.mocked(ensureForkSetup).mock.invocationCallOrder[0];
+				expect(forkSetupOrder).toBeGreaterThan(checkoutOrder);
 			});
 
 			it('returns fork info when ensureForkSetup detects a fork', async () => {

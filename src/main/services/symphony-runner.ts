@@ -423,6 +423,10 @@ export async function cancelContribution(
 	const closeResult = await execFileNoThrow('gh', closeArgs, localPath);
 	if (closeResult.exitCode !== 0) {
 		logger.warn('Failed to close PR', LOG_CONTEXT, { prNumber, error: closeResult.stderr });
+		return {
+			success: false,
+			error: `Failed to close PR #${prNumber}: ${closeResult.stderr || closeResult.stdout}`,
+		};
 	}
 
 	// Clean up local directory using Node.js fs API

@@ -5342,6 +5342,68 @@ describe('Symphony IPC handlers', () => {
 				const headIdx = prArgs.indexOf('--head');
 				expect(prArgs[headIdx + 1]).not.toContain(':');
 			});
+
+			it('should pass --repo but not fork-prefixed --head when metadata has upstreamSlug only', async () => {
+				const metadata = createValidMetadata({
+					upstreamSlug: 'owner/repo',
+				});
+				const stateWithActiveContrib = {
+					active: [
+						{
+							id: 'contrib_draft_test',
+							repoSlug: 'owner/repo',
+							issueNumber: 42,
+							status: 'running',
+						},
+					],
+					history: [],
+					stats: {},
+				};
+				vi.mocked(fs.readFile).mockImplementation(async (filePath) => {
+					if ((filePath as string).includes('metadata.json')) {
+						return JSON.stringify(metadata);
+					}
+					if ((filePath as string).includes('state.json')) {
+						return JSON.stringify(stateWithActiveContrib);
+					}
+					throw new Error('ENOENT');
+				});
+				vi.mocked(execFileNoThrow).mockImplementation(async (cmd, args) => {
+					if (cmd === 'gh' && args?.[0] === 'auth')
+						return { stdout: 'Logged in', stderr: '', exitCode: 0 };
+					if (cmd === 'git' && args?.[0] === 'symbolic-ref')
+						return { stdout: 'refs/remotes/origin/main', stderr: '', exitCode: 0 };
+					if (cmd === 'git' && args?.[0] === 'rev-list')
+						return { stdout: '1', stderr: '', exitCode: 0 };
+					if (cmd === 'git' && args?.[0] === 'rev-parse')
+						return { stdout: 'symphony/issue-42-abc123', stderr: '', exitCode: 0 };
+					if (cmd === 'git' && args?.[0] === 'push') return { stdout: '', stderr: '', exitCode: 0 };
+					if (cmd === 'gh' && args?.[0] === 'pr')
+						return { stdout: 'https://github.com/owner/repo/pull/50', stderr: '', exitCode: 0 };
+					return { stdout: '', stderr: '', exitCode: 0 };
+				});
+
+				const handler = getCreateDraftPRHandler();
+				const result = await handler!({} as any, { contributionId: 'contrib_draft_test' });
+
+				expect(result.success).toBe(true);
+
+				// Verify gh pr create was called with --repo but no fork-prefixed --head
+				const prCall = vi
+					.mocked(execFileNoThrow)
+					.mock.calls.find(
+						(call) => call[0] === 'gh' && call[1]?.[0] === 'pr' && call[1]?.[1] === 'create'
+					);
+				expect(prCall).toBeDefined();
+				const prArgs = prCall![1] as string[];
+				// Should have --repo owner/repo (upstream slug from metadata)
+				const repoIdx = prArgs.indexOf('--repo');
+				expect(repoIdx).toBeGreaterThan(-1);
+				expect(prArgs[repoIdx + 1]).toBe('owner/repo');
+				// --head should be just the branch name (no fork owner prefix since no forkSlug)
+				const headIdx = prArgs.indexOf('--head');
+				expect(prArgs[headIdx + 1]).not.toContain(':');
+			});
 		});
 	});
 
