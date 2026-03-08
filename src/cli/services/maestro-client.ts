@@ -170,7 +170,7 @@ export function resolveSessionId(options: { session?: string }): string {
 
 	const sessions = readSessions();
 	if (sessions.length === 0) {
-		console.error('Error: No sessions found. Create a session in Maestro first.');
+		console.error('Error: No agents found. Create an agent in Maestro first.');
 		process.exit(1);
 	}
 

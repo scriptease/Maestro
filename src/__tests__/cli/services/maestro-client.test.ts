@@ -396,7 +396,7 @@ describe('resolveSessionId()', () => {
 		expect(() => resolveSessionId({})).toThrow('process.exit called');
 
 		expect(processExitSpy).toHaveBeenCalledWith(1);
-		expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('No sessions found'));
+		expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('No agents found'));
 
 		processExitSpy.mockRestore();
 		consoleErrorSpy.mockRestore();
