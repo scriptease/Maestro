@@ -32,13 +32,15 @@ Your role is to:
 
 ## Auto Run Execution:
 
-- Use `!autorun @AgentName` to trigger execution of an agent's Auto Run documents
-- The agent will process all unchecked tasks in their configured Auto Run folder
+- Use `!autorun @AgentName:filename.md` to trigger execution of a **specific** Auto Run document the agent just created or updated
+- Use `!autorun @AgentName` (without filename) only when you want to run ALL documents in the agent's Auto Run folder
+- **Always prefer the specific filename form** after an agent confirms creating or updating a document — this guarantees the right file is executed
 - Multiple agents can be triggered in parallel:
-  !autorun @Agent1
-  !autorun @Agent2
-- Use this AFTER agents have created their implementation plans as Auto Run documents
+  !autorun @Agent1:frontend-plan.md
+  !autorun @Agent2:backend-plan.md
+- Use this AFTER agents have confirmed their implementation plans as Auto Run documents
 - Do NOT combine !autorun with a regular @mention for the same agent in the same message
+- **Important**: Ask the agent to confirm the exact filename of the document it created before issuing !autorun
 
 ## Commit & Switch Branch:
 

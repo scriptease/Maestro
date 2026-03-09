@@ -1748,6 +1748,11 @@ interface MaestroAPI {
 		) => Promise<void>;
 		stopModerator: (id: string) => Promise<void>;
 		stopAll: (id: string) => Promise<void>;
+		reportAutoRunComplete: (
+			groupChatId: string,
+			participantName: string,
+			summary: string
+		) => Promise<void>;
 		getModeratorSessionId: (id: string) => Promise<string | null>;
 		// Participants
 		addParticipant: (
@@ -1880,6 +1885,9 @@ interface MaestroAPI {
 		) => () => void;
 		onModeratorSessionIdChanged: (
 			callback: (groupChatId: string, sessionId: string) => void
+		) => () => void;
+		onAutoRunTriggered: (
+			callback: (groupChatId: string, participantName: string, filename?: string) => void
 		) => () => void;
 	};
 	// Leaderboard API

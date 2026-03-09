@@ -9,8 +9,6 @@
  */
 
 import * as os from 'os';
-import * as fs from 'fs';
-import * as path from 'path';
 import {
 	GroupChatParticipant,
 	loadGroupChat,
@@ -42,7 +40,7 @@ import {
 	applyAgentConfigOverrides,
 	getContextWindowValue,
 } from '../utils/agent-args';
-import { groupChatParticipantRequestPrompt, autorunDefaultPrompt } from '../../prompts';
+import { groupChatParticipantRequestPrompt } from '../../prompts';
 import { wrapSpawnWithSsh } from '../utils/ssh-spawn-wrapper';
 import type { SshRemoteSettingsStore } from '../utils/ssh-remote-resolver';
 import { setGetCustomShellPathCallback, getWindowsSpawnConfig } from './group-chat-config';
@@ -268,18 +266,29 @@ export function extractAllMentions(text: string): string[] {
  * @param text - The moderator's message text
  * @returns Object with autorun participant names and cleaned message text
  */
+export interface AutoRunDirective {
+	participantName: string;
+	/** Specific filename to run, if specified (e.g. `!autorun @Agent:plan.md`). When present,
+	 *  only that document is executed instead of all docs in the folder. */
+	filename?: string;
+}
+
 export function extractAutoRunDirectives(text: string): {
+	autoRunDirectives: AutoRunDirective[];
+	/** @deprecated use autoRunDirectives */
 	autoRunParticipants: string[];
 	cleanedText: string;
 } {
-	const autoRunParticipants: string[] = [];
-	const autoRunPattern = /!autorun\s+@([^\s@:,;!?()\[\]{}'"<>]+)/g;
+	const autoRunDirectives: AutoRunDirective[] = [];
+	// Matches: !autorun @AgentName  OR  !autorun @AgentName:filename.md
+	const autoRunPattern = /!autorun\s+@([^\s@:,;!?()\[\]{}'"<>]+)(?::([^\s,;!?()\[\]{}'"<>]+))?/g;
 	let match;
 
 	while ((match = autoRunPattern.exec(text)) !== null) {
-		const name = match[1];
-		if (!autoRunParticipants.includes(name)) {
-			autoRunParticipants.push(name);
+		const participantName = match[1];
+		const filename = match[2]; // undefined when no :filename suffix
+		if (!autoRunDirectives.some((d) => d.participantName === participantName)) {
+			autoRunDirectives.push({ participantName, filename });
 		}
 	}
 
@@ -289,34 +298,11 @@ export function extractAutoRunDirectives(text: string): {
 		.replace(/\n{3,}/g, '\n\n')
 		.trim();
 
-	return { autoRunParticipants, cleanedText };
-}
-
-/**
- * Reads Auto Run documents from a folder.
- *
- * @param folderPath - The Auto Run folder path
- * @returns Array of document info with name, path, and content
- */
-export function readAutoRunDocs(
-	folderPath: string
-): { name: string; path: string; content: string }[] {
-	try {
-		if (!fs.existsSync(folderPath)) {
-			return [];
-		}
-		const files = fs.readdirSync(folderPath).filter((f) => f.endsWith('.md'));
-		return files.map((f) => {
-			const fullPath = path.join(folderPath, f);
-			return {
-				name: f,
-				path: fullPath,
-				content: fs.readFileSync(fullPath, 'utf-8'),
-			};
-		});
-	} catch {
-		return [];
-	}
+	return {
+		autoRunDirectives,
+		autoRunParticipants: autoRunDirectives.map((d) => d.participantName),
+		cleanedText,
+	};
 }
 
 /**
@@ -877,190 +863,60 @@ export async function routeModeratorResponse(
 	const participantsToRespond = new Set<string>();
 
 	// Extract !autorun directives from the moderator message
-	const { autoRunParticipants } = extractAutoRunDirectives(message);
-	if (autoRunParticipants.length > 0) {
+	const { autoRunDirectives, autoRunParticipants } = extractAutoRunDirectives(message);
+	if (autoRunDirectives.length > 0) {
 		console.log(
-			`[GroupChat:Debug] Found !autorun directives for: ${autoRunParticipants.join(', ')}`
+			`[GroupChat:Debug] Found !autorun directives for: ${autoRunDirectives.map((d) => (d.filename ? `${d.participantName}:${d.filename}` : d.participantName)).join(', ')}`
 		);
 	}
 
-	// Spawn autorun participants
-	if (processManager && agentDetector && autoRunParticipants.length > 0) {
-		console.log(`[GroupChat:Debug] ========== SPAWNING AUTORUN AGENTS ==========`);
+	// Trigger Auto Run for participants via the renderer's batch processor
+	// This delegates to the renderer so the full useBatchProcessor pipeline runs:
+	// progress indicators, multi-document sequencing, task checking, achievements, etc.
+	if (autoRunDirectives.length > 0) {
+		console.log(`[GroupChat:Debug] ========== TRIGGERING AUTORUN VIA RENDERER ==========`);
 		const sessions = getSessionsCallback?.() || [];
 
-		for (const autoRunName of autoRunParticipants) {
-			// Find participant (may have been auto-added above via @mention detection)
+		for (const directive of autoRunDirectives) {
+			const { participantName: autoRunName, filename: targetFilename } = directive;
 			const participant = updatedChat.participants.find((p) => mentionMatches(autoRunName, p.name));
 			if (!participant) {
 				console.warn(
 					`[GroupChat:Debug] Autorun participant ${autoRunName} not found in chat - skipping`
 				);
-				const errorMsg: GroupChatMessage = {
+				groupChatEmitters.emitMessage?.(groupChatId, {
 					timestamp: new Date().toISOString(),
 					from: 'system',
-					content: `⚠️ Could not find participant @${autoRunName} for autorun execution. Make sure the agent exists and is added to the group chat.`,
-				};
-				groupChatEmitters.emitMessage?.(groupChatId, errorMsg);
+					content: `⚠️ Could not find participant @${autoRunName} for !autorun. Make sure the agent is added to the group chat.`,
+				});
 				continue;
 			}
 
 			const matchingSession = sessions.find(
 				(s) => mentionMatches(s.name, participant.name) || s.name === participant.name
 			);
-			const cwd = matchingSession?.cwd || os.homedir();
-			const autoRunFolderPath = matchingSession?.autoRunFolderPath;
 
-			if (!autoRunFolderPath) {
+			if (!matchingSession?.autoRunFolderPath) {
 				console.warn(
 					`[GroupChat:Debug] No autoRunFolderPath configured for ${participant.name} - skipping`
 				);
-				const errorMsg: GroupChatMessage = {
+				groupChatEmitters.emitMessage?.(groupChatId, {
 					timestamp: new Date().toISOString(),
 					from: 'system',
-					content: `⚠️ No Auto Run folder configured for @${participant.name}. Configure an Auto Run folder in the agent's settings first.`,
-				};
-				groupChatEmitters.emitMessage?.(groupChatId, errorMsg);
+					content: `⚠️ No Auto Run folder configured for @${participant.name}. Open the agent in Maestro, go to the Auto Run tab, and configure a folder first.`,
+				});
 				continue;
 			}
 
-			// Read autorun documents
-			const docs = readAutoRunDocs(autoRunFolderPath);
-			if (docs.length === 0) {
-				console.warn(
-					`[GroupChat:Debug] No autorun documents found in ${autoRunFolderPath} for ${participant.name}`
-				);
-				const errorMsg: GroupChatMessage = {
-					timestamp: new Date().toISOString(),
-					from: 'system',
-					content: `⚠️ No Auto Run documents (.md files) found in ${autoRunFolderPath} for @${participant.name}.`,
-				};
-				groupChatEmitters.emitMessage?.(groupChatId, errorMsg);
-				continue;
-			}
-
-			// Find the first unchecked document (has unchecked tasks)
-			const uncheckedDoc = docs.find((d) => d.content.includes('- [ ]'));
-			const targetDoc = uncheckedDoc || docs[0];
-
+			// Emit event to renderer — the renderer will call startBatchRun via useBatchProcessor.
+			// When the batch completes, the renderer calls groupChat:reportAutoRunComplete which
+			// invokes routeAgentResponse to trigger the synthesis round.
+			groupChatEmitters.emitParticipantState?.(groupChatId, participant.name, 'working');
+			groupChatEmitters.emitAutoRunTriggered?.(groupChatId, participant.name, targetFilename);
+			participantsToRespond.add(participant.name);
 			console.log(
-				`[GroupChat:Debug] Autorun for ${participant.name}: ${docs.length} doc(s), target: ${targetDoc.name}`
+				`[GroupChat:Debug] Emitted autoRunTriggered for @${participant.name}${targetFilename ? `:${targetFilename}` : ''} in chat ${groupChatId}`
 			);
-
-			// Build the autorun prompt using the standard template
-			const autoRunPrompt = autorunDefaultPrompt
-				.replace(/\{\{AGENT_NAME\}\}/g, participant.name)
-				.replace(/\{\{AGENT_PATH\}\}/g, cwd)
-				.replace(/\{\{AUTORUN_FOLDER\}\}/g, autoRunFolderPath)
-				.replace(/\{\{LOOP_NUMBER\}\}/g, '1')
-				.replace(/\{\{GIT_BRANCH\}\}/g, '(group chat execution)')
-				.replace(/\{\{DOCUMENT_PATH\}\}/g, targetDoc.path);
-
-			// Resolve agent and spawn
-			const agent = await agentDetector.getAgent(participant.agentId);
-			if (!agent || !agent.available) {
-				console.error(
-					`[GroupChat:Debug] Agent '${participant.agentId}' not available for autorun ${participant.name}`
-				);
-				continue;
-			}
-
-			const sessionId = `group-chat-${groupChatId}-participant-${participant.name}-${Date.now()}`;
-			const agentConfigValues = getAgentConfigCallback?.(participant.agentId) || {};
-			const baseArgs = buildAgentArgs(agent, {
-				baseArgs: [...agent.args],
-				prompt: autoRunPrompt,
-				cwd,
-				readOnlyMode: false, // Autorun always needs write access
-				agentSessionId: participant.agentSessionId,
-			});
-			const configResolution = applyAgentConfigOverrides(agent, baseArgs, {
-				agentConfigValues,
-				sessionCustomModel: matchingSession?.customModel,
-				sessionCustomArgs: matchingSession?.customArgs,
-				sessionCustomEnvVars: matchingSession?.customEnvVars,
-			});
-
-			try {
-				groupChatEmitters.emitParticipantState?.(groupChatId, participant.name, 'working');
-
-				// Prepare spawn config with potential SSH wrapping
-				let finalSpawnCommand = agent.path || agent.command;
-				let finalSpawnArgs = configResolution.args;
-				let finalSpawnCwd = cwd;
-				let finalSpawnPrompt: string | undefined = autoRunPrompt;
-				let finalSpawnEnvVars =
-					configResolution.effectiveCustomEnvVars ??
-					getCustomEnvVarsCallback?.(participant.agentId);
-				let finalSpawnShell: string | undefined;
-				let finalSpawnRunInShell = false;
-
-				if (sshStore && matchingSession?.sshRemoteConfig) {
-					const sshWrapped = await wrapSpawnWithSsh(
-						{
-							command: finalSpawnCommand,
-							args: finalSpawnArgs,
-							cwd,
-							prompt: autoRunPrompt,
-							customEnvVars:
-								configResolution.effectiveCustomEnvVars ??
-								getCustomEnvVarsCallback?.(participant.agentId),
-							promptArgs: agent.promptArgs,
-							noPromptSeparator: agent.noPromptSeparator,
-							agentBinaryName: agent.binaryName,
-						},
-						matchingSession.sshRemoteConfig,
-						sshStore
-					);
-					finalSpawnCommand = sshWrapped.command;
-					finalSpawnArgs = sshWrapped.args;
-					finalSpawnCwd = sshWrapped.cwd;
-					finalSpawnPrompt = sshWrapped.prompt;
-					finalSpawnEnvVars = sshWrapped.customEnvVars;
-				}
-
-				const winConfig = getWindowsSpawnConfig(
-					participant.agentId,
-					matchingSession?.sshRemoteConfig
-				);
-				if (winConfig.shell) {
-					finalSpawnShell = winConfig.shell;
-					finalSpawnRunInShell = winConfig.runInShell;
-				}
-
-				processManager.spawn({
-					sessionId,
-					toolType: participant.agentId,
-					cwd: finalSpawnCwd,
-					command: finalSpawnCommand,
-					args: finalSpawnArgs,
-					readOnlyMode: false, // Autorun always needs write access
-					prompt: finalSpawnPrompt,
-					contextWindow: getContextWindowValue(agent, agentConfigValues),
-					customEnvVars: finalSpawnEnvVars,
-					promptArgs: agent.promptArgs,
-					noPromptSeparator: agent.noPromptSeparator,
-					shell: finalSpawnShell,
-					runInShell: finalSpawnRunInShell,
-					sendPromptViaStdin: winConfig.sendPromptViaStdin,
-					sendPromptViaStdinRaw: winConfig.sendPromptViaStdinRaw,
-				});
-
-				participantsToRespond.add(participant.name);
-				console.log(
-					`[GroupChat:Debug] Spawned autorun process for @${participant.name} (session ${sessionId})`
-				);
-			} catch (error) {
-				logger.error(`Failed to spawn autorun participant ${participant.name}`, LOG_CONTEXT, {
-					error,
-					groupChatId,
-				});
-				captureException(error, {
-					operation: 'groupChat:spawnAutorunParticipant',
-					participantName: participant.name,
-					groupChatId,
-				});
-			}
 		}
 		console.log(`[GroupChat:Debug] =================================================`);
 	}

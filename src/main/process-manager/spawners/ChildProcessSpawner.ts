@@ -429,6 +429,8 @@ export class ChildProcessSpawner {
 				});
 				childProcess.stdout.on('data', (data: Buffer | string) => {
 					const output = data.toString();
+					// Emit raw stdout before processing for live-streaming consumers (e.g., group chat peek)
+					this.emitter.emit('raw-stdout', sessionId, output);
 					this.stdoutHandler.handleData(sessionId, output);
 				});
 			} else {

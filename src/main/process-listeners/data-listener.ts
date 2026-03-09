@@ -42,6 +42,21 @@ export function setupDataListener(
 		REGEX_SYNOPSIS_SESSION,
 	} = patterns;
 
+	// Listen to raw stdout for live output streaming to group chat participant peek panels.
+	// The 'data' event for stream-json sessions only fires at turn completion (result ready),
+	// so we need raw-stdout to stream chunks in real time during agent work.
+	processManager.on('raw-stdout', (sessionId: string, chunk: string) => {
+		if (!sessionId.startsWith(GROUP_CHAT_PREFIX)) return;
+		const participantInfo = outputParser.parseParticipantSessionId(sessionId);
+		if (participantInfo) {
+			groupChatEmitters.emitParticipantLiveOutput?.(
+				participantInfo.groupChatId,
+				participantInfo.participantName,
+				chunk
+			);
+		}
+	});
+
 	processManager.on('data', (sessionId: string, data: string) => {
 		// Fast path: skip regex for non-group-chat sessions (performance optimization)
 		// Most sessions don't start with 'group-chat-', so this avoids expensive regex matching
@@ -92,12 +107,7 @@ export function setupDataListener(
 					`WARNING: Buffer size ${totalLength} exceeds ${MAX_BUFFER_SIZE} bytes for participant ${participantInfo.participantName}`
 				);
 			}
-			// Emit live output chunk to renderer for peek display
-			groupChatEmitters.emitParticipantLiveOutput?.(
-				participantInfo.groupChatId,
-				participantInfo.participantName,
-				data
-			);
+			// Note: live output is streamed via raw-stdout listener above (fires per chunk during work).
 			return; // Don't send to regular process:data handler
 		}
 

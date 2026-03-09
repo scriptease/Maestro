@@ -143,6 +143,7 @@ import { useModalActions, useModalStore } from './stores/modalStore';
 import { GitStatusProvider } from './contexts/GitStatusContext';
 import { InputProvider, useInputContext } from './contexts/InputContext';
 import { useGroupChatStore } from './stores/groupChatStore';
+import { registerGroupChatAutoRun } from './utils/groupChatAutoRunRegistry';
 import { useBatchStore } from './stores/batchStore';
 // All session state is read directly from useSessionStore in MaestroConsoleInner.
 import { useSessionStore, selectActiveSession } from './stores/sessionStore';
@@ -1219,6 +1220,80 @@ function MaestroConsoleInner() {
 		processQueuedItemRef,
 		handleClearAgentError,
 	});
+
+	// --- GROUP CHAT AUTO RUN BRIDGE ---
+	// When the moderator issues !autorun @AgentName, the main process emits
+	// groupChat:autoRunTriggered. Here we intercept that, find the session,
+	// and start a proper batch run via useBatchProcessor for full UI feedback.
+	const startBatchRunRef = useRef(startBatchRun);
+	startBatchRunRef.current = startBatchRun;
+
+	useEffect(() => {
+		const unsub = window.maestro.groupChat.onAutoRunTriggered?.(
+			(groupChatId, participantName, targetFilename) => {
+				const sessions = useSessionStore.getState().sessions;
+				const session = sessions.find((s) => s.name === participantName);
+				if (!session) {
+					console.warn(
+						`[GroupChat:AutoRun] No session found for participant "${participantName}" — cannot start batch run`
+					);
+					return;
+				}
+				if (!session.autoRunFolderPath) {
+					console.warn(
+						`[GroupChat:AutoRun] Session "${participantName}" has no autoRunFolderPath — cannot start batch run`
+					);
+					return;
+				}
+				// Fetch the document list, then start the batch run
+				window.maestro.autorun
+					.listDocs(session.autoRunFolderPath, session.sshRemoteId || undefined)
+					.then((result) => {
+						const allFiles = result.files || [];
+						if (allFiles.length === 0) {
+							console.warn(
+								`[GroupChat:AutoRun] No Auto Run documents found for "${participantName}" in ${session.autoRunFolderPath}`
+							);
+							return;
+						}
+
+						// If a specific filename was given (e.g. !autorun @Agent:plan.md), run only that doc.
+						// Otherwise run all docs in the folder.
+						const files =
+							targetFilename && allFiles.includes(targetFilename)
+								? [targetFilename]
+								: targetFilename
+									? (() => {
+											console.warn(
+												`[GroupChat:AutoRun] Specified file "${targetFilename}" not found in Auto Run folder for "${participantName}" — running all docs`
+											);
+											return allFiles;
+										})()
+									: allFiles;
+
+						const documents = files.map((filename, i) => ({
+							id: `${session.id}-${i}`,
+							filename,
+							resetOnCompletion: false,
+							isDuplicate: false,
+						}));
+						const config = {
+							documents,
+							prompt: '',
+							loopEnabled: false,
+							maxLoops: null,
+						};
+						// Register the context so useBatchHandlers.onComplete can notify synthesis
+						registerGroupChatAutoRun(session.id, groupChatId, participantName);
+						startBatchRunRef.current(session.id, config, session.autoRunFolderPath!);
+					})
+					.catch((err) => {
+						console.error(`[GroupChat:AutoRun] Failed to list docs for "${participantName}":`, err);
+					});
+			}
+		);
+		return () => unsub?.();
+	}, []); // Stable — reads sessions and startBatchRun from refs/store at call time
 
 	// --- AGENT IPC LISTENERS ---
 	// Extracted hook for all window.maestro.process.onXxx listeners

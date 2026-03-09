@@ -101,6 +101,7 @@ export const groupChatEmitters: {
 	) => void;
 	emitModeratorSessionIdChanged?: (groupChatId: string, sessionId: string) => void;
 	emitParticipantLiveOutput?: (groupChatId: string, participantName: string, chunk: string) => void;
+	emitAutoRunTriggered?: (groupChatId: string, participantName: string, filename?: string) => void;
 } = {};
 
 // Helper to create handler options with consistent context
@@ -489,6 +490,30 @@ export function registerGroupChatHandlers(deps: GroupChatHandlerDependencies): v
 
 			logger.info(`Stopped all activity in group chat: ${id}`, LOG_CONTEXT);
 		})
+	);
+
+	// Report that an Auto Run batch triggered by !autorun has completed
+	// Called by the renderer's batch processor onComplete handler to notify the
+	// group chat router so it can trigger the synthesis round.
+	ipcMain.handle(
+		'groupChat:reportAutoRunComplete',
+		withIpcErrorLogging(
+			handlerOpts('reportAutoRunComplete'),
+			async (groupChatId: string, participantName: string, summary: string): Promise<void> => {
+				logger.info(
+					`Auto Run complete for participant ${participantName} in ${groupChatId}`,
+					LOG_CONTEXT
+				);
+				const processManager = getProcessManager();
+				const { routeAgentResponse } = await import('../../group-chat/group-chat-router');
+				await routeAgentResponse(
+					groupChatId,
+					participantName,
+					summary,
+					processManager ?? undefined
+				);
+			}
+		)
 	);
 
 	// Get the moderator session ID (for checking if active)
@@ -896,6 +921,27 @@ Respond with ONLY the summary text, no additional commentary.`;
 		const mainWindow = getMainWindow();
 		if (isWebContentsAvailable(mainWindow)) {
 			mainWindow.webContents.send('groupChat:moderatorSessionIdChanged', groupChatId, sessionId);
+		}
+	};
+
+	/**
+	 * Emit an Auto Run trigger event to the renderer.
+	 * Called when the moderator issues !autorun @AgentName so the renderer can
+	 * start a proper batch run through useBatchProcessor for full UI feedback.
+	 */
+	groupChatEmitters.emitAutoRunTriggered = (
+		groupChatId: string,
+		participantName: string,
+		filename?: string
+	): void => {
+		const mainWindow = getMainWindow();
+		if (isWebContentsAvailable(mainWindow)) {
+			mainWindow.webContents.send(
+				'groupChat:autoRunTriggered',
+				groupChatId,
+				participantName,
+				filename
+			);
 		}
 	};
 
