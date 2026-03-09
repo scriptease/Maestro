@@ -84,7 +84,7 @@ function createMockCallbacks(): MessageHandlerCallbacks {
 				toolType: 'claude-code',
 				state: 'idle',
 				inputMode: 'ai',
-				cwd: '/test',
+				cwd: '/home/user/project',
 			},
 		]),
 		getLiveSessionInfo: vi.fn().mockReturnValue(undefined),
@@ -599,7 +599,7 @@ describe('WebSocketMessageHandler', () => {
 			handler.handleMessage(client, {
 				type: 'open_file_tab',
 				sessionId: 'session-1',
-				filePath: '/nonexistent/file.ts',
+				filePath: '/home/user/project/nonexistent/file.ts',
 			});
 
 			await vi.waitFor(() => {
@@ -608,6 +608,19 @@ describe('WebSocketMessageHandler', () => {
 				expect(lastResponse.type).toBe('error');
 				expect(lastResponse.message).toContain('File not found');
 			});
+		});
+
+		it('should reject path traversal attempts', () => {
+			handler.handleMessage(client, {
+				type: 'open_file_tab',
+				sessionId: 'session-1',
+				filePath: '/home/user/project/../../etc/passwd',
+			});
+
+			const response = JSON.parse((client.socket.send as any).mock.calls[0][0]);
+			expect(response.type).toBe('error');
+			expect(response.message).toContain('Invalid file path');
+			expect(callbacks.openFileTab).not.toHaveBeenCalled();
 		});
 	});
 
