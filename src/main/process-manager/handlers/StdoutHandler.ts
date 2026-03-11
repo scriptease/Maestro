@@ -2,6 +2,7 @@
 
 import { EventEmitter } from 'events';
 import { logger } from '../../utils/logger';
+import { stripAllAnsiCodes } from '../../utils/terminalFilter';
 import { appendToBuffer } from '../utils/bufferUtils';
 import { aggregateModelUsage, type ModelStats } from '../../parsers/usage-aggregator';
 import { matchSshErrorPattern } from '../../parsers/error-patterns';
@@ -118,18 +119,23 @@ export class StdoutHandler {
 		const managedProcess = this.processes.get(sessionId);
 		if (!managedProcess) return;
 
+		// SSH-launched agent CLIs can leak terminal mode switches like ESC[?1h ESC=
+		// before their real output. Strip non-printing control bytes before parsing.
+		const cleanedOutput = stripAllAnsiCodes(output);
+		if (!cleanedOutput) return;
+
 		const { isStreamJsonMode, isBatchMode } = managedProcess;
 
 		if (isStreamJsonMode) {
-			this.handleStreamJsonData(sessionId, managedProcess, output);
+			this.handleStreamJsonData(sessionId, managedProcess, cleanedOutput);
 		} else if (isBatchMode) {
-			managedProcess.jsonBuffer = (managedProcess.jsonBuffer || '') + output;
+			managedProcess.jsonBuffer = (managedProcess.jsonBuffer || '') + cleanedOutput;
 			logger.debug('[ProcessManager] Accumulated JSON buffer', 'ProcessManager', {
 				sessionId,
 				bufferLength: managedProcess.jsonBuffer.length,
 			});
 		} else {
-			this.bufferManager.emitDataBuffered(sessionId, output);
+			this.bufferManager.emitDataBuffered(sessionId, cleanedOutput);
 		}
 	}
 
