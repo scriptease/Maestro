@@ -175,17 +175,21 @@ export function AboutModal({
 						About Maestro
 					</h2>
 					<button
+						type="button"
 						onClick={() => window.maestro.shell.openExternal('https://runmaestro.ai')}
 						className="p-1 rounded hover:bg-white/10 transition-colors"
 						title="Visit runmaestro.ai"
+						aria-label="Visit runmaestro.ai"
 						style={{ color: theme.colors.accent }}
 					>
 						<Globe className="w-4 h-4" />
 					</button>
 					<button
+						type="button"
 						onClick={() => window.maestro.shell.openExternal('https://runmaestro.ai/discord')}
 						className="p-1 rounded hover:bg-white/10 transition-colors"
 						title="Join our Discord"
+						aria-label="Join our Discord"
 						style={{ color: theme.colors.accent }}
 					>
 						<svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -193,9 +197,11 @@ export function AboutModal({
 						</svg>
 					</button>
 					<button
+						type="button"
 						onClick={() => window.maestro.shell.openExternal('https://docs.runmaestro.ai/')}
 						className="p-1 rounded hover:bg-white/10 transition-colors"
 						title="Documentation"
+						aria-label="Documentation"
 						style={{ color: theme.colors.accent }}
 					>
 						<BookOpen className="w-4 h-4" />
