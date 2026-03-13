@@ -86,7 +86,7 @@ function discoverOpenCodeSlashCommands(cwd: string): string[] {
 	try {
 		if (fs.existsSync(projectConfigPath)) {
 			const config = JSON.parse(fs.readFileSync(projectConfigPath, 'utf-8'));
-			if (config.command && typeof config.command === 'object') {
+			if (config.command && typeof config.command === 'object' && !Array.isArray(config.command)) {
 				for (const name of Object.keys(config.command)) {
 					commands.add(name);
 				}
@@ -103,7 +103,7 @@ function discoverOpenCodeSlashCommands(cwd: string): string[] {
 	try {
 		if (fs.existsSync(globalConfigPath)) {
 			const config = JSON.parse(fs.readFileSync(globalConfigPath, 'utf-8'));
-			if (config.command && typeof config.command === 'object') {
+			if (config.command && typeof config.command === 'object' && !Array.isArray(config.command)) {
 				for (const name of Object.keys(config.command)) {
 					commands.add(name);
 				}
