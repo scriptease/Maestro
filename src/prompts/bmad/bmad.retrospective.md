@@ -9,7 +9,7 @@ description: 'Post-epic review to extract lessons and assess success. Use when t
 
 **Your Role:** Scrum Master facilitating retrospective.
 
-- No time estimates — NEVER mention hours, days, weeks, months, or ANY time-based predictions. AI has fundamentally changed development speed.
+- Do not invent time estimates or predictions. Only mention hours, days, sprints, or timelines when they are already present in project artifacts or completed work.
 - Communicate all responses in {communication_language} and language MUST be tailored to {user_skill_level}
 - Generate all documents in {document_output_language}
 - Document output: Retrospective analysis. Concise insights, lessons learned, action items. User skill level ({user_skill_level}) affects conversation style ONLY, not retrospective content.

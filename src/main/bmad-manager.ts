@@ -26,6 +26,53 @@ const BMAD_COMMANDS = bmadCatalog.map((entry) => ({
 	isCustom: entry.isCustom,
 }));
 
+function applyMaestroPromptFixes(id: string, prompt: string): string {
+	let fixed = prompt;
+
+	if (id === 'code-review') {
+		fixed = fixed.replace(
+			/<action>Run `git status --porcelain` to find uncommitted changes<\/action>\n<action>Run `git diff --name-only` to see modified files<\/action>\n<action>Run `git diff --cached --name-only` to see staged files<\/action>\n<action>Compile list of actually changed files from git output<\/action>/,
+			`<action>Run \`git status --porcelain\` to find uncommitted changes</action>
+<action>Run \`git diff --name-only\` to see modified files</action>
+<action>Run \`git diff --cached --name-only\` to see staged files</action>
+<action>If working-tree and staged diffs are both empty, inspect committed branch changes with \`git diff --name-only HEAD~1..HEAD\` or the current branch diff against its merge-base when available</action>
+<action>Compile one combined list of actually changed files from git output</action>`
+		);
+	}
+
+	if (id === 'create-story') {
+		fixed = fixed.replace(
+			/ {2}<\/check>\n {2}<action>Load the FULL file: \{\{sprint_status\}\}<\/action>[\s\S]*?<action>GOTO step 2a<\/action>\n<\/step>/,
+			`  </check>\n</step>`
+		);
+	}
+
+	if (id === 'retrospective') {
+		fixed = fixed.replace(
+			`- No time estimates — NEVER mention hours, days, weeks, months, or ANY time-based predictions. AI has fundamentally changed development speed.`,
+			`- Do not invent time estimates or predictions. Only mention hours, days, sprints, or timelines when they are already present in project artifacts or completed work.`
+		);
+	}
+
+	if (id === 'technical-research') {
+		fixed = fixed.replace(
+			`1. Set \`research_type = "technical"\`
+2. Set \`research_topic = [discovered topic from discussion]\`
+3. Set \`research_goals = [discovered goals from discussion]\`
+4. Create the starter output file: \`{planning_artifacts}/research/technical-{{research_topic}}-research-{{date}}.md\` with exact copy of the \`./research.template.md\` contents
+5. Load: \`./technical-steps/step-01-init.md\` with topic context`,
+			`1. Set \`research_type = "technical"\`
+2. Set \`research_topic = [discovered topic from discussion]\`
+3. Set \`research_goals = [discovered goals from discussion]\`
+4. Set \`research_topic_slug = sanitized lowercase kebab-case version of research_topic\` (replace whitespace with \`-\`, remove slashes and filesystem-reserved characters, collapse duplicate dashes)
+5. Create the starter output file: \`{planning_artifacts}/research/technical-{{research_topic_slug}}-research-{{date}}.md\` with exact copy of the \`./research.template.md\` contents
+6. Load: \`./technical-steps/step-01-init.md\` with topic context`
+		);
+	}
+
+	return fixed;
+}
+
 export interface BmadCommand {
 	id: string;
 	command: string;
@@ -300,7 +347,7 @@ export async function refreshBmadPrompts(): Promise<BmadMetadata> {
 			throw new Error(`Failed to fetch ${cmd.sourcePath}: ${response.statusText}`);
 		}
 
-		const prompt = await response.text();
+		const prompt = applyMaestroPromptFixes(cmd.id, await response.text());
 		downloadedPrompts.push({ id: cmd.id, prompt });
 	}
 

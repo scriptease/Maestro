@@ -67,7 +67,8 @@ Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
 <action>Run `git status --porcelain` to find uncommitted changes</action>
 <action>Run `git diff --name-only` to see modified files</action>
 <action>Run `git diff --cached --name-only` to see staged files</action>
-<action>Compile list of actually changed files from git output</action>
+<action>If working-tree and staged diffs are both empty, inspect committed branch changes with `git diff --name-only HEAD~1..HEAD` or the current branch diff against its merge-base when available</action>
+<action>Compile one combined list of actually changed files from git output</action>
 </check>
 
   <!-- Cross-reference story File List vs git reality -->

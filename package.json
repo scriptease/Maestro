@@ -327,7 +327,7 @@
 		"node": ">=22.0.0"
 	},
 	"lint-staged": {
-		"*": [
+		"*.{js,cjs,mjs,jsx,ts,tsx,mts,cts,md,json,yml,yaml,css,scss,less,html,svg}": [
 			"prettier --write"
 		],
 		"*.{js,cjs,mjs,jsx,ts,tsx,mts,cts}": [
