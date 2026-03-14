@@ -113,6 +113,8 @@ Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
 
         <check if="user provides story file path">
           <action>Store user-provided story path as {{story_path}}</action>
+          <action>Read COMPLETE story file</action>
+          <action>Extract story_key from filename or metadata</action>
           <goto anchor="task_check" />
         </check>
       </check>
@@ -146,7 +148,9 @@ Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
         <check if="user chooses '3'">
           <ask>It's unclear what story you want developed. Please provide the full path to the story file:</ask>
           <action>Store user-provided story path as {{story_path}}</action>
-          <action>Continue with provided story file</action>
+          <action>Read COMPLETE story file</action>
+          <action>Extract story_key from filename or metadata</action>
+          <goto anchor="task_check" />
         </check>
       </check>
 

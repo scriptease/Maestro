@@ -52,6 +52,11 @@ function applyMaestroPromptFixes(id, prompt) {
 			`- No time estimates — NEVER mention hours, days, weeks, months, or ANY time-based predictions. AI has fundamentally changed development speed.`,
 			`- Do not invent time estimates or predictions. Only mention hours, days, sprints, or timelines when they are already present in project artifacts or completed work.`
 		);
+		fixed = fixed.replace('{planning*artifacts}/\\_epic*.md', '{planning_artifacts}/*epic*.md');
+		fixed = fixed.replace(
+			'different than originally understood',
+			'different from originally understood'
+		);
 	}
 
 	if (id === 'technical-research') {
@@ -67,6 +72,25 @@ function applyMaestroPromptFixes(id, prompt) {
 4. Set \`research_topic_slug = sanitized lowercase kebab-case version of research_topic\` (replace whitespace with \`-\`, remove slashes and filesystem-reserved characters, collapse duplicate dashes)
 5. Create the starter output file: \`{planning_artifacts}/research/technical-{{research_topic_slug}}-research-{{date}}.md\` with exact copy of the \`./research.template.md\` contents
 6. Load: \`./technical-steps/step-01-init.md\` with topic context`
+		);
+	}
+
+	if (id === 'dev-story') {
+		fixed = fixed.replace(
+			'- `story_file` = `` (explicit story path; auto-discovered if empty)',
+			'- `story_path` = `` (explicit story path; auto-discovered if empty)'
+		);
+		fixed = fixed.replace(
+			'<action>Store user-provided story path as {{story_path}}</action>\n          <goto anchor=\"task_check\" />',
+			'<action>Store user-provided story path as {{story_path}}</action>\n          <action>Read COMPLETE story file</action>\n          <action>Extract story_key from filename or metadata</action>\n          <goto anchor=\"task_check\" />'
+		);
+		fixed = fixed.replace(
+			'<action>Store user-provided story path as {{story_path}}</action>\n          <action>Continue with provided story file</action>',
+			'<action>Store user-provided story path as {{story_path}}</action>\n          <action>Read COMPLETE story file</action>\n          <action>Extract story_key from filename or metadata</action>\n          <goto anchor=\"task_check\" />'
+		);
+		fixed = fixed.replace(
+			'Dev Agent Record → Implementation Plan',
+			'Dev Agent Record → Completion Notes'
 		);
 	}
 

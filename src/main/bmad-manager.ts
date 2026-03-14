@@ -169,6 +169,10 @@ function applyMaestroRuntimePromptFixes(id: string, prompt: string): string {
 			'<action>Store user-provided story path as {{story_path}}</action>\n          <action>Read COMPLETE story file</action>\n          <action>Extract story_key from filename or metadata</action>\n          <goto anchor="task_check" />'
 		);
 		fixed = fixed.replace(
+			'<action>Store user-provided story path as {{story_path}}</action>\n          <action>Continue with provided story file</action>',
+			'<action>Store user-provided story path as {{story_path}}</action>\n          <action>Read COMPLETE story file</action>\n          <action>Extract story_key from filename or metadata</action>\n          <goto anchor="task_check" />'
+		);
+		fixed = fixed.replace(
 			'Dev Agent Record → Implementation Plan',
 			'Dev Agent Record → Completion Notes'
 		);
