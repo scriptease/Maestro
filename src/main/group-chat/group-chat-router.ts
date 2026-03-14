@@ -204,8 +204,18 @@ function setParticipantResponseTimeout(
 		const isLast = markParticipantResponded(groupChatId, participantName);
 		if (isLast && processManager && agentDetector) {
 			spawnModeratorSynthesis(groupChatId, processManager, agentDetector).catch((err) => {
-				console.error('[GroupChat:Debug] Synthesis after timeout failed:', err);
+				logger.error('Failed to spawn moderator synthesis after participant timeout', LOG_CONTEXT, {
+					error: err,
+					groupChatId,
+					participantName,
+				});
+				captureException(err, {
+					operation: 'groupChat:spawnSynthesisAfterTimeout',
+					groupChatId,
+					participantName,
+				});
 				groupChatEmitters.emitStateChange?.(groupChatId, 'idle');
+				powerManager.removeBlockReason(`groupchat:${groupChatId}`);
 			});
 		}
 	}, PARTICIPANT_RESPONSE_TIMEOUT_MS);

@@ -236,26 +236,29 @@ export function useGroupChatHandlers(): GroupChatHandlersReturn {
 		// on the participant timeout, so the AUTO badge and progress bar always clear.
 		const unsubBatchComplete = window.maestro.groupChat.onAutoRunBatchComplete?.(
 			(groupChatId, participantName) => {
-				// Prefer group-chat-scoped autorun registry to avoid name collisions across chats
+				// Prefer group-chat-scoped autorun registry to avoid name collisions across chats.
+				// Only complete the specific participant's session, not all sessions for the chat.
 				const autoRunSessionIds = getAutoRunSessionsForGroupChat(groupChatId);
 				if (autoRunSessionIds.length > 0) {
-					for (const sessionId of autoRunSessionIds) {
+					const sessions = useSessionStore.getState().sessions;
+					const matchingSessionId = autoRunSessionIds.find((sid) =>
+						sessions.some((s) => s.id === sid && s.name === participantName)
+					);
+					if (matchingSessionId) {
 						useBatchStore.getState().dispatchBatch({
 							type: 'COMPLETE_BATCH',
-							sessionId,
+							sessionId: matchingSessionId,
 						});
+						return;
 					}
-				} else {
-					// Fallback: resolve by participant name if registry entry was already consumed
-					const session = useSessionStore
-						.getState()
-						.sessions.find((s) => s.name === participantName);
-					if (!session) return;
-					useBatchStore.getState().dispatchBatch({
-						type: 'COMPLETE_BATCH',
-						sessionId: session.id,
-					});
 				}
+				// Fallback: resolve by participant name if registry entry was already consumed
+				const session = useSessionStore.getState().sessions.find((s) => s.name === participantName);
+				if (!session) return;
+				useBatchStore.getState().dispatchBatch({
+					type: 'COMPLETE_BATCH',
+					sessionId: session.id,
+				});
 			}
 		);
 
