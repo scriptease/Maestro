@@ -32,6 +32,10 @@ import type {
 	GetAutoRunDocContentCallback,
 	SaveAutoRunDocCallback,
 	StopAutoRunCallback,
+	GetSettingsCallback,
+	SetSettingCallback,
+	WebSettings,
+	SettingValue,
 } from '../types';
 
 const LOG_CONTEXT = 'CallbackRegistry';
@@ -65,6 +69,8 @@ export interface WebServerCallbacks {
 	getAutoRunDocContent: GetAutoRunDocContentCallback | null;
 	saveAutoRunDoc: SaveAutoRunDocCallback | null;
 	stopAutoRun: StopAutoRunCallback | null;
+	getSettings: GetSettingsCallback | null;
+	setSetting: SetSettingCallback | null;
 }
 
 export class CallbackRegistry {
@@ -94,6 +100,8 @@ export class CallbackRegistry {
 		getAutoRunDocContent: null,
 		saveAutoRunDoc: null,
 		stopAutoRun: null,
+		getSettings: null,
+		setSetting: null,
 	};
 
 	// ============ Getter Methods ============
@@ -230,6 +238,30 @@ export class CallbackRegistry {
 		return this.callbacks.stopAutoRun(sessionId);
 	}
 
+	getSettings(): WebSettings {
+		if (this.callbacks.getSettings) {
+			return this.callbacks.getSettings();
+		}
+		return {
+			theme: 'dracula',
+			fontSize: 14,
+			enterToSendAI: false,
+			enterToSendTerminal: true,
+			defaultSaveToHistory: true,
+			defaultShowThinking: 'off',
+			autoScroll: false,
+			notificationsEnabled: true,
+			audioFeedbackEnabled: false,
+			colorBlindMode: 'false',
+			conductorProfile: '',
+		};
+	}
+
+	async setSetting(key: string, value: SettingValue): Promise<boolean> {
+		if (!this.callbacks.setSetting) return false;
+		return this.callbacks.setSetting(key, value);
+	}
+
 	// ============ Setter Methods ============
 
 	setGetSessionsCallback(callback: GetSessionsCallback): void {
@@ -336,6 +368,14 @@ export class CallbackRegistry {
 
 	setStopAutoRunCallback(callback: StopAutoRunCallback): void {
 		this.callbacks.stopAutoRun = callback;
+	}
+
+	setGetSettingsCallback(callback: GetSettingsCallback): void {
+		this.callbacks.getSettings = callback;
+	}
+
+	setSetSettingCallback(callback: SetSettingCallback): void {
+		this.callbacks.setSetting = callback;
 	}
 
 	// ============ Check Methods ============

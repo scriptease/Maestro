@@ -692,6 +692,63 @@ export function createWebServerFactory(deps: WebServerFactoryDependencies) {
 			});
 		});
 
+		// Set up callback for web server to read settings
+		// Reads directly from settingsStore — maps store keys to WebSettings shape
+		server.setGetSettingsCallback(() => {
+			return {
+				theme: settingsStore.get('activeThemeId', 'dracula') as string,
+				fontSize: settingsStore.get('fontSize', 14) as number,
+				enterToSendAI: settingsStore.get('enterToSendAI', false) as boolean,
+				enterToSendTerminal: settingsStore.get('enterToSendTerminal', true) as boolean,
+				defaultSaveToHistory: settingsStore.get('defaultSaveToHistory', true) as boolean,
+				defaultShowThinking: settingsStore.get('defaultShowThinking', 'off') as string,
+				autoScroll: settingsStore.get('autoScrollAiMode', false) as boolean,
+				notificationsEnabled: settingsStore.get('osNotificationsEnabled', true) as boolean,
+				audioFeedbackEnabled: settingsStore.get('audioFeedbackEnabled', false) as boolean,
+				colorBlindMode: settingsStore.get('colorBlindMode', 'false') as string,
+				conductorProfile: settingsStore.get('conductorProfile', '') as string,
+			};
+		});
+
+		// Set up callback for web server to modify settings
+		// Uses IPC request-response pattern — forwards to renderer which applies via existing settings infrastructure
+		server.setSetSettingCallback(async (key: string, value: unknown) => {
+			const mainWindow = getMainWindow();
+			if (!mainWindow) {
+				logger.warn('mainWindow is null for setSetting', 'WebServer');
+				return false;
+			}
+
+			return new Promise((resolve) => {
+				const responseChannel = `remote:setSetting:response:${randomUUID()}`;
+				let resolved = false;
+
+				const handleResponse = (_event: Electron.IpcMainEvent, result: any) => {
+					if (resolved) return;
+					resolved = true;
+					clearTimeout(timeoutId);
+					resolve(result ?? false);
+				};
+
+				ipcMain.once(responseChannel, handleResponse);
+				if (!isWebContentsAvailable(mainWindow)) {
+					logger.warn('webContents is not available for setSetting', 'WebServer');
+					ipcMain.removeListener(responseChannel, handleResponse);
+					resolve(false);
+					return;
+				}
+				mainWindow.webContents.send('remote:setSetting', key, value, responseChannel);
+
+				const timeoutId = setTimeout(() => {
+					if (resolved) return;
+					resolved = true;
+					ipcMain.removeListener(responseChannel, handleResponse);
+					logger.warn(`setSetting callback timed out for key ${key}`, 'WebServer');
+					resolve(false);
+				}, 5000);
+			});
+		});
+
 		// Set up callback for web server to stop Auto Run
 		// Fire-and-forget pattern (like interrupt)
 		server.setStopAutoRunCallback(async (sessionId: string) => {

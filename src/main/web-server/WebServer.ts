@@ -50,6 +50,8 @@ import type {
 	SessionBroadcastData,
 	WebClient,
 	WebClientMessage,
+	WebSettings,
+	SettingValue,
 	GetSessionsCallback,
 	GetSessionDetailCallback,
 	WriteToSessionCallback,
@@ -75,6 +77,8 @@ import type {
 	GetAutoRunDocContentCallback,
 	SaveAutoRunDocCallback,
 	StopAutoRunCallback,
+	GetSettingsCallback,
+	SetSettingCallback,
 } from './types';
 
 // Logger context for all web server logs
@@ -345,6 +349,14 @@ export class WebServer {
 
 	setStopAutoRunCallback(callback: StopAutoRunCallback): void {
 		this.callbackRegistry.setStopAutoRunCallback(callback);
+	}
+
+	setGetSettingsCallback(callback: GetSettingsCallback): void {
+		this.callbackRegistry.setGetSettingsCallback(callback);
+	}
+
+	setSetSettingCallback(callback: SetSettingCallback): void {
+		this.callbackRegistry.setSetSettingCallback(callback);
 	}
 
 	// ============ Rate Limiting ============
