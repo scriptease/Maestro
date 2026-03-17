@@ -5,7 +5,7 @@
  * and real-time document change tracking via WebSocket broadcasts.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import type { UseWebSocketReturn, AutoRunState } from './useWebSocket';
 
 /**
@@ -66,9 +66,6 @@ export function useAutoRun(
 	const [documents, setDocuments] = useState<AutoRunDocument[]>([]);
 	const [isLoadingDocs, setIsLoadingDocs] = useState(false);
 	const [selectedDoc, setSelectedDoc] = useState<SelectedDocument | null>(null);
-
-	// Track the current sessionId for auto-refresh
-	const currentSessionIdRef = useRef<string | null>(null);
 
 	const loadDocuments = useCallback(
 		async (sessionId: string) => {
