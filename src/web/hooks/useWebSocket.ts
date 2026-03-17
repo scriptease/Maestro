@@ -124,6 +124,7 @@ export type ServerMessageType =
 	| 'autorun_state'
 	| 'autorun_docs_changed'
 	| 'notification_event'
+	| 'settings_changed'
 	| 'tabs_changed'
 	| 'pong'
 	| 'subscribed'
@@ -317,6 +318,27 @@ export interface NotificationEventMessage extends ServerMessage {
 }
 
 /**
+ * Settings changed message from server
+ * Sent when settings are modified (from web or desktop)
+ */
+export interface SettingsChangedMessage extends ServerMessage {
+	type: 'settings_changed';
+	settings: {
+		theme: string;
+		fontSize: number;
+		enterToSendAI: boolean;
+		enterToSendTerminal: boolean;
+		defaultSaveToHistory: boolean;
+		defaultShowThinking: string;
+		autoScroll: boolean;
+		notificationsEnabled: boolean;
+		audioFeedbackEnabled: boolean;
+		colorBlindMode: string;
+		conductorProfile: string;
+	};
+}
+
+/**
  * Tabs changed message from server
  * Sent when tabs are added, removed, or active tab changes in a session
  */
@@ -356,6 +378,7 @@ export type TypedServerMessage =
 	| AutoRunStateMessage
 	| AutoRunDocsChangedMessage
 	| NotificationEventMessage
+	| SettingsChangedMessage
 	| TabsChangedMessage
 	| ErrorMessage
 	| ServerMessage;
@@ -399,6 +422,8 @@ export interface WebSocketEventHandlers {
 	onAutoRunDocsChanged?: (sessionId: string, documents: AutoRunDocsChangedMessage['documents']) => void;
 	/** Called when a notification event is received */
 	onNotificationEvent?: (event: NotificationEventMessage) => void;
+	/** Called when settings are changed (from web or desktop) */
+	onSettingsChanged?: (settings: SettingsChangedMessage['settings']) => void;
 	/** Called when tabs change in a session */
 	onTabsChanged?: (sessionId: string, aiTabs: AITabData[], activeTabId: string) => void;
 	/** Called when connection state changes */
@@ -761,6 +786,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 					case 'notification_event': {
 						const notifMsg = message as NotificationEventMessage;
 						handlersRef.current?.onNotificationEvent?.(notifMsg);
+						break;
+					}
+
+					case 'settings_changed': {
+						const settingsMsg = message as SettingsChangedMessage;
+						handlersRef.current?.onSettingsChanged?.(settingsMsg.settings);
 						break;
 					}
 
