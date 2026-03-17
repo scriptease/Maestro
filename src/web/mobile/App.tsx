@@ -40,7 +40,9 @@ import { AutoRunPanel } from './AutoRunPanel';
 import { AutoRunDocumentViewer } from './AutoRunDocumentViewer';
 import { AutoRunSetupSheet } from './AutoRunSetupSheet';
 import { NotificationSettingsSheet } from './NotificationSettingsSheet';
+import { SettingsPanel } from './SettingsPanel';
 import { useAutoRun, type LaunchConfig } from '../hooks/useAutoRun';
+import { useSettings, type WebSettings } from '../hooks/useSettings';
 import { TabBar } from './TabBar';
 import { TabSearchModal } from './TabSearchModal';
 import type { Session, LastResponsePreview } from '../hooks/useSessions';
@@ -67,10 +69,11 @@ interface MobileHeaderProps {
 	autoRunState?: AutoRunState | null;
 	onAutoRunTap?: () => void;
 	onNotificationTap?: () => void;
+	onSettingsTap?: () => void;
 	notificationCount?: number;
 }
 
-function MobileHeader({ activeSession, autoRunState, onAutoRunTap, onNotificationTap, notificationCount = 0 }: MobileHeaderProps) {
+function MobileHeader({ activeSession, autoRunState, onAutoRunTap, onNotificationTap, onSettingsTap, notificationCount = 0 }: MobileHeaderProps) {
 	const colors = useThemeColors();
 	const { isSession, goToDashboard } = useMaestroMode();
 
@@ -269,9 +272,9 @@ function MobileHeader({ activeSession, autoRunState, onAutoRunTap, onNotificatio
 			)}
 
 			{/* Right side buttons */}
-			{activeSession && (
-				<div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-					{/* Auto Run button */}
+			<div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+				{/* Auto Run button (only with active session) */}
+				{activeSession && (
 					<button
 						onClick={onAutoRunTap}
 						style={{
@@ -328,8 +331,10 @@ function MobileHeader({ activeSession, autoRunState, onAutoRunTap, onNotificatio
 							</span>
 						)}
 					</button>
+				)}
 
-					{/* Notification settings bell button */}
+				{/* Notification settings bell button (only with active session) */}
+				{activeSession && (
 					<button
 						onClick={onNotificationTap}
 						style={{
@@ -387,8 +392,45 @@ function MobileHeader({ activeSession, autoRunState, onAutoRunTap, onNotificatio
 							</span>
 						)}
 					</button>
-				</div>
-			)}
+				)}
+
+				{/* Settings gear button (always visible) */}
+				<button
+					onClick={onSettingsTap}
+					style={{
+						width: '36px',
+						height: '36px',
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'center',
+						borderRadius: '8px',
+						backgroundColor: 'transparent',
+						border: `1px solid ${colors.border}`,
+						color: colors.textDim,
+						cursor: 'pointer',
+						touchAction: 'manipulation',
+						WebkitTapHighlightColor: 'transparent',
+						flexShrink: 0,
+					}}
+					aria-label="Settings"
+					title="Settings"
+				>
+					{/* Gear icon */}
+					<svg
+						width="14"
+						height="14"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+					>
+						<circle cx="12" cy="12" r="3" />
+						<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+					</svg>
+				</button>
+			</div>
 
 			{/* Pulse animation for thinking state */}
 			<style>{`
@@ -443,6 +485,9 @@ export default function MobileApp() {
 	const [showNotificationSettings, setShowNotificationSettings] = useState(false);
 	const [notificationCount, setNotificationCount] = useState(0);
 
+	// Settings panel state
+	const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+
 	// History panel state (persisted)
 	const [historyFilter, setHistoryFilter] = useState<'all' | 'AUTO' | 'USER'>(
 		savedState.historyFilter
@@ -477,6 +522,9 @@ export default function MobileApp() {
 
 	// Reference to send function for offline queue (will be set after useWebSocket)
 	const sendRef = useRef<((sessionId: string, command: string) => boolean) | null>(null);
+
+	// Ref for settings changed handler (bridges useWebSocket → useSettings ordering)
+	const settingsChangedRef = useRef<((settings: WebSettings) => void) | null>(null);
 
 	// Save view state when overlays change (using hook's persistence function)
 	useEffect(() => {
@@ -642,6 +690,9 @@ export default function MobileApp() {
 				});
 				setNotificationCount((prev) => prev + 1);
 			},
+			onSettingsChanged: (settings) => {
+				settingsChangedRef.current?.(settings as WebSettings);
+			},
 		},
 	});
 
@@ -706,6 +757,16 @@ export default function MobileApp() {
 
 	const handleCloseNotificationSettings = useCallback(() => {
 		setShowNotificationSettings(false);
+	}, []);
+
+	// Settings panel handlers
+	const handleOpenSettingsPanel = useCallback(() => {
+		setShowSettingsPanel(true);
+		triggerHaptic(HAPTIC_PATTERNS.tap);
+	}, []);
+
+	const handleCloseSettingsPanel = useCallback(() => {
+		setShowSettingsPanel(false);
 	}, []);
 
 	const handleAutoRunLaunch = useCallback((config: LaunchConfig) => {
@@ -785,6 +846,14 @@ export default function MobileApp() {
 	// Determine if we're actually connected
 	const isActuallyConnected =
 		!isOffline && (connectionState === 'connected' || connectionState === 'authenticated');
+
+	// Settings hook — uses WebSocket for fetching/updating settings
+	const settingsHook = useSettings(sendRequest, isActuallyConnected);
+
+	// Keep settings changed ref in sync
+	useEffect(() => {
+		settingsChangedRef.current = settingsHook.handleSettingsChanged;
+	}, [settingsHook.handleSettingsChanged]);
 
 	// Offline queue hook - stores commands typed while offline and sends when reconnected
 	const {
@@ -1207,6 +1276,7 @@ export default function MobileApp() {
 		overflow: 'hidden',
 		backgroundColor: colors.bgMain,
 		color: colors.textMain,
+		fontSize: settingsHook.settings?.fontSize ? `${settingsHook.settings.fontSize}px` : undefined,
 	};
 
 	// Determine if session pill bar should be shown
@@ -1223,6 +1293,7 @@ export default function MobileApp() {
 				autoRunState={currentAutoRunState}
 				onAutoRunTap={handleOpenAutoRunPanel}
 				onNotificationTap={handleOpenNotificationSettings}
+				onSettingsTap={handleOpenSettingsPanel}
 				notificationCount={notificationCount}
 			/>
 
@@ -1355,6 +1426,14 @@ export default function MobileApp() {
 					onPreferencesChange={setNotificationPreferences}
 					permission={notificationPermission}
 					onClose={handleCloseNotificationSettings}
+				/>
+			)}
+
+			{/* Settings panel - full-screen overlay */}
+			{showSettingsPanel && (
+				<SettingsPanel
+					onClose={handleCloseSettingsPanel}
+					settingsHook={settingsHook}
 				/>
 			)}
 
