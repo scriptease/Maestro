@@ -46,6 +46,7 @@ import type {
 	AutoRunState,
 	AutoRunDocument,
 	CliActivity,
+	NotificationEvent,
 	SessionBroadcastData,
 	WebClient,
 	WebClientMessage,
@@ -511,6 +512,10 @@ export class WebServer {
 
 	broadcastToWebClients(message: object): void {
 		this.broadcastService.broadcastToAll(message);
+	}
+
+	broadcastNotificationEvent(event: NotificationEvent): void {
+		this.broadcastService.broadcastNotificationEvent(event);
 	}
 
 	broadcastToSessionClients(sessionId: string, message: object): void {

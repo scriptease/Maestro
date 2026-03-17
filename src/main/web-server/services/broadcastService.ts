@@ -31,6 +31,7 @@ import type {
 	AutoRunState,
 	AutoRunDocument,
 	CliActivity,
+	NotificationEvent,
 } from '../types';
 
 // Re-export types for backwards compatibility
@@ -63,6 +64,8 @@ export type GetWebClientsCallback = () => Map<string, WebClientInfo>;
  */
 export class BroadcastService {
 	private getWebClients: GetWebClientsCallback | null = null;
+	private previousAutoRunStates: Map<string, { running: boolean; completedTasks: number }> =
+		new Map();
 
 	/**
 	 * Set the callback for getting web clients
@@ -103,6 +106,17 @@ export class BroadcastService {
 	}
 
 	/**
+	 * Broadcast a notification event to all connected web clients
+	 */
+	broadcastNotificationEvent(event: NotificationEvent): void {
+		this.broadcastToAll({
+			type: 'notification_event',
+			...event,
+			timestamp: Date.now(),
+		});
+	}
+
+	/**
 	 * Broadcast a session state change to all connected web clients
 	 * Called when any session's state changes (idle, busy, error, connecting)
 	 */
@@ -124,6 +138,25 @@ export class BroadcastService {
 			...additionalData,
 			timestamp: Date.now(),
 		});
+
+		// Trigger notification events on state transitions
+		if (state === 'idle') {
+			this.broadcastNotificationEvent({
+				eventType: 'agent_complete',
+				sessionId,
+				sessionName: additionalData?.name ?? sessionId,
+				message: 'Agent finished processing',
+				severity: 'info',
+			});
+		} else if (state === 'error') {
+			this.broadcastNotificationEvent({
+				eventType: 'agent_error',
+				sessionId,
+				sessionName: additionalData?.name ?? sessionId,
+				message: 'Agent encountered an error',
+				severity: 'error',
+			});
+		}
 	}
 
 	/**
@@ -225,6 +258,41 @@ export class BroadcastService {
 			state,
 			timestamp: Date.now(),
 		});
+
+		// Detect transitions for notification events
+		const previous = this.previousAutoRunStates.get(sessionId);
+		if (state) {
+			// Detect autorun_complete: running → not running
+			if (previous?.running && !state.isRunning) {
+				this.broadcastNotificationEvent({
+					eventType: 'autorun_complete',
+					sessionId,
+					sessionName: sessionId,
+					message: `Auto Run finished (${state.completedTasks}/${state.totalTasks} tasks)`,
+					severity: 'info',
+				});
+			}
+
+			// Detect autorun_task_complete: completedTasks increased
+			if (previous && state.completedTasks > previous.completedTasks) {
+				this.broadcastNotificationEvent({
+					eventType: 'autorun_task_complete',
+					sessionId,
+					sessionName: sessionId,
+					message: `Task ${state.completedTasks}/${state.totalTasks} completed`,
+					severity: 'info',
+				});
+			}
+
+			// Update previous state
+			this.previousAutoRunStates.set(sessionId, {
+				running: state.isRunning,
+				completedTasks: state.completedTasks,
+			});
+		} else {
+			// State cleared — remove tracking
+			this.previousAutoRunStates.delete(sessionId);
+		}
 	}
 
 	/**
