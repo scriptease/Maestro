@@ -36,6 +36,10 @@ import { ResponseViewer, type ResponseItem } from './ResponseViewer';
 import { OfflineQueueBanner } from './OfflineQueueBanner';
 import { MessageHistory } from './MessageHistory';
 import { AutoRunIndicator } from './AutoRunIndicator';
+import { AutoRunPanel } from './AutoRunPanel';
+import { AutoRunDocumentViewer } from './AutoRunDocumentViewer';
+import { AutoRunSetupSheet } from './AutoRunSetupSheet';
+import { useAutoRun, type LaunchConfig } from '../hooks/useAutoRun';
 import { TabBar } from './TabBar';
 import { TabSearchModal } from './TabSearchModal';
 import type { Session, LastResponsePreview } from '../hooks/useSessions';
@@ -59,9 +63,11 @@ function getActiveTabFromSession(session: Session | null | undefined): AITabData
  */
 interface MobileHeaderProps {
 	activeSession?: Session | null;
+	autoRunState?: AutoRunState | null;
+	onAutoRunTap?: () => void;
 }
 
-function MobileHeader({ activeSession }: MobileHeaderProps) {
+function MobileHeader({ activeSession, autoRunState, onAutoRunTap }: MobileHeaderProps) {
 	const colors = useThemeColors();
 	const { isSession, goToDashboard } = useMaestroMode();
 
@@ -259,6 +265,66 @@ function MobileHeader({ activeSession }: MobileHeaderProps) {
 				</div>
 			)}
 
+			{/* Auto Run button (right side) */}
+			{activeSession && (
+				<button
+					onClick={onAutoRunTap}
+					style={{
+						width: '36px',
+						height: '36px',
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'center',
+						borderRadius: '8px',
+						backgroundColor: autoRunState?.isRunning ? `${colors.accent}20` : 'transparent',
+						border: autoRunState?.isRunning ? `1px solid ${colors.accent}` : `1px solid ${colors.border}`,
+						color: autoRunState?.isRunning ? colors.accent : colors.textDim,
+						cursor: 'pointer',
+						touchAction: 'manipulation',
+						WebkitTapHighlightColor: 'transparent',
+						flexShrink: 0,
+						position: 'relative',
+					}}
+					aria-label="Auto Run"
+					title="Auto Run"
+				>
+					{/* Play icon */}
+					<svg
+						width="14"
+						height="14"
+						viewBox="0 0 24 24"
+						fill={autoRunState?.isRunning ? 'currentColor' : 'none'}
+						stroke="currentColor"
+						strokeWidth="2"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+					>
+						<polygon points="5,3 19,12 5,21" />
+					</svg>
+					{/* Progress badge when running */}
+					{autoRunState?.isRunning && autoRunState.totalTasks > 0 && (
+						<span
+							style={{
+								position: 'absolute',
+								top: '-4px',
+								right: '-4px',
+								fontSize: '9px',
+								fontWeight: 700,
+								color: 'white',
+								backgroundColor: colors.accent,
+								borderRadius: '8px',
+								padding: '1px 4px',
+								minWidth: '16px',
+								textAlign: 'center',
+								lineHeight: '14px',
+							}}
+						>
+							{Math.round((autoRunState.completedTasks / autoRunState.totalTasks) * 100)}%
+						</span>
+					)}
+				</button>
+			)}
+
 			{/* Pulse animation for thinking state */}
 			<style>{`
         @keyframes pulse {
@@ -302,6 +368,11 @@ export default function MobileApp() {
 
 	// AutoRun state per session (batch processing on desktop)
 	const [autoRunStates, setAutoRunStates] = useState<Record<string, AutoRunState | null>>({});
+
+	// AutoRun panel state
+	const [showAutoRunPanel, setShowAutoRunPanel] = useState(false);
+	const [autoRunViewingDoc, setAutoRunViewingDoc] = useState<string | null>(null);
+	const [showAutoRunSetup, setShowAutoRunSetup] = useState(false);
 
 	// History panel state (persisted)
 	const [historyFilter, setHistoryFilter] = useState<'all' | 'AUTO' | 'USER'>(
@@ -485,6 +556,7 @@ export default function MobileApp() {
 		state: connectionState,
 		connect,
 		send,
+		sendRequest,
 		error,
 		reconnectAttempts,
 	} = useWebSocket({
@@ -496,6 +568,48 @@ export default function MobileApp() {
 	useEffect(() => {
 		wsSendRef.current = send;
 	}, [send]);
+
+	// Auto Run hook for panel operations
+	const currentAutoRunState = activeSessionId ? autoRunStates[activeSessionId] ?? null : null;
+	const {
+		documents: autoRunDocuments,
+		launchAutoRun,
+	} = useAutoRun(sendRequest, send, currentAutoRunState);
+
+	// Auto Run panel handlers
+	const handleOpenAutoRunPanel = useCallback(() => {
+		setShowAutoRunPanel(true);
+		triggerHaptic(HAPTIC_PATTERNS.tap);
+	}, []);
+
+	const handleCloseAutoRunPanel = useCallback(() => {
+		setShowAutoRunPanel(false);
+		setAutoRunViewingDoc(null);
+		setShowAutoRunSetup(false);
+	}, []);
+
+	const handleAutoRunOpenDocument = useCallback((filename: string) => {
+		setAutoRunViewingDoc(filename);
+	}, []);
+
+	const handleAutoRunBackFromDocument = useCallback(() => {
+		setAutoRunViewingDoc(null);
+	}, []);
+
+	const handleAutoRunOpenSetup = useCallback(() => {
+		setShowAutoRunSetup(true);
+	}, []);
+
+	const handleAutoRunCloseSetup = useCallback(() => {
+		setShowAutoRunSetup(false);
+	}, []);
+
+	const handleAutoRunLaunch = useCallback((config: LaunchConfig) => {
+		if (!activeSessionId) return;
+		launchAutoRun(activeSessionId, config);
+		setShowAutoRunSetup(false);
+		triggerHaptic(HAPTIC_PATTERNS.success);
+	}, [activeSessionId, launchAutoRun]);
 
 	// Connect on mount - use empty dependency array to only connect once
 	// The connect function is stable via useRef pattern in useWebSocket
@@ -1000,7 +1114,11 @@ export default function MobileApp() {
 	return (
 		<div style={containerStyle}>
 			{/* Header with session info */}
-			<MobileHeader activeSession={activeSession} />
+			<MobileHeader
+				activeSession={activeSession}
+				autoRunState={currentAutoRunState}
+				onAutoRunTap={handleOpenAutoRunPanel}
+			/>
 
 			{/* Session pill bar - Row 1: Groups/Sessions with search button */}
 			{showSessionPillBar && (
@@ -1037,6 +1155,7 @@ export default function MobileApp() {
 				<AutoRunIndicator
 					state={autoRunStates[activeSessionId]}
 					sessionName={activeSession?.name}
+					onTap={handleOpenAutoRunPanel}
 				/>
 			)}
 
@@ -1087,6 +1206,39 @@ export default function MobileApp() {
 					activeTabId={activeSession.activeTabId}
 					onSelectTab={handleSelectTab}
 					onClose={handleCloseTabSearch}
+				/>
+			)}
+
+			{/* Auto Run panel - full-screen management view */}
+			{showAutoRunPanel && activeSessionId && (
+				<AutoRunPanel
+					sessionId={activeSessionId}
+					autoRunState={currentAutoRunState}
+					onClose={handleCloseAutoRunPanel}
+					onOpenDocument={handleAutoRunOpenDocument}
+					onOpenSetup={handleAutoRunOpenSetup}
+					sendRequest={sendRequest}
+					send={send}
+				/>
+			)}
+
+			{/* Auto Run document viewer - full-screen overlay on top of panel */}
+			{showAutoRunPanel && activeSessionId && autoRunViewingDoc && (
+				<AutoRunDocumentViewer
+					sessionId={activeSessionId}
+					filename={autoRunViewingDoc}
+					onBack={handleAutoRunBackFromDocument}
+					sendRequest={sendRequest}
+				/>
+			)}
+
+			{/* Auto Run setup sheet - bottom sheet on top of panel */}
+			{showAutoRunPanel && activeSessionId && showAutoRunSetup && (
+				<AutoRunSetupSheet
+					sessionId={activeSessionId}
+					documents={autoRunDocuments}
+					onLaunch={handleAutoRunLaunch}
+					onClose={handleAutoRunCloseSetup}
 				/>
 			)}
 
