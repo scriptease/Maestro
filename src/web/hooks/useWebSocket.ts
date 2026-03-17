@@ -123,6 +123,7 @@ export type ServerMessageType =
 	| 'custom_commands'
 	| 'autorun_state'
 	| 'autorun_docs_changed'
+	| 'notification_event'
 	| 'tabs_changed'
 	| 'pong'
 	| 'subscribed'
@@ -303,6 +304,19 @@ export interface AutoRunDocsChangedMessage extends ServerMessage {
 }
 
 /**
+ * Notification event message from server
+ * Sent when a notification-worthy event occurs (agent complete, error, autorun, etc.)
+ */
+export interface NotificationEventMessage extends ServerMessage {
+	type: 'notification_event';
+	eventType: 'agent_complete' | 'agent_error' | 'autorun_complete' | 'autorun_task_complete' | 'context_warning';
+	sessionId: string;
+	sessionName: string;
+	message: string;
+	severity: 'info' | 'warning' | 'error';
+}
+
+/**
  * Tabs changed message from server
  * Sent when tabs are added, removed, or active tab changes in a session
  */
@@ -341,6 +355,7 @@ export type TypedServerMessage =
 	| CustomCommandsMessage
 	| AutoRunStateMessage
 	| AutoRunDocsChangedMessage
+	| NotificationEventMessage
 	| TabsChangedMessage
 	| ErrorMessage
 	| ServerMessage;
@@ -382,6 +397,8 @@ export interface WebSocketEventHandlers {
 	onAutoRunStateChange?: (sessionId: string, state: AutoRunState | null) => void;
 	/** Called when AutoRun document list changes */
 	onAutoRunDocsChanged?: (sessionId: string, documents: AutoRunDocsChangedMessage['documents']) => void;
+	/** Called when a notification event is received */
+	onNotificationEvent?: (event: NotificationEventMessage) => void;
 	/** Called when tabs change in a session */
 	onTabsChanged?: (sessionId: string, aiTabs: AITabData[], activeTabId: string) => void;
 	/** Called when connection state changes */
@@ -738,6 +755,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 					case 'autorun_docs_changed': {
 						const docsMsg = message as AutoRunDocsChangedMessage;
 						handlersRef.current?.onAutoRunDocsChanged?.(docsMsg.sessionId, docsMsg.documents);
+						break;
+					}
+
+					case 'notification_event': {
+						const notifMsg = message as NotificationEventMessage;
+						handlersRef.current?.onNotificationEvent?.(notifMsg);
 						break;
 					}
 

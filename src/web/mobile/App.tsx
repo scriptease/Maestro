@@ -382,7 +382,7 @@ export default function MobileApp() {
 	const [historySearchOpen, setHistorySearchOpen] = useState(savedState.historySearchOpen);
 
 	// Notification permission hook - requests permission on first visit
-	const { permission: notificationPermission, showNotification } = useNotifications({
+	const { permission: notificationPermission, showNotification, handleNotificationEvent } = useNotifications({
 		autoRequest: true,
 		requestDelay: 3000, // Wait 3 seconds before prompting
 		onGranted: () => {
@@ -561,13 +561,36 @@ export default function MobileApp() {
 		reconnectAttempts,
 	} = useWebSocket({
 		autoReconnect: false, // Only retry manually via the retry button
-		handlers: sessionsHandlers,
+		handlers: {
+			...sessionsHandlers,
+			onNotificationEvent: (event) => {
+				handleNotificationEvent({
+					eventType: event.eventType,
+					sessionId: event.sessionId,
+					sessionName: event.sessionName,
+					message: event.message,
+					severity: event.severity,
+				});
+			},
+		},
 	});
 
 	// Update wsSendRef after WebSocket is initialized (for session management hook)
 	useEffect(() => {
 		wsSendRef.current = send;
 	}, [send]);
+
+	// Listen for notification click events to navigate to the relevant session
+	useEffect(() => {
+		const handler = (e: Event) => {
+			const detail = (e as CustomEvent).detail;
+			if (detail?.sessionId) {
+				setActiveSessionId(detail.sessionId);
+			}
+		};
+		window.addEventListener('maestro-notification-click', handler);
+		return () => window.removeEventListener('maestro-notification-click', handler);
+	}, [setActiveSessionId]);
 
 	// Auto Run hook for panel operations
 	const currentAutoRunState = activeSessionId ? autoRunStates[activeSessionId] ?? null : null;
