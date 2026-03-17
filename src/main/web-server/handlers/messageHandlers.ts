@@ -1035,7 +1035,7 @@ export class WebSocketMessageHandler {
 		}
 
 		const detail = this.callbacks.getSessionDetail(sessionId);
-		const state: AutoRunState | null = (detail as Record<string, unknown>)?.autoRunState as AutoRunState | null ?? null;
+		const state: AutoRunState | null = (detail as any)?.autoRunState as AutoRunState | null ?? null;
 
 		this.send(client, {
 			type: 'auto_run_state',

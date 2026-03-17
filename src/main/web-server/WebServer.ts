@@ -69,6 +69,10 @@ import type {
 	GetThemeCallback,
 	GetCustomCommandsCallback,
 	GetHistoryCallback,
+	GetAutoRunDocsCallback,
+	GetAutoRunDocContentCallback,
+	SaveAutoRunDocCallback,
+	StopAutoRunCallback,
 } from './types';
 
 // Logger context for all web server logs
@@ -323,6 +327,22 @@ export class WebServer {
 
 	setGetHistoryCallback(callback: GetHistoryCallback): void {
 		this.callbackRegistry.setGetHistoryCallback(callback);
+	}
+
+	setGetAutoRunDocsCallback(callback: GetAutoRunDocsCallback): void {
+		this.callbackRegistry.setGetAutoRunDocsCallback(callback);
+	}
+
+	setGetAutoRunDocContentCallback(callback: GetAutoRunDocContentCallback): void {
+		this.callbackRegistry.setGetAutoRunDocContentCallback(callback);
+	}
+
+	setSaveAutoRunDocCallback(callback: SaveAutoRunDocCallback): void {
+		this.callbackRegistry.setSaveAutoRunDocCallback(callback);
+	}
+
+	setStopAutoRunCallback(callback: StopAutoRunCallback): void {
+		this.callbackRegistry.setStopAutoRunCallback(callback);
 	}
 
 	// ============ Rate Limiting ============

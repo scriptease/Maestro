@@ -575,6 +575,140 @@ export function createWebServerFactory(deps: WebServerFactoryDependencies) {
 			});
 		});
 
+		// Set up callback for web server to fetch Auto Run documents list
+		// Uses IPC request-response pattern with timeout
+		server.setGetAutoRunDocsCallback(async (sessionId: string) => {
+			const mainWindow = getMainWindow();
+			if (!mainWindow) {
+				logger.warn('mainWindow is null for getAutoRunDocs', 'WebServer');
+				return [];
+			}
+
+			return new Promise((resolve) => {
+				const responseChannel = `remote:getAutoRunDocs:response:${randomUUID()}`;
+				let resolved = false;
+
+				const handleResponse = (_event: Electron.IpcMainEvent, result: any) => {
+					if (resolved) return;
+					resolved = true;
+					clearTimeout(timeoutId);
+					resolve(result || []);
+				};
+
+				ipcMain.once(responseChannel, handleResponse);
+				if (!isWebContentsAvailable(mainWindow)) {
+					logger.warn('webContents is not available for getAutoRunDocs', 'WebServer');
+					ipcMain.removeListener(responseChannel, handleResponse);
+					resolve([]);
+					return;
+				}
+				mainWindow.webContents.send('remote:getAutoRunDocs', sessionId, responseChannel);
+
+				const timeoutId = setTimeout(() => {
+					if (resolved) return;
+					resolved = true;
+					ipcMain.removeListener(responseChannel, handleResponse);
+					logger.warn(`getAutoRunDocs callback timed out for session ${sessionId}`, 'WebServer');
+					resolve([]);
+				}, 10000);
+			});
+		});
+
+		// Set up callback for web server to fetch Auto Run document content
+		// Uses IPC request-response pattern with timeout
+		server.setGetAutoRunDocContentCallback(async (sessionId: string, filename: string) => {
+			const mainWindow = getMainWindow();
+			if (!mainWindow) {
+				logger.warn('mainWindow is null for getAutoRunDocContent', 'WebServer');
+				return '';
+			}
+
+			return new Promise((resolve) => {
+				const responseChannel = `remote:getAutoRunDocContent:response:${randomUUID()}`;
+				let resolved = false;
+
+				const handleResponse = (_event: Electron.IpcMainEvent, result: any) => {
+					if (resolved) return;
+					resolved = true;
+					clearTimeout(timeoutId);
+					resolve(result ?? '');
+				};
+
+				ipcMain.once(responseChannel, handleResponse);
+				if (!isWebContentsAvailable(mainWindow)) {
+					logger.warn('webContents is not available for getAutoRunDocContent', 'WebServer');
+					ipcMain.removeListener(responseChannel, handleResponse);
+					resolve('');
+					return;
+				}
+				mainWindow.webContents.send('remote:getAutoRunDocContent', sessionId, filename, responseChannel);
+
+				const timeoutId = setTimeout(() => {
+					if (resolved) return;
+					resolved = true;
+					ipcMain.removeListener(responseChannel, handleResponse);
+					logger.warn(`getAutoRunDocContent callback timed out for session ${sessionId}`, 'WebServer');
+					resolve('');
+				}, 10000);
+			});
+		});
+
+		// Set up callback for web server to save Auto Run document content
+		// Uses IPC request-response pattern with timeout
+		server.setSaveAutoRunDocCallback(async (sessionId: string, filename: string, content: string) => {
+			const mainWindow = getMainWindow();
+			if (!mainWindow) {
+				logger.warn('mainWindow is null for saveAutoRunDoc', 'WebServer');
+				return false;
+			}
+
+			return new Promise((resolve) => {
+				const responseChannel = `remote:saveAutoRunDoc:response:${randomUUID()}`;
+				let resolved = false;
+
+				const handleResponse = (_event: Electron.IpcMainEvent, result: any) => {
+					if (resolved) return;
+					resolved = true;
+					clearTimeout(timeoutId);
+					resolve(result ?? false);
+				};
+
+				ipcMain.once(responseChannel, handleResponse);
+				if (!isWebContentsAvailable(mainWindow)) {
+					logger.warn('webContents is not available for saveAutoRunDoc', 'WebServer');
+					ipcMain.removeListener(responseChannel, handleResponse);
+					resolve(false);
+					return;
+				}
+				mainWindow.webContents.send('remote:saveAutoRunDoc', sessionId, filename, content, responseChannel);
+
+				const timeoutId = setTimeout(() => {
+					if (resolved) return;
+					resolved = true;
+					ipcMain.removeListener(responseChannel, handleResponse);
+					logger.warn(`saveAutoRunDoc callback timed out for session ${sessionId}`, 'WebServer');
+					resolve(false);
+				}, 10000);
+			});
+		});
+
+		// Set up callback for web server to stop Auto Run
+		// Fire-and-forget pattern (like interrupt)
+		server.setStopAutoRunCallback(async (sessionId: string) => {
+			const mainWindow = getMainWindow();
+			if (!mainWindow) {
+				logger.warn('mainWindow is null for stopAutoRun', 'WebServer');
+				return false;
+			}
+
+			if (!isWebContentsAvailable(mainWindow)) {
+				logger.warn('webContents is not available for stopAutoRun', 'WebServer');
+				return false;
+			}
+			mainWindow.webContents.send('remote:stopAutoRun', sessionId);
+			return true;
+		});
+
 		return server;
 	};
 }
