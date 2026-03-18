@@ -1047,7 +1047,7 @@ describe('agents IPC handlers', () => {
 				],
 				'/test/project'
 			);
-			expect(result).toEqual(['/help', '/compact', '/clear']);
+			expect(result).toEqual([{ name: '/help' }, { name: '/compact' }, { name: '/clear' }]);
 		});
 
 		it('should use custom path if provided', async () => {

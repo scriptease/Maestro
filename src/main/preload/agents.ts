@@ -172,13 +172,13 @@ export function createAgentsApi() {
 
 		/**
 		 * Discover available slash commands for an agent.
-		 * Returns command names (strings) for Claude Code, or objects with name+prompt for OpenCode.
+		 * Returns objects with name and optional prompt for all agents.
 		 */
 		discoverSlashCommands: (
 			agentId: string,
 			cwd: string,
 			customPath?: string
-		): Promise<(string | { name: string; prompt?: string })[] | null> =>
+		): Promise<{ name: string; prompt?: string }[] | null> =>
 			ipcRenderer.invoke('agents:discoverSlashCommands', agentId, cwd, customPath),
 	};
 }

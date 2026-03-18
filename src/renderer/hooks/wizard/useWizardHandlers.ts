@@ -240,17 +240,11 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 				);
 				if (cancelled) return;
 
-				const agentCommandObjects = (
-					agentSlashCommands ?? ([] as (string | { name: string; prompt?: string })[])
-				).map((cmd) => {
-					const name = typeof cmd === 'string' ? cmd : cmd.name;
-					const prompt = typeof cmd === 'string' ? undefined : cmd.prompt;
-					return {
-						command: name.startsWith('/') ? name : `/${name}`,
-						description: getSlashCommandDescription(name, currentSession.toolType),
-						prompt,
-					};
-				});
+				const agentCommandObjects = (agentSlashCommands ?? []).map((cmd) => ({
+					command: cmd.name.startsWith('/') ? cmd.name : `/${cmd.name}`,
+					description: getSlashCommandDescription(cmd.name, currentSession.toolType),
+					prompt: cmd.prompt,
+				}));
 
 				if (agentCommandObjects.length > 0) {
 					useSessionStore.getState().setSessions((prev) =>

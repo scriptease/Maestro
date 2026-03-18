@@ -1064,7 +1064,7 @@ export function registerAgentsHandlers(deps: AgentsHandlerDependencies): void {
 									`Discovered ${msg.slash_commands.length} slash commands for ${agentId}`,
 									LOG_CONTEXT
 								);
-								return msg.slash_commands as string[];
+								return (msg.slash_commands as string[]).map((name: string) => ({ name }));
 							}
 						} catch {
 							// Not valid JSON, skip
