@@ -1444,12 +1444,25 @@ export default function MobileApp() {
 		setTimeout(() => setSelectedResponse(null), 300);
 	}, []);
 
-	// Keyboard shortcuts (Cmd+J mode toggle, Cmd+[/] tab navigation)
+	// Command palette: open/close handlers (defined before keyboard handler that uses them)
+	const handleOpenCommandPalette = useCallback(() => {
+		setShowCommandPalette(true);
+		triggerHaptic(HAPTIC_PATTERNS.tap);
+	}, []);
+
+	const handleCloseCommandPalette = useCallback(() => {
+		setShowCommandPalette(false);
+	}, []);
+
+	// Keyboard shortcuts (Cmd+J mode toggle, Cmd+[/] tab navigation, Cmd+K command palette)
 	useMobileKeyboardHandler({
 		activeSessionId,
 		activeSession,
 		handleModeToggle,
 		handleSelectTab,
+		onOpenCommandPalette: handleOpenCommandPalette,
+		onCloseCommandPalette: handleCloseCommandPalette,
+		isCommandPaletteOpen: showCommandPalette,
 	});
 
 	// Swipe-from-right-edge gesture to open right drawer
@@ -1489,16 +1502,6 @@ export default function MobileApp() {
 
 	const handleBackFromGitDiff = useCallback(() => {
 		setGitDiffFile(null);
-	}, []);
-
-	// Command palette: open handler
-	const handleOpenCommandPalette = useCallback(() => {
-		setShowCommandPalette(true);
-		triggerHaptic(HAPTIC_PATTERNS.tap);
-	}, []);
-
-	const handleCloseCommandPalette = useCallback(() => {
-		setShowCommandPalette(false);
 	}, []);
 
 	// Command palette: build actions list
