@@ -242,6 +242,7 @@ interface SessionInfoPopoverProps {
 	anchorRect: DOMRect;
 	onClose: () => void;
 	onToggleBookmark?: (sessionId: string) => void;
+	onOpenContextManagement?: (sessionId: string) => void;
 }
 
 /**
@@ -252,6 +253,7 @@ function SessionInfoPopover({
 	anchorRect,
 	onClose,
 	onToggleBookmark,
+	onOpenContextManagement,
 }: SessionInfoPopoverProps) {
 	const colors = useThemeColors();
 	const popoverRef = useRef<HTMLDivElement>(null);
@@ -557,6 +559,36 @@ function SessionInfoPopover({
 							{session.bookmarked ? 'Remove Bookmark' : 'Bookmark'}
 						</button>
 					)}
+
+					{/* Context management action */}
+					{onOpenContextManagement && (
+						<button
+							onClick={() => {
+								triggerHaptic(HAPTIC_PATTERNS.tap);
+								onOpenContextManagement(session.id);
+								onClose();
+							}}
+							style={{
+								display: 'flex',
+								alignItems: 'center',
+								gap: '8px',
+								width: '100%',
+								padding: '10px 12px',
+								borderRadius: '8px',
+								border: `1px solid ${colors.border}`,
+								backgroundColor: colors.bgMain,
+								color: colors.textMain,
+								fontSize: '14px',
+								fontWeight: 500,
+								cursor: 'pointer',
+								transition: 'background-color 0.15s ease',
+								marginTop: '8px',
+							}}
+						>
+							<span style={{ fontSize: '16px' }}>{'\u{1F504}'}</span>
+							Context Management
+						</button>
+					)}
 				</div>
 			</div>
 
@@ -741,6 +773,8 @@ export interface SessionPillBarProps {
 	onOpenRightDrawer?: () => void;
 	/** Callback to open the Agent Creation Sheet */
 	onOpenCreateAgent?: () => void;
+	/** Callback to open the Context Management Sheet for a session */
+	onOpenContextManagement?: (sessionId: string) => void;
 	/** Optional className for additional styling */
 	className?: string;
 	/** Optional inline styles */
@@ -780,6 +814,7 @@ export function SessionPillBar({
 	onOpenHistory,
 	onOpenRightDrawer,
 	onOpenCreateAgent,
+	onOpenContextManagement,
 	className = '',
 	style,
 }: SessionPillBarProps) {
@@ -1244,6 +1279,7 @@ export function SessionPillBar({
 					anchorRect={popoverState.anchorRect}
 					onClose={handleClosePopover}
 					onToggleBookmark={onToggleBookmark}
+					onOpenContextManagement={onOpenContextManagement}
 				/>
 			)}
 		</>

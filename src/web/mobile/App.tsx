@@ -49,6 +49,7 @@ import { SettingsPanel } from './SettingsPanel';
 import { AgentCreationSheet } from './AgentCreationSheet';
 import { GroupChatPanel } from './GroupChatPanel';
 import { GroupChatSetupSheet } from './GroupChatSetupSheet';
+import { ContextManagementSheet } from './ContextManagementSheet';
 import { useGroupChat } from '../hooks/useGroupChat';
 import { useAutoRun, type LaunchConfig } from '../hooks/useAutoRun';
 import { useSettings, type WebSettings } from '../hooks/useSettings';
@@ -720,6 +721,9 @@ export default function MobileApp() {
 
 	// Command palette state
 	const [showCommandPalette, setShowCommandPalette] = useState(false);
+
+	// Context management sheet state
+	const [showContextManagement, setShowContextManagement] = useState(false);
 
 	// Git diff viewer state
 	const [gitDiffFile, setGitDiffFile] = useState<string | null>(null);
@@ -1581,6 +1585,15 @@ export default function MobileApp() {
 			},
 		});
 
+		acts.push({
+			id: 'agent-context',
+			label: 'Context Management',
+			category: 'Agent',
+			icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>,
+			available: () => !!activeSessionId && sessions.length > 0,
+			action: () => setShowContextManagement(true),
+		});
+
 		// --- Auto Run ---
 		acts.push({
 			id: 'autorun-launch',
@@ -1679,6 +1692,7 @@ export default function MobileApp() {
 	}, [
 		activeSessionId,
 		activeSession,
+		sessions,
 		currentAutoRunState,
 		activeGroupChats.length,
 		settingsHook,
@@ -1901,6 +1915,7 @@ export default function MobileApp() {
 					onOpenRightDrawer={() => handleOpenRightDrawer('files')}
 					onToggleBookmark={handleToggleBookmark}
 					onOpenCreateAgent={handleOpenAgentCreation}
+					onOpenContextManagement={() => setShowContextManagement(true)}
 				/>
 			)}
 
@@ -2064,6 +2079,16 @@ export default function MobileApp() {
 					onSendMessage={handleGroupChatSendMessage}
 					onStop={handleGroupChatStop}
 					onBack={handleGroupChatBack}
+				/>
+			)}
+
+			{/* Context management sheet */}
+			{showContextManagement && activeSessionId && (
+				<ContextManagementSheet
+					sessions={sessions}
+					currentSessionId={activeSessionId}
+					sendRequest={sendRequest}
+					onClose={() => setShowContextManagement(false)}
 				/>
 			)}
 
