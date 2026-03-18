@@ -203,3 +203,17 @@ export type {
 	GitDiffResult,
 	UseGitStatusReturn,
 } from './useGitStatus';
+
+export {
+	useGroupChat,
+	default as useGroupChatDefault,
+} from './useGroupChat';
+
+export type { UseGroupChatReturn } from './useGroupChat';
+
+export type {
+	GroupChatMessage,
+	GroupChatState,
+	GroupChatMessageBroadcast,
+	GroupChatStateChangeBroadcast,
+} from './useWebSocket';

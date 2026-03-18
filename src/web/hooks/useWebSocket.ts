@@ -127,6 +127,8 @@ export type ServerMessageType =
 	| 'settings_changed'
 	| 'groups_changed'
 	| 'tabs_changed'
+	| 'group_chat_message'
+	| 'group_chat_state_change'
 	| 'pong'
 	| 'subscribed'
 	| 'echo'
@@ -370,6 +372,48 @@ export interface TabsChangedMessage extends ServerMessage {
 }
 
 /**
+ * Group chat message data
+ */
+export interface GroupChatMessage {
+	id: string;
+	participantId: string;
+	participantName: string;
+	content: string;
+	timestamp: number;
+	role: 'user' | 'assistant';
+}
+
+/**
+ * Group chat state data
+ */
+export interface GroupChatState {
+	id: string;
+	topic: string;
+	participants: Array<{ sessionId: string; name: string; toolType: string }>;
+	messages: GroupChatMessage[];
+	isActive: boolean;
+	currentTurn?: string;
+}
+
+/**
+ * Group chat message broadcast from server
+ */
+export interface GroupChatMessageBroadcast extends ServerMessage {
+	type: 'group_chat_message';
+	chatId: string;
+	message: GroupChatMessage;
+}
+
+/**
+ * Group chat state change broadcast from server
+ */
+export interface GroupChatStateChangeBroadcast extends ServerMessage {
+	type: 'group_chat_state_change';
+	chatId: string;
+	[key: string]: unknown;
+}
+
+/**
  * Error message from server
  */
 export interface ErrorMessage extends ServerMessage {
@@ -401,6 +445,8 @@ export type TypedServerMessage =
 	| SettingsChangedMessage
 	| GroupsChangedMessage
 	| TabsChangedMessage
+	| GroupChatMessageBroadcast
+	| GroupChatStateChangeBroadcast
 	| ErrorMessage
 	| ServerMessage;
 
@@ -449,6 +495,10 @@ export interface WebSocketEventHandlers {
 	onGroupsChanged?: (groups: GroupData[]) => void;
 	/** Called when tabs change in a session */
 	onTabsChanged?: (sessionId: string, aiTabs: AITabData[], activeTabId: string) => void;
+	/** Called when a group chat message is broadcast */
+	onGroupChatMessage?: (chatId: string, message: GroupChatMessage) => void;
+	/** Called when group chat state changes */
+	onGroupChatStateChange?: (chatId: string, state: Partial<GroupChatState>) => void;
 	/** Called when connection state changes */
 	onConnectionChange?: (state: WebSocketState) => void;
 	/** Called when an error occurs */
@@ -831,6 +881,19 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 							tabsMsg.aiTabs,
 							tabsMsg.activeTabId
 						);
+						break;
+					}
+
+					case 'group_chat_message': {
+						const gcMsg = message as GroupChatMessageBroadcast;
+						handlersRef.current?.onGroupChatMessage?.(gcMsg.chatId, gcMsg.message);
+						break;
+					}
+
+					case 'group_chat_state_change': {
+						const gcStateMsg = message as GroupChatStateChangeBroadcast;
+						const { chatId: gcChatId, type: _gcType, timestamp: _gcTs, ...gcState } = gcStateMsg;
+						handlersRef.current?.onGroupChatStateChange?.(gcChatId, gcState as Partial<GroupChatState>);
 						break;
 					}
 
