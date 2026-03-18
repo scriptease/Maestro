@@ -389,6 +389,18 @@ app.whenReady().then(async () => {
 			};
 
 			const agentConfigValues = getAgentConfigForAgent(storedSession.toolType);
+
+			// Resolve the agent's binary path using the agent detector.
+			// Without this, Cue falls back to the bare command name (e.g., 'claude')
+			// which fails with ENOENT when spawn() can't find it on PATH.
+			let resolvedAgentPath = agentConfigValues.customPath as string | undefined;
+			if (!resolvedAgentPath && agentDetector) {
+				const detectedAgent = await agentDetector.getAgent(storedSession.toolType);
+				if (detectedAgent?.available && detectedAgent.path) {
+					resolvedAgentPath = detectedAgent.path;
+				}
+			}
+
 			const result = await executeCuePrompt({
 				runId,
 				session: {
@@ -412,7 +424,7 @@ app.whenReady().then(async () => {
 				templateContext,
 				timeoutMs,
 				sshRemoteConfig: storedSession.sessionSshRemoteConfig,
-				customPath: agentConfigValues.customPath as string | undefined,
+				customPath: resolvedAgentPath,
 				customArgs: storedSession.customArgs,
 				customEnvVars: storedSession.customEnvVars,
 				customModel: storedSession.customModel,
