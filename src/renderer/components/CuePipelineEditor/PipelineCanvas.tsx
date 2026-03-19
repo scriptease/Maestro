@@ -42,6 +42,17 @@ const nodeTypes = {
 	agent: AgentNode,
 };
 
+/** Event type → MiniMap node color mapping (hoisted to avoid per-render allocation) */
+const EVENT_COLORS: Record<string, string> = {
+	'time.heartbeat': '#f59e0b',
+	'time.scheduled': '#8b5cf6',
+	'file.changed': '#3b82f6',
+	'agent.completed': '#22c55e',
+	'github.pull_request': '#a855f7',
+	'github.issue': '#f97316',
+	'task.pending': '#06b6d4',
+};
+
 interface SessionInfo {
 	id: string;
 	groupId?: string;
@@ -264,16 +275,7 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 					nodeColor={(node) => {
 						if (node.type === 'trigger') {
 							const data = node.data as TriggerNodeDataProps;
-							const eventColors: Record<string, string> = {
-								'time.heartbeat': '#f59e0b',
-								'time.scheduled': '#8b5cf6',
-								'file.changed': '#3b82f6',
-								'agent.completed': '#22c55e',
-								'github.pull_request': '#a855f7',
-								'github.issue': '#f97316',
-								'task.pending': '#06b6d4',
-							};
-							return eventColors[data.eventType] ?? theme.colors.accent;
+							return EVENT_COLORS[data.eventType] ?? theme.colors.accent;
 						}
 						if (node.type === 'agent') {
 							const data = node.data as AgentNodeDataProps;

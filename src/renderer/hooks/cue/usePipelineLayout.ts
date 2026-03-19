@@ -14,6 +14,7 @@ import type {
 } from '../../../shared/cue-pipeline-types';
 import { graphSessionsToPipelines } from '../../components/CuePipelineEditor/utils/yamlToPipeline';
 import { mergePipelinesWithSavedLayout } from '../../components/CuePipelineEditor/utils/pipelineLayout';
+import { captureException } from '../../utils/sentry';
 
 export interface SessionInfo {
 	id: string;
@@ -48,6 +49,7 @@ export function usePipelineLayout({
 }: UsePipelineLayoutParams): UsePipelineLayoutReturn {
 	const layoutSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const hasRestoredLayoutRef = useRef(false);
+	const restoreInFlightRef = useRef(false);
 
 	// Keep a ref to current pipeline state for layout persistence (avoids unstable callback)
 	const pipelineStateRef = useRef(pipelineState);
@@ -66,7 +68,9 @@ export function usePipelineLayout({
 			};
 			window.maestro.cue
 				.savePipelineLayout(layout as unknown as Record<string, unknown>)
-				.catch(() => {});
+				.catch((err: unknown) => {
+					captureException(err, { extra: { operation: 'savePipelineLayout' } });
+				});
 		}, 500);
 	}, [reactFlowInstance]);
 
@@ -82,17 +86,34 @@ export function usePipelineLayout({
 	// while the user is working. Save writes back to disk.
 	useEffect(() => {
 		if (hasRestoredLayoutRef.current) return;
+		if (restoreInFlightRef.current) return;
 		if (!graphSessions || graphSessions.length === 0) return;
 
 		const loadLayout = async () => {
+			restoreInFlightRef.current = true;
+
 			const livePipelines = graphSessionsToPipelines(graphSessions, sessions);
-			if (livePipelines.length === 0) return;
+			if (livePipelines.length === 0) {
+				restoreInFlightRef.current = false;
+				return;
+			}
 
 			let savedLayout: PipelineLayoutState | null = null;
 			try {
 				savedLayout = (await window.maestro.cue.loadPipelineLayout()) as PipelineLayoutState | null;
-			} catch {
-				// No saved layout
+			} catch (err: unknown) {
+				// loadPipelineLayout may fail if no layout has been saved yet — that's expected.
+				// Report anything else to Sentry.
+				const message = err instanceof Error ? err.message : String(err);
+				if (!message.includes('no saved layout') && !message.includes('ENOENT')) {
+					captureException(err, { extra: { operation: 'loadPipelineLayout' } });
+				}
+			}
+
+			// Guard: if another load completed while we awaited, bail out
+			if (hasRestoredLayoutRef.current) {
+				restoreInFlightRef.current = false;
+				return;
 			}
 
 			if (savedLayout && savedLayout.pipelines) {
@@ -103,8 +124,12 @@ export function usePipelineLayout({
 
 				// Restore viewport if available
 				if (savedLayout.viewport) {
+					const viewportToRestore = savedLayout.viewport;
 					setTimeout(() => {
-						reactFlowInstance.setViewport(savedLayout!.viewport!);
+						// Only apply if we're still the valid restore
+						if (hasRestoredLayoutRef.current) {
+							reactFlowInstance.setViewport(viewportToRestore);
+						}
 					}, 100);
 				}
 			} else {
@@ -113,6 +138,7 @@ export function usePipelineLayout({
 			}
 
 			hasRestoredLayoutRef.current = true;
+			restoreInFlightRef.current = false;
 			setIsDirty(false);
 		};
 

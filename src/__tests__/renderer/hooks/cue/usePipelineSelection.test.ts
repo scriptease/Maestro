@@ -14,7 +14,7 @@ vi.mock('../../../../renderer/components/CuePipelineEditor/utils/pipelineGraph',
 function makeTriggerNode(
 	id: string,
 	label = 'File Change',
-	eventType = 'file_change',
+	eventType = 'file.changed',
 	extras: Record<string, unknown> = {}
 ) {
 	return {
@@ -45,7 +45,7 @@ function makeEdge(
 	target: string,
 	extras: Record<string, unknown> = {}
 ) {
-	return { id, source, target, ...extras };
+	return { id, source, target, mode: 'pass' as const, ...extras };
 }
 
 function makePipeline(

@@ -14,6 +14,10 @@ import type {
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
+vi.mock('../../../../renderer/utils/sentry', () => ({
+	captureException: vi.fn(),
+}));
+
 const mockPersistLayout = vi.fn();
 vi.mock('../../../../renderer/hooks/cue/usePipelineLayout', () => ({
 	usePipelineLayout: vi.fn(() => ({ persistLayout: mockPersistLayout })),

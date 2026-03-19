@@ -23,6 +23,7 @@ import { pipelinesToYaml } from '../../components/CuePipelineEditor/utils/pipeli
 import type { CueSettings } from '../../../main/cue/cue-types';
 import { DEFAULT_CUE_SETTINGS } from '../../../main/cue/cue-types';
 import { usePipelineLayout } from './usePipelineLayout';
+import { captureException } from '../../utils/sentry';
 
 // ─── Shared types ────────────────────────────────────────────────────────────
 
@@ -231,7 +232,9 @@ export function usePipelineState({
 		window.maestro.cue
 			.getSettings()
 			.then((settings) => setCueSettings(settings))
-			.catch(() => {});
+			.catch((err: unknown) => {
+				captureException(err, { extra: { operation: 'cue.getSettings' } });
+			});
 	}, []);
 
 	// Track dirty state when pipelines change
@@ -318,7 +321,8 @@ export function usePipelineState({
 			setSaveStatus('success');
 			persistLayout();
 			setTimeout(() => setSaveStatus('idle'), 2000);
-		} catch {
+		} catch (err: unknown) {
+			captureException(err, { extra: { operation: 'cue.pipelineSave' } });
 			setSaveStatus('error');
 			setTimeout(() => setSaveStatus('idle'), 3000);
 		}
@@ -340,8 +344,8 @@ export function usePipelineState({
 			}
 			setIsDirty(false);
 			setValidationErrors([]);
-		} catch {
-			// Error reloading - keep current state
+		} catch (err: unknown) {
+			captureException(err, { extra: { operation: 'cue.pipelineDiscard' } });
 		}
 	}, [sessions]);
 

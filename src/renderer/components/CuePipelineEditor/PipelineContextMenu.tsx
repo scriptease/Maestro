@@ -4,7 +4,7 @@
  * Purely presentational: renders Configure, Duplicate (triggers only), and Delete actions.
  */
 
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 
 export interface ContextMenuState {
 	x: number;
@@ -39,9 +39,18 @@ export const PipelineContextMenu = React.memo(function PipelineContextMenu({
 	onDelete,
 	onDuplicate,
 }: PipelineContextMenuProps) {
+	const menuRef = useRef<HTMLDivElement>(null);
+
+	// Auto-focus on mount so keyboard users can reach the menu actions
+	useEffect(() => {
+		menuRef.current?.focus();
+	}, []);
+
 	return (
 		<div
-			className="fixed"
+			ref={menuRef}
+			className="fixed outline-none"
+			tabIndex={-1}
 			style={{
 				left: contextMenu.x,
 				top: contextMenu.y,

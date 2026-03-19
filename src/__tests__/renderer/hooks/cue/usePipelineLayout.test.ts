@@ -5,6 +5,10 @@ import type { UsePipelineLayoutParams } from '../../../../renderer/hooks/cue/use
 import { graphSessionsToPipelines } from '../../../../renderer/components/CuePipelineEditor/utils/yamlToPipeline';
 import { mergePipelinesWithSavedLayout } from '../../../../renderer/components/CuePipelineEditor/utils/pipelineLayout';
 
+vi.mock('../../../../renderer/utils/sentry', () => ({
+	captureException: vi.fn(),
+}));
+
 vi.mock('../../../../renderer/components/CuePipelineEditor/utils/yamlToPipeline', () => ({
 	graphSessionsToPipelines: vi.fn(() => []),
 }));
