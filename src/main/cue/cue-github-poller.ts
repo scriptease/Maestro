@@ -8,6 +8,10 @@
 import { execFile as cpExecFile } from 'child_process';
 import { createCueEvent, type CueEvent } from './cue-types';
 import { isGitHubItemSeen, markGitHubItemSeen, hasAnyGitHubSeen, pruneGitHubSeen } from './cue-db';
+import { resolveGhPath, getExpandedEnv } from '../utils/cliDetection';
+
+/** Expanded env so packaged Electron can find gh in /opt/homebrew/bin, /usr/local/bin, etc. */
+const ghEnv = getExpandedEnv();
 
 function execFileAsync(
 	cmd: string,
@@ -15,7 +19,7 @@ function execFileAsync(
 	opts?: { cwd?: string; timeout?: number }
 ): Promise<{ stdout: string; stderr: string }> {
 	return new Promise((resolve, reject) => {
-		cpExecFile(cmd, args, opts ?? {}, (error, stdout, stderr) => {
+		cpExecFile(cmd, args, { ...opts, env: ghEnv }, (error, stdout, stderr) => {
 			if (error) {
 				reject(error);
 			} else {
@@ -61,28 +65,29 @@ export function createCueGitHubPoller(config: CueGitHubPollerConfig): () => void
 	let pruneInterval: ReturnType<typeof setInterval> | null = null;
 
 	// Cached state
-	let ghAvailable: boolean | null = null;
+	let ghCommand: string | null = null;
 	let resolvedRepo: string | null = config.repo ?? null;
 	/** Tracks whether a poll has been attempted (success or failure) to prevent event flooding on recovery */
 	let firstPollAttempted = false;
 
-	async function checkGhAvailable(): Promise<boolean> {
-		if (ghAvailable !== null) return ghAvailable;
+	async function resolveGh(): Promise<string | null> {
+		if (ghCommand !== null) return ghCommand;
 		try {
-			await execFileAsync('gh', ['--version']);
-			ghAvailable = true;
+			const cmd = await resolveGhPath();
+			await execFileAsync(cmd, ['--version']);
+			ghCommand = cmd;
 		} catch {
-			ghAvailable = false;
 			onLog('warn', `[CUE] GitHub CLI (gh) not found — skipping "${triggerName}"`);
+			return null;
 		}
-		return ghAvailable;
+		return ghCommand;
 	}
 
 	async function resolveRepo(): Promise<string | null> {
 		if (resolvedRepo) return resolvedRepo;
 		try {
 			const { stdout } = await execFileAsync(
-				'gh',
+				ghCommand!,
 				['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner'],
 				{ cwd: projectRoot, timeout: 10000 }
 			);
@@ -98,7 +103,7 @@ export function createCueGitHubPoller(config: CueGitHubPollerConfig): () => void
 		// For "merged" state, query closed PRs and filter by merge status client-side
 		const ghStateArg = stateFilter === 'merged' ? 'closed' : stateFilter;
 		const { stdout } = await execFileAsync(
-			'gh',
+			ghCommand!,
 			[
 				'pr',
 				'list',
@@ -163,7 +168,7 @@ export function createCueGitHubPoller(config: CueGitHubPollerConfig): () => void
 
 	async function pollIssues(repo: string): Promise<void> {
 		const { stdout } = await execFileAsync(
-			'gh',
+			ghCommand!,
 			[
 				'issue',
 				'list',
@@ -221,7 +226,7 @@ export function createCueGitHubPoller(config: CueGitHubPollerConfig): () => void
 		if (stopped) return;
 
 		try {
-			if (!(await checkGhAvailable())) return;
+			if (!(await resolveGh())) return;
 
 			const repo = await resolveRepo();
 			if (!repo) return;
