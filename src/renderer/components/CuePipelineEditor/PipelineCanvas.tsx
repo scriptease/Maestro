@@ -97,6 +97,12 @@ export interface PipelineCanvasProps {
 	selectedEdgePipelineColor: string;
 	onUpdateEdge: (edgeId: string, updates: Partial<PipelineEdgeType>) => void;
 	onDeleteEdge: (edgeId: string) => void;
+	/** Callback to manually trigger a pipeline by name */
+	onTriggerPipeline?: (pipelineName: string) => void;
+	/** Whether the pipeline config has unsaved changes */
+	isDirty?: boolean;
+	/** Set of pipeline IDs that are currently running */
+	runningPipelineIds?: Set<string>;
 }
 
 export const PipelineCanvas = React.memo(function PipelineCanvas({
@@ -146,6 +152,9 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 	selectedEdgePipelineColor,
 	onUpdateEdge,
 	onDeleteEdge,
+	onTriggerPipeline,
+	isDirty,
+	runningPipelineIds,
 }: PipelineCanvasProps) {
 	return (
 		<div className="flex-1 relative overflow-hidden">
@@ -366,6 +375,16 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 					onSwitchToAgent={onSwitchToSession}
 					triggerDrawerOpen={triggerDrawerOpenForConfig}
 					agentDrawerOpen={agentDrawerOpenForConfig}
+					onTriggerPipeline={onTriggerPipeline}
+					pipelineName={(() => {
+						const p = pipelines.find((pl) => pl.nodes.some((n) => n.id === selectedNode.id));
+						return p?.name;
+					})()}
+					isSaved={!isDirty}
+					isRunning={(() => {
+						const p = pipelines.find((pl) => pl.nodes.some((n) => n.id === selectedNode.id));
+						return p ? runningPipelineIds?.has(p.id) : false;
+					})()}
 				/>
 			)}
 			{selectedEdge && !selectedNode && (

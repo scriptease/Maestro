@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { Trash2, Zap, ChevronsUp, ChevronsDown } from 'lucide-react';
+import { Trash2, Zap, ChevronsUp, ChevronsDown, Play, Loader2 } from 'lucide-react';
 import type {
 	PipelineNode,
 	TriggerNodeData,
@@ -34,6 +34,14 @@ interface NodeConfigPanelProps {
 	onSwitchToAgent?: (sessionId: string) => void;
 	triggerDrawerOpen?: boolean;
 	agentDrawerOpen?: boolean;
+	/** Callback to manually trigger the pipeline this trigger belongs to */
+	onTriggerPipeline?: (pipelineName: string) => void;
+	/** Pipeline name for the selected trigger's pipeline */
+	pipelineName?: string;
+	/** Whether the pipeline config is saved */
+	isSaved?: boolean;
+	/** Whether this pipeline is currently running */
+	isRunning?: boolean;
 }
 
 export function NodeConfigPanel({
@@ -48,6 +56,10 @@ export function NodeConfigPanel({
 	onSwitchToAgent,
 	triggerDrawerOpen,
 	agentDrawerOpen,
+	onTriggerPipeline,
+	pipelineName,
+	isSaved,
+	isRunning,
 }: NodeConfigPanelProps) {
 	const [expanded, setExpanded] = useState(false);
 	const isVisible = selectedNode !== null;
@@ -142,6 +154,35 @@ export function NodeConfigPanel({
 					)}
 				</div>
 				<div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+					{isTrigger && isSaved && onTriggerPipeline && pipelineName && (
+						<button
+							onClick={() => !isRunning && onTriggerPipeline(pipelineName)}
+							disabled={isRunning}
+							style={{
+								display: 'flex',
+								alignItems: 'center',
+								padding: 4,
+								color: isRunning ? '#22c55e' : '#6b7280',
+								backgroundColor: 'transparent',
+								border: 'none',
+								borderRadius: 4,
+								cursor: isRunning ? 'default' : 'pointer',
+							}}
+							onMouseEnter={(e) => {
+								if (!isRunning) e.currentTarget.style.color = '#22c55e';
+							}}
+							onMouseLeave={(e) => {
+								if (!isRunning) e.currentTarget.style.color = '#6b7280';
+							}}
+							title={isRunning ? 'Running…' : 'Run now'}
+						>
+							{isRunning ? (
+								<Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+							) : (
+								<Play size={14} />
+							)}
+						</button>
+					)}
 					{!isTrigger && (
 						<button
 							onClick={() => setExpanded((v) => !v)}

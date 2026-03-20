@@ -495,6 +495,7 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 								onDirtyChange={setPipelineDirty}
 								theme={theme}
 								activeRuns={activeRuns}
+								onTriggerPipeline={triggerSubscription}
 							/>
 						)}
 					</div>

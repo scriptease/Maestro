@@ -64,7 +64,12 @@ export function getTriggerConfigSummary(data: TriggerNodeData): string {
 export function convertToReactFlowNodes(
 	pipelines: CuePipelineState['pipelines'],
 	selectedPipelineId: string | null,
-	onConfigureNode?: (compositeId: string) => void
+	onConfigureNode?: (compositeId: string) => void,
+	triggerOptions?: {
+		onTriggerPipeline?: (pipelineName: string) => void;
+		isSaved?: boolean;
+		runningPipelineIds?: Set<string>;
+	}
 ): Node[] {
 	const nodes: Node[] = [];
 
@@ -139,6 +144,10 @@ export function convertToReactFlowNodes(
 					label: triggerData.customLabel || triggerData.label,
 					configSummary: getTriggerConfigSummary(triggerData),
 					onConfigure: onConfigureNode,
+					onTriggerPipeline: triggerOptions?.onTriggerPipeline,
+					pipelineName: pipeline.name,
+					isSaved: triggerOptions?.isSaved,
+					isRunning: triggerOptions?.runningPipelineIds?.has(pipeline.id),
 				};
 				nodes.push({
 					id: compositeId,

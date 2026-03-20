@@ -131,6 +131,113 @@ describe('TriggerNode', () => {
 		expect(unselectedRoot.style.boxShadow).toBeFalsy();
 	});
 
+	describe('play button', () => {
+		it('renders when isSaved, pipelineName, and onTriggerPipeline are provided', () => {
+			const onTriggerPipeline = vi.fn();
+			const { container } = renderTriggerNode({
+				onTriggerPipeline,
+				pipelineName: 'my-pipeline',
+				isSaved: true,
+			});
+
+			const playButton = container.querySelector('[title="Run now"]');
+			expect(playButton).not.toBeNull();
+		});
+
+		it('is hidden when isSaved is false', () => {
+			const onTriggerPipeline = vi.fn();
+			const { container } = renderTriggerNode({
+				onTriggerPipeline,
+				pipelineName: 'my-pipeline',
+				isSaved: false,
+			});
+
+			expect(container.querySelector('[title="Run now"]')).toBeNull();
+		});
+
+		it('is hidden when onTriggerPipeline is undefined', () => {
+			const { container } = renderTriggerNode({
+				pipelineName: 'my-pipeline',
+				isSaved: true,
+			});
+
+			expect(container.querySelector('[title="Run now"]')).toBeNull();
+		});
+
+		it('is hidden when pipelineName is undefined', () => {
+			const onTriggerPipeline = vi.fn();
+			const { container } = renderTriggerNode({
+				onTriggerPipeline,
+				isSaved: true,
+			});
+
+			expect(container.querySelector('[title="Run now"]')).toBeNull();
+		});
+
+		it('calls onTriggerPipeline with pipeline name when clicked', () => {
+			const onTriggerPipeline = vi.fn();
+			const { container } = renderTriggerNode({
+				onTriggerPipeline,
+				pipelineName: 'test-pipeline',
+				isSaved: true,
+			});
+
+			const playButton = container.querySelector('[title="Run now"]') as HTMLElement;
+			playButton.click();
+
+			expect(onTriggerPipeline).toHaveBeenCalledWith('test-pipeline');
+		});
+
+		it('shows "Running…" tooltip when isRunning is true', () => {
+			const onTriggerPipeline = vi.fn();
+			const { container } = renderTriggerNode({
+				onTriggerPipeline,
+				pipelineName: 'my-pipeline',
+				isSaved: true,
+				isRunning: true,
+			});
+
+			expect(container.querySelector('[title="Running…"]')).not.toBeNull();
+			expect(container.querySelector('[title="Run now"]')).toBeNull();
+		});
+
+		it('does not call onTriggerPipeline when isRunning and clicked', () => {
+			const onTriggerPipeline = vi.fn();
+			const { container } = renderTriggerNode({
+				onTriggerPipeline,
+				pipelineName: 'my-pipeline',
+				isSaved: true,
+				isRunning: true,
+			});
+
+			const runningButton = container.querySelector('[title="Running…"]') as HTMLElement;
+			runningButton.click();
+
+			expect(onTriggerPipeline).not.toHaveBeenCalled();
+		});
+
+		it('gear icon still works alongside play button', () => {
+			const onConfigure = vi.fn();
+			const onTriggerPipeline = vi.fn();
+			const { container } = renderTriggerNode({
+				onConfigure,
+				onTriggerPipeline,
+				pipelineName: 'my-pipeline',
+				isSaved: true,
+				compositeId: 'pipeline-1:trigger-0',
+			});
+
+			// Both buttons should exist
+			expect(container.querySelector('[title="Run now"]')).not.toBeNull();
+			expect(container.querySelector('[title="Configure"]')).not.toBeNull();
+
+			// Gear still works
+			const gearButton = container.querySelector('[title="Configure"]') as HTMLElement;
+			gearButton.click();
+			expect(onConfigure).toHaveBeenCalledWith('pipeline-1:trigger-0');
+		});
+	});
+
 	it('should use correct color for each event type', () => {
 		const eventColors: Record<string, string> = {
 			'time.heartbeat': '#f59e0b',

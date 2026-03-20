@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
-import { GripVertical, Settings, Zap } from 'lucide-react';
+import { GripVertical, Settings, Zap, Play, Loader2 } from 'lucide-react';
 import { CUE_COLOR, type CueEventType } from '../../../../shared/cue-pipeline-types';
 import { EVENT_COLORS, EVENT_ICONS } from '../cueEventConstants';
 
@@ -10,6 +10,14 @@ export interface TriggerNodeDataProps {
 	label: string;
 	configSummary: string;
 	onConfigure?: (compositeId: string) => void;
+	/** Callback to manually trigger this pipeline */
+	onTriggerPipeline?: (pipelineName: string) => void;
+	/** Pipeline name for triggering */
+	pipelineName?: string;
+	/** Whether the pipeline config is saved (play only works when saved) */
+	isSaved?: boolean;
+	/** Whether this pipeline is currently running */
+	isRunning?: boolean;
 }
 
 export const TriggerNode = memo(function TriggerNode({
@@ -123,29 +131,73 @@ export const TriggerNode = memo(function TriggerNode({
 				)}
 			</div>
 
-			{/* Gear icon - placed before connector to avoid overlap */}
+			{/* Action icons - placed before connector to avoid overlap */}
 			<div
-				onClick={(e) => {
-					e.stopPropagation();
-					data.onConfigure?.(data.compositeId);
-				}}
 				style={{
 					display: 'flex',
 					alignItems: 'center',
-					justifyContent: 'center',
-					cursor: 'pointer',
-					color: selected ? color : `${color}60`,
 					flexShrink: 0,
-					padding: '4px 4px',
 					marginRight: 14,
-					borderRadius: 4,
-					transition: 'color 0.15s',
+					gap: 2,
 				}}
-				onMouseEnter={(e) => (e.currentTarget.style.color = color)}
-				onMouseLeave={(e) => (e.currentTarget.style.color = selected ? color : `${color}60`)}
-				title="Configure"
 			>
-				<Settings size={14} />
+				{/* Play button — only when pipeline is saved */}
+				{data.isSaved && data.onTriggerPipeline && data.pipelineName && (
+					<div
+						onClick={(e) => {
+							e.stopPropagation();
+							if (!data.isRunning) {
+								data.onTriggerPipeline!(data.pipelineName!);
+							}
+						}}
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							cursor: data.isRunning ? 'default' : 'pointer',
+							color: data.isRunning ? '#22c55e' : `#22c55e90`,
+							padding: '4px 4px',
+							borderRadius: 4,
+							transition: 'color 0.15s',
+						}}
+						onMouseEnter={(e) => {
+							if (!data.isRunning) e.currentTarget.style.color = '#22c55e';
+						}}
+						onMouseLeave={(e) => {
+							if (!data.isRunning) e.currentTarget.style.color = '#22c55e90';
+						}}
+						title={data.isRunning ? 'Running…' : 'Run now'}
+					>
+						{data.isRunning ? (
+							<Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+						) : (
+							<Play size={14} />
+						)}
+					</div>
+				)}
+
+				{/* Gear icon */}
+				<div
+					onClick={(e) => {
+						e.stopPropagation();
+						data.onConfigure?.(data.compositeId);
+					}}
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'center',
+						cursor: 'pointer',
+						color: selected ? color : `${color}60`,
+						padding: '4px 4px',
+						borderRadius: 4,
+						transition: 'color 0.15s',
+					}}
+					onMouseEnter={(e) => (e.currentTarget.style.color = color)}
+					onMouseLeave={(e) => (e.currentTarget.style.color = selected ? color : `${color}60`)}
+					title="Configure"
+				>
+					<Settings size={14} />
+				</div>
 			</div>
 
 			<Handle

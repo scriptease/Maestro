@@ -46,6 +46,8 @@ export interface CuePipelineEditorProps {
 	onDirtyChange?: (isDirty: boolean) => void;
 	theme: Theme;
 	activeRuns?: ActiveRunInfo[];
+	/** Callback to manually trigger a pipeline by name */
+	onTriggerPipeline?: (pipelineName: string) => void;
 }
 
 /** Bridges the circular dependency between usePipelineState and usePipelineSelection. */
@@ -66,6 +68,7 @@ function CuePipelineEditorInner({
 	onDirtyChange,
 	theme,
 	activeRuns: activeRunsProp,
+	onTriggerPipeline,
 }: CuePipelineEditorProps) {
 	const reactFlowInstance = useReactFlow();
 
@@ -162,9 +165,21 @@ function CuePipelineEditorInner({
 			convertToReactFlowNodes(
 				pipelineState.pipelines,
 				pipelineState.selectedPipelineId,
-				handleConfigureNode
+				handleConfigureNode,
+				{
+					onTriggerPipeline,
+					isSaved: !isDirty,
+					runningPipelineIds,
+				}
 			),
-		[pipelineState.pipelines, pipelineState.selectedPipelineId, handleConfigureNode]
+		[
+			pipelineState.pipelines,
+			pipelineState.selectedPipelineId,
+			handleConfigureNode,
+			onTriggerPipeline,
+			isDirty,
+			runningPipelineIds,
+		]
 	);
 
 	const edges = useMemo(
@@ -584,6 +599,9 @@ function CuePipelineEditorInner({
 				selectedEdgePipelineColor={selectedEdgePipelineColor}
 				onUpdateEdge={onUpdateEdge}
 				onDeleteEdge={onDeleteEdge}
+				onTriggerPipeline={onTriggerPipeline}
+				isDirty={isDirty}
+				runningPipelineIds={runningPipelineIds}
 			/>
 
 			{contextMenu && (
