@@ -228,7 +228,10 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 						if (isWindows() && !isSshSession) {
 							// Windows local: write to temp file to avoid CLI length limits
 							const tmpDir = os.tmpdir();
-							systemPromptTempFile = path.join(tmpDir, `maestro-sysprompt-${config.sessionId}.txt`);
+							systemPromptTempFile = path.join(
+								tmpDir,
+								`maestro-sysprompt-${config.sessionId}-${Date.now()}.txt`
+							);
 							fs.writeFileSync(systemPromptTempFile, config.appendSystemPrompt, 'utf-8');
 							finalArgs = [...finalArgs, '--append-system-prompt-file', systemPromptTempFile];
 							logger.debug(
