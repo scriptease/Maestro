@@ -293,6 +293,14 @@ interface MaestroAPI {
 				cwd: string;
 				isTerminal: boolean;
 				isBatchMode: boolean;
+				startTime?: number;
+				command?: string;
+				args?: string[];
+				isCueRun?: boolean;
+				cueRunId?: string;
+				cueSessionName?: string;
+				cueSubscriptionName?: string;
+				cueEventType?: string;
 			}>
 		>;
 		onData: (callback: (sessionId: string, data: string) => void) => () => void;
@@ -737,7 +745,7 @@ interface MaestroAPI {
 				error: string | null;
 			} | null;
 		}>;
-		get: (agentId: string) => Promise<AgentConfig | null>;
+		get: (agentId: string, sshRemoteId?: string) => Promise<AgentConfig | null>;
 		getCapabilities: (agentId: string) => Promise<AgentCapabilities>;
 		getConfig: (agentId: string) => Promise<Record<string, any>>;
 		setConfig: (agentId: string, config: Record<string, any>) => Promise<boolean>;

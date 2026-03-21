@@ -73,8 +73,37 @@ export const TerminalView = memo(
 		const spawnInFlightRef = useRef<Set<string>>(new Set());
 		// Track which tabs have already had the loading message written to avoid duplicates
 		const loadingWrittenRef = useRef<Set<string>>(new Set());
+		// Dedup spawn-failure toasts: batch rapid failures into a single notification
+		const spawnFailureCountRef = useRef(0);
+		const spawnFailureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+		// Stable refs for callback props — prevents spawnPtyForTab from getting a new
+		// identity on every render, which would re-trigger the spawn useEffect in a loop.
+		const onTabPidChangeRef = useRef(onTabPidChange);
+		onTabPidChangeRef.current = onTabPidChange;
 
 		const closeTerminalTab = useTabStore((s) => s.closeTerminalTab);
+
+		// Batch spawn-failure toasts: coalesce rapid failures (e.g. session restore
+		// triggers many tabs at once) into a single toast with a count.
+		const notifySpawnFailure = useCallback((message: string) => {
+			spawnFailureCountRef.current++;
+			if (spawnFailureTimerRef.current) {
+				clearTimeout(spawnFailureTimerRef.current);
+			}
+			spawnFailureTimerRef.current = setTimeout(() => {
+				const count = spawnFailureCountRef.current;
+				spawnFailureCountRef.current = 0;
+				spawnFailureTimerRef.current = null;
+				notifyToast({
+					type: 'error',
+					title: count > 1 ? `Failed to start ${count} terminals` : 'Failed to start terminal',
+					message:
+						count > 1
+							? `${count} shell processes could not be started. Check system PTY availability.`
+							: message,
+				});
+			}, 200);
+		}, []);
 
 		const activeTab = getActiveTerminalTab(session);
 
@@ -144,15 +173,13 @@ export const TerminalView = memo(
 					})
 					.then((result) => {
 						if (result.success) {
-							onTabPidChange(tabId, result.pid);
+							onTabPidChangeRef.current(tabId, result.pid);
 						} else {
-							// Spawn failed — close the tab and notify via toast
+							// Spawn failed — close the tab and notify via batched toast
 							setTimeout(() => closeTerminalTab(tabId), 0);
-							notifyToast({
-								type: 'error',
-								title: 'Failed to start terminal',
-								message: 'The shell process could not be started. Check system PTY availability.',
-							});
+							notifySpawnFailure(
+								'The shell process could not be started. Check system PTY availability.'
+							);
 						}
 					})
 					.catch((err) => {
@@ -163,13 +190,11 @@ export const TerminalView = memo(
 								operation: 'spawnTerminalTab',
 							},
 						});
-						// Spawn threw — close the tab and notify via toast
+						// Spawn threw — close the tab and notify via batched toast
 						setTimeout(() => closeTerminalTab(tabId), 0);
-						notifyToast({
-							type: 'error',
-							title: 'Failed to start terminal',
-							message: err instanceof Error ? err.message : 'An unexpected error occurred.',
-						});
+						notifySpawnFailure(
+							err instanceof Error ? err.message : 'An unexpected error occurred.'
+						);
 					})
 					.finally(() => {
 						spawnInFlightRef.current.delete(tabId);
@@ -183,9 +208,10 @@ export const TerminalView = memo(
 				defaultShell,
 				shellArgs,
 				shellEnvVars,
-				onTabPidChange,
-				onTabStateChange,
+				// onTabPidChange accessed via stable ref — not a dep
+				// onTabStateChange not used in this callback
 				closeTerminalTab,
+				notifySpawnFailure,
 			]
 		);
 
@@ -262,11 +288,9 @@ export const TerminalView = memo(
 							`[TerminalView] Shell exited ${age}ms after creation (exit code: ${tab.exitCode ?? '?'}). Closing tab.`
 						);
 						setTimeout(() => closeTerminalTab(tabId), 0);
-						notifyToast({
-							type: 'error',
-							title: 'Failed to start terminal',
-							message: `Shell exited immediately${tab.exitCode != null ? ` (exit code: ${tab.exitCode})` : ''}.`,
-						});
+						notifySpawnFailure(
+							`Shell exited immediately${tab.exitCode != null ? ` (exit code: ${tab.exitCode})` : ''}.`
+						);
 					} else {
 						// Close on next tick to avoid mutating state mid-render
 						setTimeout(() => closeTerminalTab(tabId), 0);

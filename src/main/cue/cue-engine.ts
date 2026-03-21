@@ -13,17 +13,19 @@
 import * as crypto from 'crypto';
 import type { MainLogLevel } from '../../shared/logger-types';
 import type { SessionInfo } from '../../shared/types';
-import type {
-	AgentCompletionData,
-	CueConfig,
-	CueEvent,
-	CueGraphSession,
-	CueRunResult,
-	CueSessionStatus,
-	CueSettings,
-	CueSubscription,
+import {
+	createCueEvent,
+	DEFAULT_CUE_SETTINGS,
+	type AgentCompletionData,
+	type CueConfig,
+	type CueEvent,
+	type CueGraphSession,
+	type CueRunResult,
+	type CueSessionStatus,
+	type CueSettings,
+	type CueSubscription,
 } from './cue-types';
-import { DEFAULT_CUE_SETTINGS } from './cue-types';
+import { captureException } from '../utils/sentry';
 import { loadCueConfig, watchCueYaml } from './cue-yaml-loader';
 import { matchesFilter, describeFilter } from './cue-filter';
 import {
@@ -61,6 +63,10 @@ export interface CueEngineDeps {
 	}) => Promise<CueRunResult>;
 	onStopCueRun?: (runId: string) => boolean;
 	onLog: (level: MainLogLevel, message: string, data?: unknown) => void;
+	/** Called to prevent system sleep (e.g., when Cue has active scheduled subscriptions or runs) */
+	onPreventSleep?: (reason: string) => void;
+	/** Called to allow system sleep (e.g., when Cue scheduled subscriptions or runs end) */
+	onAllowSleep?: (reason: string) => void;
 }
 
 /** Internal state per session with an active Cue config */
@@ -108,6 +114,8 @@ export class CueEngine {
 			onRunStopped: (result) => {
 				this.pushActivityLog(result);
 			},
+			onPreventSleep: deps.onPreventSleep,
+			onAllowSleep: deps.onAllowSleep,
 		});
 		this.fanInTracker = createCueFanInTracker({
 			onLog: deps.onLog,
@@ -140,16 +148,23 @@ export class CueEngine {
 	start(): void {
 		if (this.enabled) return;
 
-		this.enabled = true;
-		this.deps.onLog('cue', '[CUE] Engine started');
-
-		// Initialize Cue database and prune old events
+		// Initialize Cue database and prune old events — bail if this fails
 		try {
 			initCueDb((level, msg) => this.deps.onLog(level as MainLogLevel, msg));
 			pruneCueEvents(EVENT_PRUNE_AGE_MS);
 		} catch (error) {
-			this.deps.onLog('warn', `[CUE] Failed to initialize Cue database: ${error}`);
+			this.deps.onLog(
+				'error',
+				`[CUE] Failed to initialize Cue database — engine will not start: ${error}`
+			);
+			captureException(error instanceof Error ? error : new Error(String(error)), {
+				extra: { operation: 'cue.dbInit' },
+			});
+			return;
 		}
+
+		this.enabled = true;
+		this.deps.onLog('cue', '[CUE] Engine started');
 
 		const sessions = this.deps.getSessions();
 		for (const session of sessions) {
@@ -402,13 +417,7 @@ export class CueEngine {
 				if (sub.name !== subscriptionName) continue;
 				if (sub.agent_id && sub.agent_id !== sessionId) continue;
 
-				const event: CueEvent = {
-					id: crypto.randomUUID(),
-					type: sub.event,
-					timestamp: new Date().toISOString(),
-					triggerName: sub.name,
-					payload: { manual: true },
-				};
+				const event = createCueEvent(sub.event, sub.name, { manual: true });
 
 				this.deps.onLog('cue', `[CUE] "${sub.name}" manually triggered`);
 				state.lastTriggered = event.timestamp;
@@ -491,22 +500,16 @@ export class CueEngine {
 
 				if (sources.length === 1) {
 					// Single source — fire immediately
-					const event: CueEvent = {
-						id: crypto.randomUUID(),
-						type: 'agent.completed',
-						timestamp: new Date().toISOString(),
-						triggerName: sub.name,
-						payload: {
-							sourceSession: completingName,
-							sourceSessionId: sessionId,
-							status: completionData?.status ?? 'completed',
-							exitCode: completionData?.exitCode ?? null,
-							durationMs: completionData?.durationMs ?? 0,
-							sourceOutput: (completionData?.stdout ?? '').slice(-SOURCE_OUTPUT_MAX_CHARS),
-							outputTruncated: (completionData?.stdout ?? '').length > SOURCE_OUTPUT_MAX_CHARS,
-							triggeredBy: completionData?.triggeredBy,
-						},
-					};
+					const event = createCueEvent('agent.completed', sub.name, {
+						sourceSession: completingName,
+						sourceSessionId: sessionId,
+						status: completionData?.status ?? 'completed',
+						exitCode: completionData?.exitCode ?? null,
+						durationMs: completionData?.durationMs ?? 0,
+						sourceOutput: (completionData?.stdout ?? '').slice(-SOURCE_OUTPUT_MAX_CHARS),
+						outputTruncated: (completionData?.stdout ?? '').length > SOURCE_OUTPUT_MAX_CHARS,
+						triggeredBy: completionData?.triggeredBy,
+					});
 
 					// Check payload filter
 					if (sub.filter && !matchesFilter(event.payload, sub.filter)) {
@@ -666,6 +669,12 @@ export class CueEngine {
 		}
 
 		this.sessions.set(session.id, state);
+
+		// Prevent system sleep if this session has time-based subscriptions
+		if (this.hasTimeBasedSubscriptions(config, session.id)) {
+			this.deps.onPreventSleep?.(`cue:schedule:${session.id}`);
+		}
+
 		this.deps.onLog(
 			'cue',
 			`[CUE] Initialized session "${session.name}" with ${config.subscriptions.filter((s) => s.enabled !== false).length} active subscription(s)`
@@ -676,9 +685,27 @@ export class CueEngine {
 		this.activityLog.push(result);
 	}
 
+	/** Check if a config has any enabled time-based subscriptions that will actually schedule timers */
+	private hasTimeBasedSubscriptions(config: CueConfig, sessionId: string): boolean {
+		return config.subscriptions.some(
+			(sub) =>
+				sub.enabled !== false &&
+				(!sub.agent_id || sub.agent_id === sessionId) &&
+				((sub.event === 'time.heartbeat' &&
+					typeof sub.interval_minutes === 'number' &&
+					sub.interval_minutes > 0) ||
+					(sub.event === 'time.scheduled' &&
+						Array.isArray(sub.schedule_times) &&
+						sub.schedule_times.length > 0))
+		);
+	}
+
 	private teardownSession(sessionId: string): void {
 		const state = this.sessions.get(sessionId);
 		if (!state) return;
+
+		// Release sleep prevention for this session's scheduled subscriptions
+		this.deps.onAllowSleep?.(`cue:schedule:${sessionId}`);
 
 		for (const timer of state.timers) {
 			clearInterval(timer);

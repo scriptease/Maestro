@@ -78,6 +78,16 @@ export interface ActiveProcess {
 	startTime: number;
 	command?: string;
 	args?: string[];
+	/** True if this is a Cue automation run process */
+	isCueRun?: boolean;
+	/** The Cue run ID (for stopping via cue:stopRun) */
+	cueRunId?: string;
+	/** Target session name for this Cue run */
+	cueSessionName?: string;
+	/** Subscription name that triggered this Cue run */
+	cueSubscriptionName?: string;
+	/** Event type that triggered this Cue run */
+	cueEventType?: string;
 }
 
 /**

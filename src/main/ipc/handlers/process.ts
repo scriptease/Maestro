@@ -51,6 +51,20 @@ interface AgentConfigsData {
 /**
  * Dependencies required for process handler registration
  */
+/** Cue process info returned by the getCueProcesses callback */
+export interface CueProcessEntry {
+	runId: string;
+	pid: number;
+	command: string;
+	args: string[];
+	cwd: string;
+	toolType: string;
+	startTime: number;
+	sessionName: string;
+	subscriptionName: string;
+	eventType: string;
+}
+
 export interface ProcessHandlerDependencies {
 	getProcessManager: () => ProcessManager | null;
 	getAgentDetector: () => AgentDetector | null;
@@ -58,6 +72,8 @@ export interface ProcessHandlerDependencies {
 	settingsStore: Store<MaestroSettings>;
 	getMainWindow: () => BrowserWindow | null;
 	sessionsStore: Store<{ sessions: any[] }>;
+	/** Optional callback to get active Cue run processes for Process Monitor */
+	getCueProcesses?: () => CueProcessEntry[];
 }
 
 /**
@@ -627,14 +643,14 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 		)
 	);
 
-	// Get all active processes managed by the ProcessManager
+	// Get all active processes managed by the ProcessManager (and Cue runs if available)
 	ipcMain.handle(
 		'process:getActiveProcesses',
 		withIpcErrorLogging(handlerOpts('getActiveProcesses'), async () => {
 			const processManager = requireProcessManager(getProcessManager);
 			const processes = processManager.getAll();
 			// Return serializable process info (exclude non-serializable PTY/child process objects)
-			return processes.map((p) => ({
+			const result: Array<Record<string, unknown>> = processes.map((p) => ({
 				sessionId: p.sessionId,
 				toolType: p.toolType,
 				pid: p.pid,
@@ -645,6 +661,29 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 				command: p.command,
 				args: p.args,
 			}));
+
+			// Append active Cue run processes if available
+			const cueProcesses = deps.getCueProcesses?.() ?? [];
+			for (const cue of cueProcesses) {
+				result.push({
+					sessionId: `cue-run-${cue.runId}`,
+					toolType: cue.toolType,
+					pid: cue.pid,
+					cwd: cue.cwd,
+					isTerminal: false,
+					isBatchMode: false,
+					startTime: cue.startTime,
+					command: cue.command,
+					args: cue.args,
+					isCueRun: true,
+					cueRunId: cue.runId,
+					cueSessionName: cue.sessionName,
+					cueSubscriptionName: cue.subscriptionName,
+					cueEventType: cue.eventType,
+				});
+			}
+
+			return result;
 		})
 	);
 

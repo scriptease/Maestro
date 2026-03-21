@@ -655,3 +655,54 @@ describe('convertToReactFlowEdges', () => {
 		expect(edges.map((e) => e.id)).toContain('p2:e2');
 	});
 });
+
+describe('convertToReactFlowNodes triggerOptions', () => {
+	it('passes trigger options to trigger node data', () => {
+		const onTriggerPipeline = vi.fn();
+		const runningPipelineIds = new Set(['p1']);
+		const pipeline = makePipeline('p1', {
+			nodes: [makeTrigger('t1', 'time.heartbeat')],
+		});
+
+		const nodes = convertToReactFlowNodes([pipeline], 'p1', undefined, {
+			onTriggerPipeline,
+			isSaved: true,
+			runningPipelineIds,
+		});
+
+		expect(nodes).toHaveLength(1);
+		const triggerData = nodes[0].data as any;
+		expect(triggerData.onTriggerPipeline).toBe(onTriggerPipeline);
+		expect(triggerData.pipelineName).toBe('Pipeline p1');
+		expect(triggerData.isSaved).toBe(true);
+		expect(triggerData.isRunning).toBe(true);
+	});
+
+	it('sets isRunning to false when pipeline is not in runningPipelineIds', () => {
+		const pipeline = makePipeline('p2', {
+			nodes: [makeTrigger('t1', 'time.heartbeat')],
+		});
+
+		const nodes = convertToReactFlowNodes([pipeline], 'p2', undefined, {
+			onTriggerPipeline: vi.fn(),
+			isSaved: true,
+			runningPipelineIds: new Set(['other']),
+		});
+
+		const triggerData = nodes[0].data as any;
+		expect(triggerData.isRunning).toBe(false);
+	});
+
+	it('does not include trigger options when not provided', () => {
+		const pipeline = makePipeline('p1', {
+			nodes: [makeTrigger('t1', 'time.heartbeat')],
+		});
+
+		const nodes = convertToReactFlowNodes([pipeline], 'p1');
+		const triggerData = nodes[0].data as any;
+		expect(triggerData.onTriggerPipeline).toBeUndefined();
+		expect(triggerData.pipelineName).toBe('Pipeline p1');
+		expect(triggerData.isSaved).toBeUndefined();
+		expect(triggerData.isRunning).toBeUndefined();
+	});
+});

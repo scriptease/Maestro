@@ -15,7 +15,7 @@ Maestro can update itself automatically! This feature was introduced in **v0.8.7
 
 ## v0.15.x - Maestro Symphony
 
-**Latest: v0.15.2** | Released March 12, 2026
+**Latest: v0.15.3** | Released January 1, 1
 
 ### Major 0.15.x Additions
 
@@ -75,6 +75,7 @@ Patch release with bug fixes, UX improvements, and cherry-picks from the 0.16.0 
 
 ### Previous Releases in this Series
 
+- **v0.15.2** (March 12, 2026) - Maestro Symphony
 - **v0.15.1** (March 3, 2026) - Maestro Symphony
 
 ---

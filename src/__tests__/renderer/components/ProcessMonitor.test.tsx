@@ -51,6 +51,11 @@ vi.mock('lucide-react', () => ({
 			↗
 		</span>
 	),
+	Tag: ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+		<span data-testid="tag-icon" className={className} style={style}>
+			🏷
+		</span>
+	),
 }));
 
 // Mock layer stack context
@@ -135,6 +140,11 @@ interface ActiveProcess {
 	isTerminal: boolean;
 	isBatchMode: boolean;
 	startTime: number;
+	isCueRun?: boolean;
+	cueRunId?: string;
+	cueSessionName?: string;
+	cueSubscriptionName?: string;
+	cueEventType?: string;
 }
 
 const createActiveProcess = (overrides: Partial<ActiveProcess> = {}): ActiveProcess => ({
@@ -145,6 +155,22 @@ const createActiveProcess = (overrides: Partial<ActiveProcess> = {}): ActiveProc
 	isTerminal: false,
 	isBatchMode: false,
 	startTime: Date.now() - 60000, // 1 minute ago
+	...overrides,
+});
+
+const createCueProcess = (overrides: Partial<ActiveProcess> = {}): ActiveProcess => ({
+	sessionId: 'cue-run-test-uuid',
+	toolType: 'claude-code',
+	pid: 99999,
+	cwd: '/Users/test/project',
+	isTerminal: false,
+	isBatchMode: false,
+	startTime: Date.now() - 30000,
+	isCueRun: true,
+	cueRunId: 'test-uuid',
+	cueSessionName: 'My Agent',
+	cueSubscriptionName: 'heartbeat-check',
+	cueEventType: 'time.heartbeat',
 	...overrides,
 });
 
@@ -166,6 +192,12 @@ describe('ProcessMonitor', () => {
 
 		// Reset existing kill mock
 		vi.mocked(window.maestro.process.kill).mockReset().mockResolvedValue(undefined);
+
+		// Add cue.stopRun mock
+		if (!(window as any).maestro.cue) {
+			(window as any).maestro.cue = {};
+		}
+		(window as any).maestro.cue.stopRun = vi.fn().mockResolvedValue(true);
 
 		// Mock scrollIntoView
 		Element.prototype.scrollIntoView = vi.fn();
@@ -1815,6 +1847,154 @@ describe('ProcessMonitor', () => {
 			await waitFor(() => {
 				// Should be truncated with CSS
 				expect(screen.getByText(longName)).toBeInTheDocument();
+			});
+		});
+	});
+
+	describe('CUE RUNS section', () => {
+		it('renders CUE RUNS section when cue processes are active', async () => {
+			const cueProc = createCueProcess();
+			vi.mocked(window.maestro.process.getActiveProcesses).mockResolvedValue([cueProc] as any);
+
+			render(<ProcessMonitor theme={theme} sessions={[]} groups={[]} onClose={onClose} />);
+
+			await waitFor(() => {
+				expect(screen.getByText('CUE RUNS')).toBeInTheDocument();
+			});
+		});
+
+		it('does not render CUE RUNS section when no cue processes', async () => {
+			const regularProc = createActiveProcess();
+			const session = createSession();
+			vi.mocked(window.maestro.process.getActiveProcesses).mockResolvedValue([regularProc] as any);
+
+			render(<ProcessMonitor theme={theme} sessions={[session]} groups={[]} onClose={onClose} />);
+
+			// Wait for async process list to load by confirming the tree rendered
+			await waitFor(() => {
+				expect(screen.getByText('UNGROUPED AGENTS')).toBeInTheDocument();
+			});
+
+			// Only then assert CUE RUNS is absent
+			expect(screen.queryByText('CUE RUNS')).not.toBeInTheDocument();
+		});
+
+		it('shows subscription name and session name in cue process label', async () => {
+			const cueProc = createCueProcess({
+				cueSubscriptionName: 'daily-review',
+				cueSessionName: 'Code Agent',
+			});
+			vi.mocked(window.maestro.process.getActiveProcesses).mockResolvedValue([cueProc] as any);
+
+			render(<ProcessMonitor theme={theme} sessions={[]} groups={[]} onClose={onClose} />);
+
+			await waitFor(() => {
+				expect(screen.getByText('daily-review → Code Agent')).toBeInTheDocument();
+			});
+		});
+
+		it('shows event type badge on cue process', async () => {
+			const cueProc = createCueProcess({ cueEventType: 'time.heartbeat' });
+			vi.mocked(window.maestro.process.getActiveProcesses).mockResolvedValue([cueProc] as any);
+
+			render(<ProcessMonitor theme={theme} sessions={[]} groups={[]} onClose={onClose} />);
+
+			await waitFor(() => {
+				expect(screen.getByText('TIME HEARTBEAT')).toBeInTheDocument();
+			});
+		});
+
+		it('calls cue.stopRun for cue process kill instead of process.kill', async () => {
+			const cueProc = createCueProcess({ cueRunId: 'run-to-kill' });
+			getActiveProcessesMock().mockResolvedValue([cueProc] as any);
+
+			render(<ProcessMonitor theme={theme} sessions={[]} groups={[]} onClose={onClose} />);
+
+			await waitFor(() => {
+				expect(screen.getByText('CUE RUNS')).toBeInTheDocument();
+			});
+
+			// Click kill button on the cue process
+			const killButtons = screen.getAllByTitle('Kill process');
+			expect(killButtons.length).toBeGreaterThanOrEqual(1);
+			fireEvent.click(killButtons[0]);
+
+			// Confirm kill via "Kill Process" button
+			await waitFor(() => {
+				expect(screen.getByText('Kill Process?')).toBeInTheDocument();
+			});
+
+			fireEvent.click(screen.getByText('Kill Process'));
+
+			await waitFor(() => {
+				expect((window as any).maestro.cue.stopRun).toHaveBeenCalledWith('run-to-kill');
+				expect(killMock()).not.toHaveBeenCalled();
+			});
+		});
+
+		it('calls process.kill for regular process kill (not cue.stopRun)', async () => {
+			const regularProc = createActiveProcess({ sessionId: 'session-1-ai-tab-1' });
+			const session = createSession();
+			getActiveProcessesMock().mockResolvedValue([regularProc] as any);
+
+			render(
+				<ProcessMonitor
+					theme={theme}
+					sessions={[session]}
+					groups={[]}
+					onClose={onClose}
+					onNavigateToSession={onNavigateToSession}
+				/>
+			);
+
+			await waitFor(() => {
+				expect(screen.getByText('UNGROUPED AGENTS')).toBeInTheDocument();
+			});
+
+			// Click kill button
+			const killButtons = screen.getAllByTitle('Kill process');
+			expect(killButtons.length).toBeGreaterThanOrEqual(1);
+			fireEvent.click(killButtons[0]);
+
+			// Confirm kill
+			await waitFor(() => {
+				expect(screen.getByText('Kill Process?')).toBeInTheDocument();
+			});
+
+			fireEvent.click(screen.getByText('Kill Process'));
+
+			await waitFor(() => {
+				expect(killMock()).toHaveBeenCalledWith('session-1-ai-tab-1');
+				expect((window as any).maestro.cue.stopRun).not.toHaveBeenCalled();
+			});
+		});
+
+		it('cue section coexists with other sections', async () => {
+			const session = createSession();
+			const regularProc = createActiveProcess();
+			const cueProc = createCueProcess();
+			vi.mocked(window.maestro.process.getActiveProcesses).mockResolvedValue([
+				regularProc,
+				cueProc,
+			] as any);
+
+			render(<ProcessMonitor theme={theme} sessions={[session]} groups={[]} onClose={onClose} />);
+
+			await waitFor(() => {
+				// Both sections should exist
+				expect(screen.getByText('UNGROUPED AGENTS')).toBeInTheDocument();
+				expect(screen.getByText('CUE RUNS')).toBeInTheDocument();
+			});
+		});
+
+		it('renders ⚡ emoji for cue section', async () => {
+			const cueProc = createCueProcess();
+			getActiveProcessesMock().mockResolvedValue([cueProc] as any);
+
+			render(<ProcessMonitor theme={theme} sessions={[]} groups={[]} onClose={onClose} />);
+
+			await waitFor(() => {
+				expect(screen.getByText('⚡')).toBeInTheDocument();
 			});
 		});
 	});

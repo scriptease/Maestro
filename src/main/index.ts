@@ -9,7 +9,12 @@ import { ProcessManager } from './process-manager';
 import { WebServer } from './web-server';
 import { AgentDetector } from './agents';
 import { CueEngine } from './cue/cue-engine';
-import { executeCuePrompt, recordCueHistoryEntry, stopCueRun } from './cue/cue-executor';
+import {
+	executeCuePrompt,
+	recordCueHistoryEntry,
+	stopCueRun,
+	getCueProcessList,
+} from './cue/cue-executor';
 import { logger } from './utils/logger';
 import { tunnelManager } from './tunnel-manager';
 import { powerManager } from './power-manager';
@@ -307,6 +312,14 @@ function createWindow() {
 	mainWindow.on('closed', () => {
 		mainWindow = null;
 	});
+
+	// Kill all managed processes before the renderer reloads after a crash.
+	// Without this, the new renderer restores sessions with pid:0 and spawns fresh
+	// PTYs, but only the *active* tab's old PTY gets killed (via spawn-before-kill).
+	// Non-active tabs' orphaned PTYs survive indefinitely, leaking PTY file descriptors.
+	mainWindow.webContents.on('render-process-gone', () => {
+		processManager?.killAll();
+	});
 }
 
 // Set up global error handlers for uncaught exceptions (Phase 4 refactoring)
@@ -462,6 +475,8 @@ app.whenReady().then(async () => {
 				mainWindow.webContents.send('cue:activityUpdate', data);
 			}
 		},
+		onPreventSleep: (reason) => powerManager.addBlockReason(reason),
+		onAllowSleep: (reason) => powerManager.removeBlockReason(reason),
 	});
 
 	logger.info('Core services initialized', 'Startup');
@@ -584,6 +599,11 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {
 	if (!isMacOS()) {
 		app.quit();
+	} else {
+		// On macOS the app stays alive after all windows close (dock click reopens).
+		// Kill all managed PTY/child processes now so they don't leak — session
+		// restoration will re-spawn fresh PTYs when the window is reopened.
+		processManager?.killAll();
 	}
 });
 
@@ -673,6 +693,24 @@ function setupIpcHandlers() {
 		settingsStore: store,
 		getMainWindow: () => mainWindow,
 		sessionsStore,
+		getCueProcesses: () => {
+			// Always query the executor's active process map — processes may still be
+			// running even if the engine has been disabled (in-flight runs complete
+			// independently of engine state).
+			const processList = getCueProcessList();
+			if (processList.length === 0) return [];
+			const activeRuns = cueEngine?.getActiveRuns() ?? [];
+			// Merge PID/command data from executor with metadata from run manager
+			return processList.map((proc) => {
+				const run = activeRuns.find((r) => r.runId === proc.runId);
+				return {
+					...proc,
+					sessionName: run?.sessionName ?? '',
+					subscriptionName: run?.subscriptionName ?? '',
+					eventType: run?.event.type ?? '',
+				};
+			});
+		},
 	});
 
 	// Persistence operations - extracted to src/main/ipc/handlers/persistence.ts
