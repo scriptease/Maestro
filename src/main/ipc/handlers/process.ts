@@ -354,8 +354,11 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 					}),
 					...(config.appendSystemPrompt && {
 						systemPromptDelivery: agent?.capabilities?.supportsAppendSystemPrompt
-							? 'cli-arg'
+							? systemPromptTempFile
+								? 'file'
+								: 'cli-arg'
 							: 'embedded',
+						...(systemPromptTempFile && { systemPromptFile: systemPromptTempFile }),
 						effectivePromptLength: effectivePrompt?.length ?? 0,
 					}),
 				});
