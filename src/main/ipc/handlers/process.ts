@@ -231,8 +231,10 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 							systemPromptLength: config.appendSystemPrompt.length,
 						});
 					} else {
+						// No user message to embed into - send system prompt as sole content
+						effectivePrompt = config.appendSystemPrompt;
 						logger.warn(
-							'System prompt provided but no user prompt to embed it in; dropped',
+							'appendSystemPrompt provided without a user prompt; using as sole prompt',
 							LOG_CONTEXT,
 							{
 								agentId: agent?.id,
@@ -324,6 +326,12 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 					...(config.prompt && {
 						prompt:
 							config.prompt.length > 500 ? config.prompt.substring(0, 500) + '...' : config.prompt,
+					}),
+					...(config.appendSystemPrompt && {
+						systemPromptDelivery: agent?.capabilities?.supportsAppendSystemPrompt
+							? 'cli-arg'
+							: 'embedded',
+						effectivePromptLength: effectivePrompt?.length ?? 0,
 					}),
 				});
 
