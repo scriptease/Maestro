@@ -40,6 +40,7 @@ export const PipelineContextMenu = React.memo(function PipelineContextMenu({
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.key === 'Escape') {
+				e.stopPropagation();
 				onDismiss();
 			}
 		};

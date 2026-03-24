@@ -551,6 +551,9 @@ describe('subscriptionsToPipelines', () => {
 		// Two distinct nodes for "claude"
 		expect(claudeNodes).toHaveLength(2);
 
+		// 3 edges: trigger→opencode, opencode→claude(1), claude(1)→claude(2)
+		expect(pipelines[0].edges).toHaveLength(3);
+
 		// Edge from first claude → second claude (not a self-edge)
 		const lastEdge = pipelines[0].edges[2];
 		expect(lastEdge.source).toBe(claudeNodes[0].id);

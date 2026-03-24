@@ -243,9 +243,8 @@ describe('TriggerNode', () => {
 		const lightTheme = THEMES['github-light'];
 		const { container } = renderTriggerNode({ theme: lightTheme, configSummary: 'every 30min' });
 		const summarySpan = container.querySelector('span[title="every 30min"]') as HTMLElement;
-		if (summarySpan) {
-			expect(summarySpan).toHaveStyle({ color: lightTheme.colors.textDim });
-		}
+		expect(summarySpan).toBeInTheDocument();
+		expect(summarySpan).toHaveStyle({ color: lightTheme.colors.textDim });
 	});
 
 	it('should use theme textDim color for drag handle when theme provided', () => {
