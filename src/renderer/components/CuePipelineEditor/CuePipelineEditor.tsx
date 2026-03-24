@@ -162,7 +162,7 @@ function CuePipelineEditorInner({
 	);
 	const stableYOffsets = useMemo(
 		() => computePipelineYOffsets(pipelineState.pipelines, pipelineState.selectedPipelineId),
-		 
+
 		[pipelineStructureKey, pipelineState.selectedPipelineId]
 	);
 
