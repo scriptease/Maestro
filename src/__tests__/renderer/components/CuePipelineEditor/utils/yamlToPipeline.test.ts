@@ -457,6 +457,55 @@ describe('subscriptionsToPipelines', () => {
 		expect((agents[0].data as { sessionName: string }).sessionName).toBe('Pedsidian');
 	});
 
+	it('creates separate nodes when the same agent appears twice in a chain (A → B → A)', () => {
+		const subs: CueSubscription[] = [
+			{
+				name: 'loop-test',
+				event: 'time.heartbeat',
+				enabled: true,
+				prompt: 'Start',
+				interval_minutes: 10,
+				agent_id: 'session-0',
+			},
+			{
+				name: 'loop-test-chain-1',
+				event: 'agent.completed',
+				enabled: true,
+				prompt: 'Middle step',
+				source_session: 'alpha',
+				agent_id: 'session-1',
+			},
+			{
+				name: 'loop-test-chain-2',
+				event: 'agent.completed',
+				enabled: true,
+				prompt: 'Final step',
+				source_session: 'beta',
+				agent_id: 'session-0',
+			},
+		];
+		const sessions = makeSessions('alpha', 'beta');
+
+		const pipelines = subscriptionsToPipelines(subs, sessions);
+		expect(pipelines).toHaveLength(1);
+
+		const agents = pipelines[0].nodes.filter((n) => n.type === 'agent');
+		const alphaNodes = agents.filter(
+			(a) => (a.data as { sessionName: string }).sessionName === 'alpha'
+		);
+
+		// Should have TWO distinct nodes for "alpha", not one
+		expect(alphaNodes).toHaveLength(2);
+		expect(alphaNodes[0].id).not.toBe(alphaNodes[1].id);
+
+		// Should have 3 edges: trigger→alpha, alpha→beta, beta→alpha(2nd)
+		expect(pipelines[0].edges).toHaveLength(3);
+
+		// The last edge should point to the SECOND alpha node, not the first
+		const lastEdge = pipelines[0].edges[2];
+		expect(lastEdge.target).toBe(alphaNodes[1].id);
+	});
+
 	it('sets default edge mode to pass', () => {
 		const subs: CueSubscription[] = [
 			{
