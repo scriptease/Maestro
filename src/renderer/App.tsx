@@ -3466,6 +3466,13 @@ function MaestroConsoleInner() {
 									}}
 									participantColors={groupChatParticipantColors}
 									messagesRef={groupChatMessagesRef}
+									ghCliAvailable={ghCliAvailable}
+									onPublishMessageGist={(text: string) => {
+										if (!text.trim()) return;
+										const filename = `group_chat_response_${Date.now()}.md`;
+										useTabStore.getState().setTabGistContent({ filename, content: text });
+										setGistPublishModalOpen(true);
+									}}
 								/>
 							</div>
 							<GroupChatRightPanel

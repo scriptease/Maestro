@@ -27,6 +27,7 @@ import type {
 	BmadCommand,
 } from '../types';
 import { createTab, getActiveTab } from '../utils/tabHelpers';
+import { getStdinFlags } from '../utils/spawnHelpers';
 import { generateId } from '../utils/ids';
 import { useSessionStore } from './sessionStore';
 import { DEFAULT_IMAGE_ONLY_PROMPT } from '../hooks/input/useInputProcessing';
@@ -298,10 +299,11 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 
 			if (item.type === 'message' && (hasText || isImageOnlyMessage)) {
 				// Process a message - spawn agent with the message text
-				let effectivePrompt = isImageOnlyMessage ? DEFAULT_IMAGE_ONLY_PROMPT : item.text!;
+				const effectivePrompt = isImageOnlyMessage ? DEFAULT_IMAGE_ONLY_PROMPT : item.text!;
 
-				// For NEW sessions (no agentSessionId), prepend Maestro system prompt
+				// For NEW sessions (no agentSessionId), prepare Maestro system prompt separately
 				const isNewSession = !tabAgentSessionId;
+				let appendSystemPrompt: string | undefined;
 				if (isNewSession && maestroSystemPrompt) {
 					let gitBranch: string | undefined;
 					if (session.isGitRepo) {
@@ -313,16 +315,20 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 						}
 					}
 
-					const substitutedSystemPrompt = substituteTemplateVariables(maestroSystemPrompt, {
+					appendSystemPrompt = substituteTemplateVariables(maestroSystemPrompt, {
 						session,
 						gitBranch,
 						groupId: session.groupId,
 						activeTabId: targetTab.id,
 						conductorProfile: deps.conductorProfile,
 					});
-
-					effectivePrompt = `${substitutedSystemPrompt}\n\n---\n\n# User Request\n\n${effectivePrompt}`;
 				}
+
+				const { sendPromptViaStdin, sendPromptViaStdinRaw } = getStdinFlags({
+					isSshSession: !!session.sshRemoteId || !!session.sessionSshRemoteConfig?.enabled,
+					supportsStreamJsonInput: agent.capabilities?.supportsStreamJsonInput ?? false,
+					hasImages: !!hasImages,
+				});
 
 				console.log('[processQueuedItem] Spawning agent with queued message:', {
 					sessionId: targetSessionId,
@@ -331,6 +337,7 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 					promptLength: effectivePrompt?.length,
 					hasAgentSessionId: !!tabAgentSessionId,
 					agentSessionId: tabAgentSessionId,
+					hasAppendSystemPrompt: !!appendSystemPrompt,
 					isReadOnly,
 					argsLength: spawnArgs.length,
 					args: spawnArgs,
@@ -344,6 +351,7 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 					args: spawnArgs,
 					prompt: effectivePrompt,
 					images: hasImages ? item.images : undefined,
+					appendSystemPrompt,
 					agentSessionId: tabAgentSessionId ?? undefined,
 					readOnlyMode: isReadOnly,
 					sessionCustomPath: session.customPath,
@@ -352,6 +360,8 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 					sessionCustomModel: session.customModel,
 					sessionCustomContextWindow: session.customContextWindow,
 					sessionSshRemoteConfig: session.sessionSshRemoteConfig,
+					sendPromptViaStdin,
+					sendPromptViaStdinRaw,
 				});
 			} else if (item.type === 'command' && item.command) {
 				// Process a slash command - find matching command
@@ -398,18 +408,17 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 						conductorProfile: deps.conductorProfile,
 					});
 
-					// For NEW sessions, prepend Maestro system prompt
+					// For NEW sessions, prepare Maestro system prompt separately
 					const isNewSessionForCommand = !tabAgentSessionId;
-					let promptForAgent = substitutedPrompt;
+					let appendSystemPromptForCommand: string | undefined;
 					if (isNewSessionForCommand && maestroSystemPrompt) {
-						const substitutedSystemPrompt = substituteTemplateVariables(maestroSystemPrompt, {
+						appendSystemPromptForCommand = substituteTemplateVariables(maestroSystemPrompt, {
 							session,
 							gitBranch,
 							groupId: session.groupId,
 							activeTabId: targetTab.id,
 							conductorProfile: deps.conductorProfile,
 						});
-						promptForAgent = `${substitutedSystemPrompt}\n\n---\n\n# User Request\n\n${substitutedPrompt}`;
 					}
 
 					// Add user log showing the command with its interpolated prompt
@@ -432,6 +441,14 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 						pendingAICommandForSynopsis: matchingCommand.command,
 					}));
 
+					// Compute stdin flags for command spawn (commands never have images)
+					const { sendPromptViaStdin: cmdSendViaStdin, sendPromptViaStdinRaw: cmdSendViaStdinRaw } =
+						getStdinFlags({
+							isSshSession: !!session.sshRemoteId || !!session.sessionSshRemoteConfig?.enabled,
+							supportsStreamJsonInput: agent.capabilities?.supportsStreamJsonInput ?? false,
+							hasImages: false,
+						});
+
 					// Spawn agent with the prompt
 					await window.maestro.process.spawn({
 						sessionId: targetSessionId,
@@ -439,7 +456,8 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 						cwd: session.cwd,
 						command: commandToUse,
 						args: spawnArgs,
-						prompt: promptForAgent,
+						prompt: substitutedPrompt,
+						appendSystemPrompt: appendSystemPromptForCommand,
 						agentSessionId: tabAgentSessionId ?? undefined,
 						readOnlyMode: isReadOnly,
 						sessionCustomPath: session.customPath,
@@ -448,6 +466,8 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 						sessionCustomModel: session.customModel,
 						sessionCustomContextWindow: session.customContextWindow,
 						sessionSshRemoteConfig: session.sessionSshRemoteConfig,
+						sendPromptViaStdin: cmdSendViaStdin,
+						sendPromptViaStdinRaw: cmdSendViaStdinRaw,
 					});
 				} else {
 					// Unknown command - add error log and reset to idle

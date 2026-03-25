@@ -311,6 +311,8 @@ interface MainPanelProps {
 	onPublishGist?: () => void;
 	/** Whether the current preview file has been published as a gist */
 	hasGist?: boolean;
+	/** Publish a single AI message as a GitHub Gist */
+	onPublishMessageGist?: (text: string) => void;
 
 	// Document Graph
 	onOpenInGraph?: () => void;
@@ -1828,6 +1830,8 @@ export const MainPanel = React.memo(
 												autoScrollAiMode={autoScrollAiMode}
 												userMessageAlignment={userMessageAlignment}
 												onOpenInTab={props.onOpenSavedFileInTab}
+												ghCliAvailable={props.ghCliAvailable}
+												onPublishMessageGist={props.onPublishMessageGist}
 											/>
 										)}
 									</div>
