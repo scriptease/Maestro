@@ -3,7 +3,7 @@
  *
  * Architecture:
  * - Single server on random port
- * - Security token (UUID) generated at startup, required in all URLs
+ * - Security token (UUID) per startup or persistent across restarts, required in all URLs
  * - Routes: /$TOKEN/ (dashboard), /$TOKEN/session/:id (session view)
  * - Live sessions: Only sessions marked as "live" appear in dashboard
  * - WebSocket: Real-time updates for session state, logs, theme
@@ -15,7 +15,7 @@
  *   http://localhost:PORT/$TOKEN/ws                → WebSocket
  *
  * Security:
- * - Token regenerated on each app restart
+ * - Token regenerated on each app restart (unless Persistent Web Link is enabled)
  * - Invalid/missing token redirects to website
  * - No access without knowing the token
  */
@@ -62,6 +62,10 @@ import type {
 	StarTabCallback,
 	ReorderTabCallback,
 	ToggleBookmarkCallback,
+	OpenFileTabCallback,
+	RefreshFileTreeCallback,
+	RefreshAutoRunDocsCallback,
+	ConfigureAutoRunCallback,
 	GetThemeCallback,
 	GetCustomCommandsCallback,
 	GetHistoryCallback,
@@ -86,7 +90,7 @@ export class WebServer {
 	private rateLimitConfig: RateLimitConfig = { ...DEFAULT_RATE_LIMIT_CONFIG };
 	private webAssetsPath: string | null = null;
 
-	// Security token - regenerated on each app startup
+	// Security token - persistent or regenerated per startup
 	private securityToken: string;
 
 	// Local IP address for generating URLs (detected at startup)
@@ -107,7 +111,7 @@ export class WebServer {
 	private staticRoutes: StaticRoutes;
 	private wsRoute: WsRoute;
 
-	constructor(port: number = 0) {
+	constructor(port: number = 0, securityToken?: string) {
 		// Use port 0 to let OS assign a random available port
 		this.port = port;
 		this.server = Fastify({
@@ -116,9 +120,14 @@ export class WebServer {
 			},
 		});
 
-		// Generate a new security token (UUID v4)
-		this.securityToken = randomUUID();
-		logger.debug('Security token generated', LOG_CONTEXT);
+		// Use provided token (persistent mode) or generate a new one (ephemeral mode)
+		if (securityToken) {
+			this.securityToken = securityToken;
+			logger.debug('Using persistent security token', LOG_CONTEXT);
+		} else {
+			this.securityToken = randomUUID();
+			logger.debug('Security token generated', LOG_CONTEXT);
+		}
 
 		// Determine web assets path (production vs development)
 		this.webAssetsPath = this.resolveWebAssetsPath();
@@ -301,6 +310,22 @@ export class WebServer {
 		this.callbackRegistry.setToggleBookmarkCallback(callback);
 	}
 
+	setOpenFileTabCallback(callback: OpenFileTabCallback): void {
+		this.callbackRegistry.setOpenFileTabCallback(callback);
+	}
+
+	setRefreshFileTreeCallback(callback: RefreshFileTreeCallback): void {
+		this.callbackRegistry.setRefreshFileTreeCallback(callback);
+	}
+
+	setRefreshAutoRunDocsCallback(callback: RefreshAutoRunDocsCallback): void {
+		this.callbackRegistry.setRefreshAutoRunDocsCallback(callback);
+	}
+
+	setConfigureAutoRunCallback(callback: ConfigureAutoRunCallback): void {
+		this.callbackRegistry.setConfigureAutoRunCallback(callback);
+	}
+
 	setGetHistoryCallback(callback: GetHistoryCallback): void {
 		this.callbackRegistry.setGetHistoryCallback(callback);
 	}
@@ -437,8 +462,8 @@ export class WebServer {
 				this.callbackRegistry.executeCommand(sessionId, command, inputMode),
 			switchMode: async (sessionId: string, mode: 'ai' | 'terminal') =>
 				this.callbackRegistry.switchMode(sessionId, mode),
-			selectSession: async (sessionId: string, tabId?: string) =>
-				this.callbackRegistry.selectSession(sessionId, tabId),
+			selectSession: async (sessionId: string, tabId?: string, focus?: boolean) =>
+				this.callbackRegistry.selectSession(sessionId, tabId, focus),
 			selectTab: async (sessionId: string, tabId: string) =>
 				this.callbackRegistry.selectTab(sessionId, tabId),
 			newTab: async (sessionId: string) => this.callbackRegistry.newTab(sessionId),
@@ -451,6 +476,14 @@ export class WebServer {
 			reorderTab: async (sessionId: string, fromIndex: number, toIndex: number) =>
 				this.callbackRegistry.reorderTab(sessionId, fromIndex, toIndex),
 			toggleBookmark: async (sessionId: string) => this.callbackRegistry.toggleBookmark(sessionId),
+			openFileTab: async (sessionId: string, filePath: string) =>
+				this.callbackRegistry.openFileTab(sessionId, filePath),
+			refreshFileTree: async (sessionId: string) =>
+				this.callbackRegistry.refreshFileTree(sessionId),
+			refreshAutoRunDocs: async (sessionId: string) =>
+				this.callbackRegistry.refreshAutoRunDocs(sessionId),
+			configureAutoRun: async (sessionId: string, config: any) =>
+				this.callbackRegistry.configureAutoRun(sessionId, config),
 			getSessions: () => this.callbackRegistry.getSessions(),
 			getLiveSessionInfo: (sessionId: string) =>
 				this.liveSessionManager.getLiveSessionInfo(sessionId),

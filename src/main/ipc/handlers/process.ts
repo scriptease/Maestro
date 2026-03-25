@@ -51,6 +51,20 @@ interface AgentConfigsData {
 /**
  * Dependencies required for process handler registration
  */
+/** Cue process info returned by the getCueProcesses callback */
+export interface CueProcessEntry {
+	runId: string;
+	pid: number;
+	command: string;
+	args: string[];
+	cwd: string;
+	toolType: string;
+	startTime: number;
+	sessionName: string;
+	subscriptionName: string;
+	eventType: string;
+}
+
 export interface ProcessHandlerDependencies {
 	getProcessManager: () => ProcessManager | null;
 	getAgentDetector: () => AgentDetector | null;
@@ -58,6 +72,8 @@ export interface ProcessHandlerDependencies {
 	settingsStore: Store<MaestroSettings>;
 	getMainWindow: () => BrowserWindow | null;
 	sessionsStore: Store<{ sessions: any[] }>;
+	/** Optional callback to get active Cue run processes for Process Monitor */
+	getCueProcesses?: () => CueProcessEntry[];
 }
 
 /**
@@ -618,14 +634,14 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 		)
 	);
 
-	// Get all active processes managed by the ProcessManager
+	// Get all active processes managed by the ProcessManager (and Cue runs if available)
 	ipcMain.handle(
 		'process:getActiveProcesses',
 		withIpcErrorLogging(handlerOpts('getActiveProcesses'), async () => {
 			const processManager = requireProcessManager(getProcessManager);
 			const processes = processManager.getAll();
 			// Return serializable process info (exclude non-serializable PTY/child process objects)
-			return processes.map((p) => ({
+			const result: Array<Record<string, unknown>> = processes.map((p) => ({
 				sessionId: p.sessionId,
 				toolType: p.toolType,
 				pid: p.pid,
@@ -636,11 +652,146 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 				command: p.command,
 				args: p.args,
 			}));
+
+			// Append active Cue run processes if available
+			const cueProcesses = deps.getCueProcesses?.() ?? [];
+			for (const cue of cueProcesses) {
+				result.push({
+					sessionId: `cue-run-${cue.runId}`,
+					toolType: cue.toolType,
+					pid: cue.pid,
+					cwd: cue.cwd,
+					isTerminal: false,
+					isBatchMode: false,
+					startTime: cue.startTime,
+					command: cue.command,
+					args: cue.args,
+					isCueRun: true,
+					cueRunId: cue.runId,
+					cueSessionName: cue.sessionName,
+					cueSubscriptionName: cue.subscriptionName,
+					cueEventType: cue.eventType,
+				});
+			}
+
+			return result;
 		})
+	);
+
+	// Spawn a terminal tab PTY process.
+	// Uses session ID format {sessionId}-terminal-{tabId} so PtySpawner forwards raw output.
+	// SSH remote support: if the session has SSH config enabled, the shell command is
+	// wrapped with ssh to execute on the remote host.
+	ipcMain.handle(
+		'process:spawnTerminalTab',
+		withIpcErrorLogging(
+			handlerOpts('spawnTerminalTab'),
+			async (config: {
+				sessionId: string;
+				cwd: string;
+				shell?: string;
+				shellArgs?: string;
+				shellEnvVars?: Record<string, string>;
+				cols?: number;
+				rows?: number;
+				// Per-session SSH remote config
+				sessionSshRemoteConfig?: {
+					enabled: boolean;
+					remoteId: string | null;
+					workingDirOverride?: string;
+				};
+			}) => {
+				const processManager = requireProcessManager(getProcessManager);
+
+				// Resolve shell: prefer config.shell, then settings default
+				const globalShellEnvVars = settingsStore.get('shellEnvVars', {}) as Record<string, string>;
+				let shellToUse = config.shell || settingsStore.get('defaultShell', 'zsh');
+				const customShellPath = settingsStore.get('customShellPath', '');
+				if (customShellPath && (customShellPath as string).trim()) {
+					shellToUse = (customShellPath as string).trim();
+				}
+
+				// Merge global env vars with any per-invocation env vars (per-invocation takes precedence)
+				const mergedEnvVars = { ...globalShellEnvVars, ...(config.shellEnvVars || {}) };
+
+				logger.info(`Spawning terminal tab: ${config.sessionId}`, LOG_CONTEXT, {
+					sessionId: config.sessionId,
+					cwd: config.cwd,
+					shell: shellToUse,
+					cols: config.cols,
+					rows: config.rows,
+					hasSshConfig: !!config.sessionSshRemoteConfig?.enabled,
+				});
+
+				// SSH remote support for terminal tabs
+				if (config.sessionSshRemoteConfig?.enabled) {
+					const sshStoreAdapter = createSshRemoteStoreAdapter(settingsStore);
+					const sshResult = getSshRemoteConfig(sshStoreAdapter, {
+						sessionSshConfig: config.sessionSshRemoteConfig,
+					});
+					if (sshResult.config) {
+						logger.info(`Terminal tab will connect via SSH`, LOG_CONTEXT, {
+							sessionId: config.sessionId,
+							remoteName: sshResult.config.name,
+							remoteHost: sshResult.config.host,
+							hasWorkingDirOverride: !!config.sessionSshRemoteConfig.workingDirOverride,
+						});
+						// For SSH terminal tabs we spawn ssh interactively so xterm.js can interact
+						const sshArgs = [
+							sshResult.config.username
+								? `${sshResult.config.username}@${sshResult.config.host}`
+								: sshResult.config.host,
+						];
+						if (sshResult.config.port && sshResult.config.port !== 22) {
+							sshArgs.unshift('-p', String(sshResult.config.port));
+						}
+						if (sshResult.config.privateKeyPath) {
+							sshArgs.unshift('-i', sshResult.config.privateKeyPath);
+						}
+						// If workingDirOverride is set, cd to that directory after connecting.
+						// -t forces PTY allocation (required when passing a remote command).
+						const workingDirOverride = config.sessionSshRemoteConfig.workingDirOverride;
+						if (workingDirOverride) {
+							sshArgs.unshift('-t');
+							sshArgs.push(`cd ${JSON.stringify(workingDirOverride)} && exec $SHELL`);
+						}
+						return processManager.spawn({
+							sessionId: config.sessionId,
+							toolType: 'terminal',
+							cwd: os.homedir(),
+							command: 'ssh',
+							args: sshArgs,
+							shellEnvVars: mergedEnvVars,
+							cols: config.cols || 80,
+							rows: config.rows || 24,
+						});
+					}
+					// SSH is enabled but the remote config was not found (deleted or disabled).
+					// Fail explicitly rather than silently falling through to a local terminal,
+					// which would give the user a local shell they didn't ask for.
+					logger.error(`Terminal tab SSH config not found or disabled`, LOG_CONTEXT, {
+						sessionId: config.sessionId,
+						remoteId: config.sessionSshRemoteConfig.remoteId,
+					});
+					return { success: false, pid: 0 };
+				}
+
+				return processManager.spawnTerminalTab({
+					sessionId: config.sessionId,
+					cwd: config.cwd,
+					shell: shellToUse,
+					shellArgs: config.shellArgs || settingsStore.get('shellArgs', ''),
+					shellEnvVars: mergedEnvVars,
+					cols: config.cols || 80,
+					rows: config.rows || 24,
+				});
+			}
+		)
 	);
 
 	// Run a single command and capture only stdout/stderr (no PTY echo/prompts)
 	// Supports SSH remote execution when sessionSshRemoteConfig is provided
+	// TODO: Remove this handler once all callers migrate to process:spawnTerminalTab for persistent PTY sessions
 	ipcMain.handle(
 		'process:runCommand',
 		withIpcErrorLogging(
@@ -657,6 +808,9 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 					workingDirOverride?: string;
 				};
 			}) => {
+				logger.warn(
+					'process:runCommand is deprecated — use process:spawnTerminalTab for persistent PTY sessions'
+				);
 				const processManager = requireProcessManager(getProcessManager);
 
 				// Get the shell from settings if not provided

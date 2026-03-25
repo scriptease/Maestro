@@ -70,6 +70,8 @@ const createMockSession = (overrides: Partial<Session> = {}): Session =>
 		fileTree: [],
 		fileExplorerExpanded: [],
 		messageQueue: [],
+		terminalTabs: [],
+		activeTerminalTabId: null,
 		...overrides,
 	}) as Session;
 
@@ -590,8 +592,7 @@ describe('AgentSessionsModal', () => {
 		});
 
 		it('should display minutes ago', async () => {
-			const date = new Date();
-			date.setMinutes(date.getMinutes() - 15);
+			const date = new Date(Date.now() - 15 * 60 * 1000);
 			const mockSessions = [createMockClaudeSession({ modifiedAt: date.toISOString() })];
 			vi.mocked(window.maestro.agentSessions.listPaginated).mockResolvedValue({
 				sessions: mockSessions,
@@ -615,8 +616,7 @@ describe('AgentSessionsModal', () => {
 		});
 
 		it('should display hours ago', async () => {
-			const date = new Date();
-			date.setHours(date.getHours() - 5);
+			const date = new Date(Date.now() - 5 * 60 * 60 * 1000);
 			const mockSessions = [createMockClaudeSession({ modifiedAt: date.toISOString() })];
 			vi.mocked(window.maestro.agentSessions.listPaginated).mockResolvedValue({
 				sessions: mockSessions,
@@ -665,8 +665,7 @@ describe('AgentSessionsModal', () => {
 		});
 
 		it('should display full date for old timestamps', async () => {
-			const date = new Date();
-			date.setDate(date.getDate() - 30);
+			const date = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 			const mockSessions = [createMockClaudeSession({ modifiedAt: date.toISOString() })];
 			vi.mocked(window.maestro.agentSessions.listPaginated).mockResolvedValue({
 				sessions: mockSessions,
@@ -906,8 +905,10 @@ describe('AgentSessionsModal', () => {
 			const input = screen.getByPlaceholderText(/Search.*sessions/);
 
 			// First item should be selected initially
-			const firstButton = screen.getByText('First').closest('button');
-			expect(firstButton).toHaveStyle({ backgroundColor: mockTheme.colors.accent });
+			await waitFor(() => {
+				const firstButton = screen.getByText('First').closest('button');
+				expect(firstButton).toHaveStyle({ backgroundColor: mockTheme.colors.accent });
+			});
 
 			fireEvent.keyDown(input, { key: 'ArrowDown' });
 

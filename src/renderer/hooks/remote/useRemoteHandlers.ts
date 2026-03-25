@@ -157,15 +157,18 @@ export function useRemoteHandlers(deps: UseRemoteHandlersDeps): UseRemoteHandler
 							...s,
 							state: 'busy' as SessionState,
 							busySource: 'terminal',
-							shellLogs: [
-								...s.shellLogs,
-								{
-									id: generateId(),
-									timestamp: Date.now(),
-									source: 'user',
-									text: command,
-								},
-							],
+							// TODO: Remove shellLogs once terminal tabs migration is complete
+							...(!s.terminalTabs?.length && {
+								shellLogs: [
+									...s.shellLogs,
+									{
+										id: generateId(),
+										timestamp: Date.now(),
+										source: 'user',
+										text: command,
+									},
+								],
+							}),
 						};
 					})
 				);
@@ -202,15 +205,18 @@ export function useRemoteHandlers(deps: UseRemoteHandlersDeps): UseRemoteHandler
 								state: 'idle' as SessionState,
 								busySource: undefined,
 								thinkingStartTime: undefined,
-								shellLogs: [
-									...s.shellLogs,
-									{
-										id: generateId(),
-										timestamp: Date.now(),
-										source: 'system',
-										text: `Error: Failed to run command - ${errorMessage}`,
-									},
-								],
+								// TODO: Remove shellLogs once terminal tabs migration is complete
+								...(!s.terminalTabs?.length && {
+									shellLogs: [
+										...s.shellLogs,
+										{
+											id: generateId(),
+											timestamp: Date.now(),
+											source: 'system',
+											text: `Error: Failed to run command - ${errorMessage}`,
+										},
+									],
+								}),
 							};
 						})
 					);
@@ -296,6 +302,8 @@ export function useRemoteHandlers(deps: UseRemoteHandlersDeps): UseRemoteHandler
 					promptToSend = substituteTemplateVariables(matchingCommand.prompt, {
 						session,
 						gitBranch,
+						groupId: session.groupId,
+						activeTabId: session.activeTabId,
 						conductorProfile,
 					});
 					commandMetadata = {

@@ -98,10 +98,6 @@ export interface UseSettingsReturn {
 	showHiddenFiles: boolean;
 	setShowHiddenFiles: (value: boolean) => void;
 
-	// Terminal settings
-	terminalWidth: number;
-	setTerminalWidth: (value: number) => void;
-
 	// Logging settings
 	logLevel: string;
 	setLogLevel: (value: string) => void;
@@ -291,6 +287,10 @@ export interface UseSettingsReturn {
 	encoreFeatures: EncoreFeatureFlags;
 	setEncoreFeatures: (value: EncoreFeatureFlags) => void;
 
+	// Symphony registry URLs (additional user-configured registries)
+	symphonyRegistryUrls: string[];
+	setSymphonyRegistryUrls: (value: string[]) => void;
+
 	// Director's Notes settings
 	directorNotesSettings: DirectorNotesSettings;
 	setDirectorNotesSettings: (value: DirectorNotesSettings) => void;
@@ -316,6 +316,7 @@ export function useSettings(): UseSettingsReturn {
 
 	// Load settings on mount
 	useEffect(() => {
+		window.__updateSplash?.(45, 'Reading the score...');
 		loadAllSettings();
 	}, []);
 

@@ -13,6 +13,8 @@
  * - live:broadcastActiveSession: Broadcast active session change
  * - live:startServer: Start the web server
  * - live:stopServer: Stop the web server
+ * - live:persistCurrentToken: Persist the running server's token and enable persistent web link
+ * - live:clearPersistentToken: Clear the persisted token and disable persistent web link
  * - live:disableAll: Disable all live sessions and stop server
  * - webserver:getUrl: Get the web server URL
  * - webserver:getConnectedClients: Get connected client count
@@ -21,10 +23,11 @@
  */
 
 import { ipcMain } from 'electron';
-
 import { logger } from '../../utils/logger';
 import { WebServer } from '../../web-server';
 import type { AITabData } from '../../web-server/services/broadcastService';
+import type { SettingsStoreInterface } from '../../stores/types';
+import { writeCliServerInfo, deleteCliServerInfo } from '../../../shared/cli-server-discovery';
 
 /**
  * Timeout for waiting for web server to become active (ms)
@@ -43,13 +46,62 @@ export interface WebHandlerDependencies {
 	getWebServer: () => WebServer | null;
 	setWebServer: (server: WebServer | null) => void;
 	createWebServer: () => WebServer;
+	settingsStore: SettingsStoreInterface;
+}
+
+/**
+ * Ensure the CLI server is running and write the discovery file.
+ *
+ * Called during app initialization to make the web server always available
+ * for CLI IPC connections. The server binds to 0.0.0.0 — this is intentional
+ * for LAN accessibility; the UUID security token prevents unauthorized access.
+ */
+export async function ensureCliServer(deps: WebHandlerDependencies): Promise<void> {
+	const { getWebServer, setWebServer, createWebServer } = deps;
+
+	try {
+		let webServer = getWebServer();
+
+		// Create web server if it doesn't exist
+		if (!webServer) {
+			logger.info('Creating CLI server', 'CliServer');
+			webServer = createWebServer();
+			setWebServer(webServer);
+		}
+
+		// Start if not already running
+		if (!webServer.isActive()) {
+			logger.info('Starting CLI server', 'CliServer');
+			const { port, token } = await webServer.start();
+			logger.info(`CLI server running on port ${port}`, 'CliServer');
+
+			// Write discovery file so CLI can find us
+			writeCliServerInfo({
+				port,
+				token,
+				pid: process.pid,
+				startedAt: Date.now(),
+			});
+		} else {
+			// Server already running — still write discovery file in case it's stale
+			writeCliServerInfo({
+				port: webServer.getPort(),
+				token: webServer.getSecurityToken(),
+				pid: process.pid,
+				startedAt: Date.now(),
+			});
+		}
+	} catch (error: any) {
+		logger.error(`Failed to start CLI server: ${error.message}`, 'CliServer');
+		// Non-fatal: app continues without CLI IPC
+	}
 }
 
 /**
  * Register all web/live-related IPC handlers.
  */
 export function registerWebHandlers(deps: WebHandlerDependencies): void {
-	const { getWebServer, setWebServer, createWebServer } = deps;
+	const { getWebServer, setWebServer, createWebServer, settingsStore } = deps;
 
 	// Broadcast user input to web clients (called when desktop sends a message)
 	ipcMain.handle(
@@ -252,11 +304,65 @@ export function registerWebHandlers(deps: WebHandlerDependencies): void {
 			logger.info('Stopping web server', 'WebServer');
 			await webServer.stop();
 			setWebServer(null); // Allow garbage collection, will recreate on next start
+			deleteCliServerInfo(); // Remove discovery file since server is no longer running
 			logger.info('Web server stopped and cleaned up', 'WebServer');
 			return { success: true };
 		} catch (error: any) {
 			logger.error(`Failed to stop web server: ${error.message}`, 'WebServer');
 			return { success: false, error: error.message };
+		}
+	});
+
+	// Persist the current web server's security token and enable persistent web link.
+	// Flag is written first: a crash between the two writes leaves
+	// persistentWebLink=true with a missing/stale token, which the factory
+	// handles by generating and persisting a fresh UUID on next startup.
+	ipcMain.handle('live:persistCurrentToken', async () => {
+		const webServer = getWebServer();
+		if (!webServer || !webServer.isActive()) {
+			return { success: false, message: 'Web server is not running.' };
+		}
+		try {
+			const currentToken = webServer.getSecurityToken();
+			settingsStore.set('persistentWebLink', true);
+			settingsStore.set('webAuthToken', currentToken);
+			logger.info(
+				'Persisted current web server token and enabled persistent web link',
+				'WebServer'
+			);
+			return { success: true };
+		} catch (error: any) {
+			// Rollback the flag so the factory doesn't read persistentWebLink=true
+			// with a missing token on next startup, which would silently change the URL.
+			try {
+				settingsStore.set('persistentWebLink', false);
+			} catch {
+				// Best-effort rollback — disk may be completely unavailable
+			}
+			logger.error(`Failed to persist web server token: ${error.message}`, 'WebServer');
+			return { success: false, message: error.message };
+		}
+	});
+
+	// Clear persistent web link token and disable the flag on the main side.
+	// Flag is cleared first: a crash between the two writes leaves
+	// persistentWebLink=false with a stale token, which the factory ignores.
+	ipcMain.handle('live:clearPersistentToken', async () => {
+		try {
+			settingsStore.set('persistentWebLink', false);
+			settingsStore.set('webAuthToken', null);
+			logger.info('Cleared persistent web link token and disabled flag', 'WebServer');
+			return { success: true };
+		} catch (error: any) {
+			// Rollback the flag so disk state stays consistent — prevents
+			// persistentWebLink=false with a stale token on next startup.
+			try {
+				settingsStore.set('persistentWebLink', true);
+			} catch {
+				// Best-effort rollback — disk may be completely unavailable
+			}
+			logger.error(`Failed to clear persistent token: ${error.message}`, 'WebServer');
+			return { success: false, message: error.message };
 		}
 	});
 
@@ -279,6 +385,7 @@ export function registerWebHandlers(deps: WebHandlerDependencies): void {
 			logger.info(`Disabled ${count} live sessions, stopping server`, 'Live');
 			await webServer.stop();
 			setWebServer(null);
+			deleteCliServerInfo(); // Remove discovery file since server is no longer running
 			return { success: true, count };
 		} catch (error: any) {
 			logger.error(`Failed to stop web server during disableAll: ${error.message}`, 'WebServer');

@@ -147,7 +147,7 @@ interface UsageStats {
 	reasoningTokens?: number; // Separate reasoning tokens (Codex o3/o4-mini)
 }
 
-type HistoryEntryType = 'AUTO' | 'USER';
+type HistoryEntryType = 'AUTO' | 'USER' | 'CUE';
 
 /**
  * Result type for reading session messages from agent storage.
@@ -256,6 +256,20 @@ interface MaestroAPI {
 	};
 	process: {
 		spawn: (config: ProcessConfig) => Promise<{ pid: number; success: boolean }>;
+		spawnTerminalTab: (config: {
+			sessionId: string;
+			cwd: string;
+			shell?: string;
+			shellArgs?: string;
+			shellEnvVars?: Record<string, string>;
+			cols?: number;
+			rows?: number;
+			sessionSshRemoteConfig?: {
+				enabled: boolean;
+				remoteId: string | null;
+				workingDirOverride?: string;
+			};
+		}) => Promise<{ pid: number; success: boolean }>;
 		write: (sessionId: string, data: string) => Promise<boolean>;
 		interrupt: (sessionId: string) => Promise<boolean>;
 		kill: (sessionId: string) => Promise<boolean>;
@@ -279,6 +293,14 @@ interface MaestroAPI {
 				cwd: string;
 				isTerminal: boolean;
 				isBatchMode: boolean;
+				startTime?: number;
+				command?: string;
+				args?: string[];
+				isCueRun?: boolean;
+				cueRunId?: string;
+				cueSessionName?: string;
+				cueSubscriptionName?: string;
+				cueEventType?: string;
 			}>
 		>;
 		onData: (callback: (sessionId: string, data: string) => void) => () => void;
@@ -320,6 +342,27 @@ interface MaestroAPI {
 			callback: (sessionId: string, fromIndex: number, toIndex: number) => void
 		) => () => void;
 		onRemoteToggleBookmark: (callback: (sessionId: string) => void) => () => void;
+		onRemoteOpenFileTab: (callback: (sessionId: string, filePath: string) => void) => () => void;
+		onRemoteRefreshFileTree: (callback: (sessionId: string) => void) => () => void;
+		onRemoteRefreshAutoRunDocs: (callback: (sessionId: string) => void) => () => void;
+		onRemoteConfigureAutoRun: (
+			callback: (
+				sessionId: string,
+				config: {
+					documents: Array<{ filename: string; resetOnCompletion?: boolean }>;
+					prompt?: string;
+					loopEnabled?: boolean;
+					maxLoops?: number;
+					saveAsPlaybook?: string;
+					launch?: boolean;
+				},
+				responseChannel: string
+			) => void
+		) => () => void;
+		sendRemoteConfigureAutoRunResponse: (
+			responseChannel: string,
+			result: { success: boolean; playbookId?: string; error?: string }
+		) => void;
 		onStderr: (callback: (sessionId: string, data: string) => void) => () => void;
 		onCommandExit: (callback: (sessionId: string, code: number) => void) => () => void;
 		onUsage: (callback: (sessionId: string, usageStats: UsageStats) => void) => () => void;
@@ -680,6 +723,8 @@ interface MaestroAPI {
 		disableAll: () => Promise<{ success: boolean; count: number }>;
 		startServer: () => Promise<{ success: boolean; url?: string; error?: string }>;
 		stopServer: () => Promise<{ success: boolean; error?: string }>;
+		persistCurrentToken: () => Promise<{ success: boolean; message?: string }>;
+		clearPersistentToken: () => Promise<{ success: boolean; message?: string }>;
 	};
 	agents: {
 		detect: (sshRemoteId?: string) => Promise<AgentConfig[]>;
@@ -700,7 +745,7 @@ interface MaestroAPI {
 				error: string | null;
 			} | null;
 		}>;
-		get: (agentId: string) => Promise<AgentConfig | null>;
+		get: (agentId: string, sshRemoteId?: string) => Promise<AgentConfig | null>;
 		getCapabilities: (agentId: string) => Promise<AgentCapabilities>;
 		getConfig: (agentId: string) => Promise<Record<string, any>>;
 		setConfig: (agentId: string, config: Record<string, any>) => Promise<boolean>;
@@ -723,7 +768,7 @@ interface MaestroAPI {
 			agentId: string,
 			cwd: string,
 			customPath?: string
-		) => Promise<string[] | null>;
+		) => Promise<{ name: string; prompt?: string }[] | null>;
 	};
 	// Agent Sessions API - all methods accept optional sshRemoteId for SSH remote session storage access
 	agentSessions: {
@@ -1046,6 +1091,15 @@ interface MaestroAPI {
 		confirmQuit: () => void;
 		cancelQuit: () => void;
 		onSystemResume: (callback: () => void) => () => void;
+		/** @see ParsedDeepLink in src/shared/types.ts — keep in sync */
+		onDeepLink: (
+			callback: (deepLink: {
+				action: 'focus' | 'session' | 'group';
+				sessionId?: string;
+				tabId?: string;
+				groupId?: string;
+			}) => void
+		) => () => void;
 	};
 	platform: string;
 	logger: {
@@ -1326,7 +1380,12 @@ interface MaestroAPI {
 		reload: () => Promise<boolean>;
 	};
 	notification: {
-		show: (title: string, body: string) => Promise<{ success: boolean; error?: string }>;
+		show: (
+			title: string,
+			body: string,
+			sessionId?: string,
+			tabId?: string
+		) => Promise<{ success: boolean; error?: string }>;
 		speak: (
 			text: string,
 			command?: string
@@ -1366,7 +1425,7 @@ interface MaestroAPI {
 			folderPath: string,
 			filename: string,
 			sshRemoteId?: string
-		) => Promise<{ success: boolean; content?: string; error?: string }>;
+		) => Promise<{ success: boolean; content?: string; notFound?: boolean; error?: string }>;
 		writeDoc: (
 			folderPath: string,
 			filename: string,
@@ -2707,7 +2766,7 @@ interface MaestroAPI {
 	directorNotes: {
 		getUnifiedHistory: (options: {
 			lookbackDays: number;
-			filter?: 'AUTO' | 'USER' | null;
+			filter?: 'AUTO' | 'USER' | 'CUE' | null;
 			limit?: number;
 			offset?: number;
 		}) => Promise<{
@@ -2727,13 +2786,7 @@ interface MaestroAPI {
 				validated?: boolean;
 				agentName?: string;
 				sourceSessionId: string;
-				usageStats?: {
-					totalCostUsd: number;
-					inputTokens: number;
-					outputTokens: number;
-					cacheReadTokens: number;
-					cacheWriteTokens: number;
-				};
+				usageStats?: UsageStats;
 			}>;
 			total: number;
 			limit: number;
@@ -2764,6 +2817,168 @@ interface MaestroAPI {
 			};
 			error?: string;
 		}>;
+		/** Subscribe to synopsis generation progress updates. Returns cleanup function. */
+		onSynopsisProgress: (
+			callback: (update: { chunkCount: number; bytesReceived: number; elapsedMs: number }) => void
+		) => () => void;
+		/** Subscribe to new history entries as they are added in real-time. Returns cleanup function. */
+		onHistoryEntryAdded: (
+			callback: (
+				entry: {
+					id: string;
+					type: HistoryEntryType;
+					timestamp: number;
+					summary: string;
+					fullResponse?: string;
+					agentSessionId?: string;
+					sessionName?: string;
+					projectPath: string;
+					sessionId?: string;
+					contextUsage?: number;
+					success?: boolean;
+					elapsedTimeMs?: number;
+					validated?: boolean;
+					usageStats?: UsageStats;
+				},
+				sourceSessionId: string
+			) => void
+		) => () => void;
+	};
+
+	// Cue API (event-driven automation)
+	cue: {
+		getSettings: () => Promise<{
+			timeout_minutes: number;
+			timeout_on_fail: 'break' | 'continue';
+			max_concurrent: number;
+			queue_size: number;
+		}>;
+		getStatus: () => Promise<
+			Array<{
+				sessionId: string;
+				sessionName: string;
+				toolType: string;
+				projectRoot: string;
+				enabled: boolean;
+				subscriptionCount: number;
+				activeRuns: number;
+				lastTriggered?: string;
+				nextTrigger?: string;
+			}>
+		>;
+		getGraphData: () => Promise<
+			Array<{
+				sessionId: string;
+				sessionName: string;
+				toolType: string;
+				subscriptions: Array<{
+					name: string;
+					event:
+						| 'time.heartbeat'
+						| 'time.scheduled'
+						| 'file.changed'
+						| 'agent.completed'
+						| 'github.pull_request'
+						| 'github.issue'
+						| 'task.pending';
+					enabled: boolean;
+					prompt: string;
+					interval_minutes?: number;
+					schedule_times?: string[];
+					schedule_days?: string[];
+					watch?: string;
+					source_session?: string | string[];
+					fan_out?: string[];
+					filter?: Record<string, string | number | boolean>;
+					repo?: string;
+					poll_minutes?: number;
+				}>;
+			}>
+		>;
+		getActiveRuns: () => Promise<
+			Array<{
+				runId: string;
+				sessionId: string;
+				sessionName: string;
+				subscriptionName: string;
+				event: {
+					id: string;
+					type: 'time.heartbeat' | 'time.scheduled' | 'file.changed' | 'agent.completed';
+					timestamp: string;
+					triggerName: string;
+					payload: Record<string, unknown>;
+				};
+				status: 'running' | 'completed' | 'failed' | 'timeout' | 'stopped';
+				stdout: string;
+				stderr: string;
+				exitCode: number | null;
+				durationMs: number;
+				startedAt: string;
+				endedAt: string;
+			}>
+		>;
+		getActivityLog: (limit?: number) => Promise<
+			Array<{
+				runId: string;
+				sessionId: string;
+				sessionName: string;
+				subscriptionName: string;
+				event: {
+					id: string;
+					type: 'time.heartbeat' | 'time.scheduled' | 'file.changed' | 'agent.completed';
+					timestamp: string;
+					triggerName: string;
+					payload: Record<string, unknown>;
+				};
+				status: 'running' | 'completed' | 'failed' | 'timeout' | 'stopped';
+				stdout: string;
+				stderr: string;
+				exitCode: number | null;
+				durationMs: number;
+				startedAt: string;
+				endedAt: string;
+			}>
+		>;
+		enable: () => Promise<void>;
+		disable: () => Promise<void>;
+		stopRun: (runId: string) => Promise<boolean>;
+		stopAll: () => Promise<void>;
+		triggerSubscription: (subscriptionName: string) => Promise<boolean>;
+		getQueueStatus: () => Promise<Record<string, number>>;
+		refreshSession: (sessionId: string, projectRoot: string) => Promise<void>;
+		removeSession: (sessionId: string) => Promise<void>;
+		readYaml: (projectRoot: string) => Promise<string | null>;
+		writeYaml: (
+			projectRoot: string,
+			content: string,
+			promptFiles?: Record<string, string>
+		) => Promise<void>;
+		deleteYaml: (projectRoot: string) => Promise<boolean>;
+		validateYaml: (content: string) => Promise<{ valid: boolean; errors: string[] }>;
+		savePipelineLayout: (layout: Record<string, unknown>) => Promise<void>;
+		loadPipelineLayout: () => Promise<Record<string, unknown> | null>;
+		onActivityUpdate: (
+			callback: (data: {
+				runId: string;
+				sessionId: string;
+				sessionName: string;
+				subscriptionName: string;
+				event: {
+					id: string;
+					type: 'time.heartbeat' | 'time.scheduled' | 'file.changed' | 'agent.completed';
+					timestamp: string;
+					triggerName: string;
+					payload: Record<string, unknown>;
+				};
+				status: 'running' | 'completed' | 'failed' | 'timeout' | 'stopped';
+				stdout: string;
+				stderr: string;
+				exitCode: number | null;
+				durationMs: number;
+				startedAt: string;
+				endedAt: string;
+			}) => void
+		) => () => void;
 	};
 
 	// WakaTime API (CLI check, API key validation)

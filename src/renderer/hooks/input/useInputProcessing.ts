@@ -223,7 +223,19 @@ export function useInputProcessing(deps: UseInputProcessingDeps): UseInputProces
 					const commandArgs =
 						firstSpaceIndex === -1 ? '' : commandText.substring(firstSpaceIndex + 1).trim();
 
-					const matchingCustomCommand = customAICommands.find((cmd) => cmd.command === baseCommand);
+					// Check custom AI commands first, then agent-discovered commands with prompts
+					const matchingAgentCommand = activeSession.agentCommands?.find(
+						(cmd) => cmd.command === baseCommand && cmd.prompt
+					);
+					const matchingCustomCommand =
+						customAICommands.find((cmd) => cmd.command === baseCommand) ||
+						(matchingAgentCommand
+							? {
+									command: matchingAgentCommand.command,
+									description: matchingAgentCommand.description,
+									prompt: matchingAgentCommand.prompt!,
+								}
+							: undefined);
 					if (matchingCustomCommand) {
 						// Execute the custom AI command by sending its prompt
 						setInputValue('');
@@ -245,6 +257,8 @@ export function useInputProcessing(deps: UseInputProcessingDeps): UseInputProces
 							substituteTemplateVariables(matchingCustomCommand.prompt, {
 								session: activeSession,
 								gitBranch,
+								groupId: activeSession.groupId,
+								activeTabId: activeSession.activeTabId,
 								conductorProfile,
 							});
 
@@ -598,11 +612,12 @@ export function useInputProcessing(deps: UseInputProcessingDeps): UseInputProces
 						newHistory.push(effectiveInputValue.trim());
 					}
 
-					// For terminal mode, add to shellLogs
+					// For terminal mode (legacy), add to shellLogs
 					if (currentMode !== 'ai') {
 						return {
 							...s,
-							shellLogs: [...s.shellLogs, newEntry],
+							// TODO: Remove shellLogs once terminal tabs migration is complete
+							...(!s.terminalTabs?.length && { shellLogs: [...s.shellLogs, newEntry] }),
 							state: 'busy',
 							busySource: currentMode,
 							shellCwd: newShellCwd,
@@ -966,6 +981,8 @@ export function useInputProcessing(deps: UseInputProcessingDeps): UseInputProces
 							const substitutedSystemPrompt = substituteTemplateVariables(maestroSystemPrompt, {
 								session: freshSession,
 								gitBranch,
+								groupId: freshSession.groupId,
+								activeTabId: freshSession.activeTabId,
 								historyFilePath,
 								conductorProfile,
 							});
@@ -1091,15 +1108,18 @@ export function useInputProcessing(deps: UseInputProcessingDeps): UseInputProces
 									state: 'idle',
 									busySource: undefined,
 									thinkingStartTime: undefined,
-									shellLogs: [
-										...s.shellLogs,
-										{
-											id: generateId(),
-											timestamp: Date.now(),
-											source: 'system',
-											text: `Error: Failed to run command - ${(error as Error).message}`,
-										},
-									],
+									// TODO: Remove shellLogs once terminal tabs migration is complete
+									...(!s.terminalTabs?.length && {
+										shellLogs: [
+											...s.shellLogs,
+											{
+												id: generateId(),
+												timestamp: Date.now(),
+												source: 'system',
+												text: `Error: Failed to run command - ${(error as Error).message}`,
+											},
+										],
+									}),
 								};
 							})
 						);

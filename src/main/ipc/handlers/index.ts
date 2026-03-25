@@ -12,7 +12,7 @@ import Store from 'electron-store';
 import { registerGitHandlers, GitHandlerDependencies } from './git';
 import { registerAutorunHandlers } from './autorun';
 import { registerPlaybooksHandlers } from './playbooks';
-import { registerHistoryHandlers } from './history';
+import { registerHistoryHandlers, HistoryHandlerDependencies } from './history';
 import { registerAgentsHandlers, AgentsHandlerDependencies } from './agents';
 import { registerProcessHandlers, ProcessHandlerDependencies } from './process';
 import {
@@ -46,18 +46,20 @@ import { registerDocumentGraphHandlers, DocumentGraphHandlerDependencies } from 
 import { registerSshRemoteHandlers, SshRemoteHandlerDependencies } from './ssh-remote';
 import { registerFilesystemHandlers } from './filesystem';
 import { registerAttachmentsHandlers, AttachmentsHandlerDependencies } from './attachments';
-import { registerWebHandlers, WebHandlerDependencies } from './web';
+import { registerWebHandlers, ensureCliServer, WebHandlerDependencies } from './web';
 import { registerLeaderboardHandlers, LeaderboardHandlerDependencies } from './leaderboard';
 import { registerNotificationsHandlers } from './notifications';
 import { registerSymphonyHandlers, SymphonyHandlerDependencies } from './symphony';
 import { registerAgentErrorHandlers } from './agent-error';
 import { registerTabNamingHandlers, TabNamingHandlerDependencies } from './tabNaming';
 import { registerDirectorNotesHandlers, DirectorNotesHandlerDependencies } from './director-notes';
+import { registerCueHandlers, CueHandlerDependencies } from './cue';
 import { registerWakatimeHandlers } from './wakatime';
 import { AgentDetector } from '../../agents';
 import { ProcessManager } from '../../process-manager';
 import { WebServer } from '../../web-server';
 import { tunnelManager as tunnelManagerInstance } from '../../tunnel-manager';
+import { createSafeSend } from '../../utils/safe-send';
 
 // Type for tunnel manager instance
 type TunnelManagerType = typeof tunnelManagerInstance;
@@ -67,6 +69,7 @@ export { registerGitHandlers };
 export { registerAutorunHandlers };
 export { registerPlaybooksHandlers };
 export { registerHistoryHandlers };
+export type { HistoryHandlerDependencies };
 export { registerAgentsHandlers };
 export { registerProcessHandlers };
 export { registerPersistenceHandlers };
@@ -87,7 +90,7 @@ export { registerSshRemoteHandlers };
 export { registerFilesystemHandlers };
 export { registerAttachmentsHandlers };
 export type { AttachmentsHandlerDependencies };
-export { registerWebHandlers };
+export { registerWebHandlers, ensureCliServer };
 export type { WebHandlerDependencies };
 export { registerLeaderboardHandlers };
 export type { LeaderboardHandlerDependencies };
@@ -98,6 +101,8 @@ export { registerTabNamingHandlers };
 export type { TabNamingHandlerDependencies };
 export { registerDirectorNotesHandlers };
 export type { DirectorNotesHandlerDependencies };
+export { registerCueHandlers };
+export type { CueHandlerDependencies };
 export { registerWakatimeHandlers };
 export type { AgentsHandlerDependencies };
 export type { ProcessHandlerDependencies };
@@ -174,7 +179,9 @@ export function registerAllHandlers(deps: HandlerDependencies): void {
 	});
 	registerAutorunHandlers(deps);
 	registerPlaybooksHandlers(deps);
-	registerHistoryHandlers();
+	registerHistoryHandlers({
+		safeSend: createSafeSend(deps.getMainWindow),
+	});
 	registerAgentsHandlers({
 		getAgentDetector: deps.getAgentDetector,
 		agentConfigsStore: deps.agentConfigsStore,
@@ -264,12 +271,13 @@ export function registerAllHandlers(deps: HandlerDependencies): void {
 		settingsStore: deps.settingsStore,
 	});
 	// Register notification handlers (OS notifications and TTS)
-	registerNotificationsHandlers();
+	registerNotificationsHandlers({ getMainWindow: deps.getMainWindow });
 	// Register Symphony handlers for token donation / open source contributions
 	registerSymphonyHandlers({
 		app: deps.app,
 		getMainWindow: deps.getMainWindow,
 		sessionsStore: deps.sessionsStore,
+		settingsStore: deps.settingsStore,
 	});
 	// Register agent error handlers (error state management)
 	registerAgentErrorHandlers();

@@ -13,6 +13,22 @@ Spec-Kit provides a set of AI-powered commands that guide you through a structur
 5. **Generate tasks** - Convert plans into dependency-ordered tasks
 6. **Execute with Auto Run** - Use Maestro's Auto Run to implement tasks
 
+## Prerequisites
+
+Maestro does not automatically create the folder structure or scripts required to run Spec-Kit. You’ll need to set these up manually.
+
+Get started: Follow the instructions in the “Get Started” section of the [GitHub Spec-Kit repository](https://github.com/github/spec-kit?tab=readme-ov-file#1-install-specify-cli):
+
+```bash
+# Create new project
+specify init <PROJECT_NAME>
+
+# Or initialize in existing project
+specify init . --ai claude
+# or
+specify init --here --ai claude
+```
+
 ## Core Workflow (Recommended Order)
 
 ### 1. `/speckit.constitution` - Define Project Principles
@@ -58,7 +74,7 @@ Convert your tasks directly into GitHub issues. Useful for team collaboration an
 Spec-Kit is designed to work seamlessly with Maestro's Auto Run feature:
 
 1. **Use `/speckit.implement`** to generate Auto Run documents from your tasks
-2. Documents are saved to `Auto Run Docs/` in your project
+2. Documents are saved to `.maestro/playbooks/` in your project
 3. Each task becomes a checkbox item that Auto Run can execute and verify
 4. Maestro will work through tasks sequentially, checking them off as completed
 5. You can run multiple agents in parallel on different phases

@@ -12,14 +12,14 @@ Spec-Kit is a structured specification workflow from [GitHub's spec-kit project]
 
 Maestro offers two paths to structured development:
 
-| Feature              | Spec-Kit                                   | Onboarding Wizard           |
-| -------------------- | ------------------------------------------ | --------------------------- |
-| **Approach**         | Manual, command-driven workflow            | Guided, conversational flow |
-| **Best For**         | Experienced users, complex projects        | New users, quick setup      |
-| **Output**           | Constitution, specs, tasks → Auto Run docs | Phase 1 Auto Run document   |
-| **Control**          | Full control at each step                  | Streamlined, opinionated    |
-| **Learning Curve**   | Moderate                                   | Low                         |
-| **Storage Location** | `.specify/` directory in project root      | `Auto Run Docs/Initiation/` |
+| Feature              | Spec-Kit                                   | Onboarding Wizard                |
+| -------------------- | ------------------------------------------ | -------------------------------- |
+| **Approach**         | Manual, command-driven workflow            | Guided, conversational flow      |
+| **Best For**         | Experienced users, complex projects        | New users, quick setup           |
+| **Output**           | Constitution, specs, tasks → Auto Run docs | Phase 1 Auto Run document        |
+| **Control**          | Full control at each step                  | Streamlined, opinionated         |
+| **Learning Curve**   | Moderate                                   | Low                              |
+| **Storage Location** | `.specify/` directory in project root      | `.maestro/playbooks/Initiation/` |
 
 **Use Spec-Kit when:**
 
@@ -46,6 +46,22 @@ Access Spec-Kit commands via **Settings → AI Commands** tab. Here you can:
 - **Reset to Default** — Restore a modified prompt to the bundled version
 
 Commands marked with a Maestro badge (`/speckit.help`, `/speckit.implement`) are Maestro-specific and not updated from upstream.
+
+## Prerequisites
+
+Maestro does not automatically create the folder structure or scripts required to run Spec-Kit. You’ll need to set these up manually.
+
+Get started: Follow the instructions in the “Get Started” section of the [GitHub Spec-Kit repository](https://github.com/github/spec-kit?tab=readme-ov-file#1-install-specify-cli):
+
+```bash
+# Create new project
+specify init <PROJECT_NAME>
+
+# Or initialize in existing project
+specify init . --ai claude
+# or
+specify init --here --ai claude
+```
 
 ## Core Workflow (Recommended Order)
 
@@ -98,11 +114,11 @@ Each task has an ID (T001, T002...), optional `[P]` marker for parallelizable ta
 
 **Maestro-specific command.** Converts your tasks into Auto Run documents that Maestro can execute autonomously. This bridges spec-kit's structured approach with Maestro's multi-agent capabilities.
 
-**Creates:** Markdown documents in `Auto Run Docs/` with naming pattern:
+**Creates:** Markdown documents in `.maestro/playbooks/` with naming pattern:
 
 ```
-Auto Run Docs/SpecKit-<feature-name>-Phase-01-[Description].md
-Auto Run Docs/SpecKit-<feature-name>-Phase-02-[Description].md
+.maestro/playbooks/SpecKit-<feature-name>-Phase-01-[Description].md
+.maestro/playbooks/SpecKit-<feature-name>-Phase-02-[Description].md
 ```
 
 Each phase document is self-contained, includes Spec Kit context references, preserves task IDs (T001, T002...) and user story markers ([US1], [US2]) for traceability.
