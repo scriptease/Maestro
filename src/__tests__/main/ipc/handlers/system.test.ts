@@ -251,6 +251,8 @@ describe('system IPC handlers', () => {
 				'power:getStatus',
 				'power:addReason',
 				'power:removeReason',
+				// Clipboard handlers
+				'clipboard:writeImage',
 			];
 
 			for (const channel of expectedChannels) {

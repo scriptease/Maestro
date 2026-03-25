@@ -987,6 +987,7 @@ interface MaestroAPI {
 		openPath: (itemPath: string) => Promise<void>;
 		trashItem: (itemPath: string) => Promise<void>;
 		showItemInFolder: (itemPath: string) => Promise<void>;
+		copyImageToClipboard: (dataUrl: string) => Promise<void>;
 	};
 	tunnel: {
 		isCloudflaredInstalled: () => Promise<boolean>;
