@@ -228,8 +228,8 @@ describe('CueEngine sleep/wake detection', () => {
 		const deps = createMockDeps();
 		const engine = new CueEngine(deps);
 
-		// Should not throw
-		expect(() => engine.start()).not.toThrow();
+		// Should throw so IPC callers can surface the error
+		expect(() => engine.start()).toThrow('DB init failed');
 
 		// Should log the error and not enable the engine
 		expect(deps.onLog).toHaveBeenCalledWith(

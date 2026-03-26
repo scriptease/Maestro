@@ -160,7 +160,7 @@ export class CueEngine {
 			captureException(error instanceof Error ? error : new Error(String(error)), {
 				extra: { operation: 'cue.dbInit' },
 			});
-			return;
+			throw error;
 		}
 
 		this.enabled = true;

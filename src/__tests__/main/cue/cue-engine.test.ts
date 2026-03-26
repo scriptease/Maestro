@@ -133,7 +133,7 @@ describe('CueEngine', () => {
 			});
 			const deps = createMockDeps();
 			const engine = new CueEngine(deps);
-			engine.start();
+			expect(() => engine.start()).toThrow('DB corrupted');
 			expect(engine.isEnabled()).toBe(false);
 		});
 
@@ -143,7 +143,7 @@ describe('CueEngine', () => {
 			});
 			const deps = createMockDeps();
 			const engine = new CueEngine(deps);
-			engine.start();
+			expect(() => engine.start()).toThrow('DB corrupted');
 			expect(deps.onLog).toHaveBeenCalledWith(
 				'error',
 				expect.stringContaining('Failed to initialize Cue database')
@@ -156,7 +156,7 @@ describe('CueEngine', () => {
 			});
 			const deps = createMockDeps();
 			const engine = new CueEngine(deps);
-			engine.start();
+			expect(() => engine.start()).toThrow('DB corrupted');
 			expect(mockLoadCueConfig).not.toHaveBeenCalled();
 		});
 
@@ -166,7 +166,7 @@ describe('CueEngine', () => {
 			});
 			const deps = createMockDeps();
 			const engine = new CueEngine(deps);
-			engine.start();
+			expect(() => engine.start()).toThrow('DB corrupted');
 			// Engine is not enabled, so getStatus should return empty
 			expect(engine.getStatus()).toEqual([]);
 		});
@@ -181,7 +181,7 @@ describe('CueEngine', () => {
 			const deps = createMockDeps();
 			const engine = new CueEngine(deps);
 
-			engine.start();
+			expect(() => engine.start()).toThrow('DB corrupted');
 			expect(engine.isEnabled()).toBe(false);
 
 			engine.start();

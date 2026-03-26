@@ -242,17 +242,77 @@ function CuePipelineEditorInner({
 	const stableYOffsetsRef = useRef(stableYOffsets);
 	stableYOffsetsRef.current = stableYOffsets;
 
+	// Throttle drag updates: buffer the latest positions during drag and
+	// flush at most once per animation frame. This keeps the controlled
+	// nodes in sync with ReactFlow (so the node visually follows the
+	// cursor) while avoiding a full convertToReactFlowNodes recompute
+	// on every mouse-move event, which caused nodes to vanish on Linux.
+	const dragBufferRef = useRef<Map<string, { x: number; y: number }> | null>(null);
+	const rafIdRef = useRef<number | null>(null);
+
+	const flushDragBuffer = useCallback(() => {
+		rafIdRef.current = null;
+		const buffer = dragBufferRef.current;
+		if (!buffer || buffer.size === 0) return;
+		dragBufferRef.current = null;
+
+		setPipelineState((prev) => {
+			const isAllPipelines = prev.selectedPipelineId === null;
+			const yOffsets = stableYOffsetsRef.current;
+
+			const newPipelines = prev.pipelines.map((pipeline) => {
+				const yOffset = isAllPipelines ? (yOffsets.get(pipeline.id) ?? 0) : 0;
+				return {
+					...pipeline,
+					nodes: pipeline.nodes.map((pNode) => {
+						const newPos = buffer.get(`${pipeline.id}:${pNode.id}`);
+						if (newPos) {
+							return {
+								...pNode,
+								position: isAllPipelines ? { x: newPos.x, y: newPos.y - yOffset } : newPos,
+							};
+						}
+						return pNode;
+					}),
+				};
+			});
+			return { ...prev, pipelines: newPipelines };
+		});
+	}, [setPipelineState]);
+
+	// Clean up any pending animation frame on unmount
+	useEffect(() => {
+		return () => {
+			if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
+		};
+	}, []);
+
 	const onNodesChange: OnNodesChange = useCallback(
 		(changes) => {
 			const positionUpdates = new Map<string, { x: number; y: number }>();
 			let hasPositionChange = false;
+			let isDragging = false;
 			for (const change of changes) {
 				if (change.type === 'position' && change.position) {
 					positionUpdates.set(change.id, change.position);
-					if (!change.dragging) {
+					if (change.dragging) {
+						isDragging = true;
+					} else {
 						hasPositionChange = true;
 					}
 				}
+			}
+
+			// During active drag: buffer positions and flush once per frame
+			if (isDragging && positionUpdates.size > 0) {
+				if (!dragBufferRef.current) dragBufferRef.current = new Map();
+				for (const [id, pos] of positionUpdates) {
+					dragBufferRef.current.set(id, pos);
+				}
+				if (rafIdRef.current === null) {
+					rafIdRef.current = requestAnimationFrame(flushDragBuffer);
+				}
+				return;
 			}
 
 			if (positionUpdates.size > 0) {
@@ -304,7 +364,7 @@ function CuePipelineEditorInner({
 				persistLayout();
 			}
 		},
-		[persistLayout, setPipelineState]
+		[persistLayout, setPipelineState, flushDragBuffer]
 	);
 
 	const onEdgesChange: OnEdgesChange = useCallback(() => {}, []);
