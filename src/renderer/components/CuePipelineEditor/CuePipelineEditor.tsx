@@ -234,6 +234,31 @@ function CuePipelineEditorInner({
 		]
 	);
 
+	// ─── Fit view on pipeline selection change ──────────────────────────────
+	// When switching between "All Pipelines" and a single pipeline (or between
+	// two different pipelines), the visible nodes change. Without a fitView call
+	// the viewport stays where it was, so the selected pipeline may appear off-screen.
+	// Skip the first change (mount hydration) so we don't overwrite the saved
+	// viewport restored by usePipelineLayout.
+	const prevSelectedIdRef = useRef(pipelineState.selectedPipelineId);
+	const hasHydratedSelectionRef = useRef(false);
+	useEffect(() => {
+		if (prevSelectedIdRef.current === pipelineState.selectedPipelineId) return;
+		prevSelectedIdRef.current = pipelineState.selectedPipelineId;
+
+		// Skip the initial hydration — let usePipelineLayout restore the saved viewport
+		if (!hasHydratedSelectionRef.current) {
+			hasHydratedSelectionRef.current = true;
+			return;
+		}
+
+		// Short delay so ReactFlow has rendered the new node set before fitting
+		const timer = setTimeout(() => {
+			reactFlowInstance.fitView({ padding: 0.15, duration: 200 });
+		}, 50);
+		return () => clearTimeout(timer);
+	}, [pipelineState.selectedPipelineId, reactFlowInstance]);
+
 	// ─── Canvas callbacks ────────────────────────────────────────────────────
 
 	// Ref mirror so onNodesChange reads the latest stable offsets without
@@ -242,20 +267,95 @@ function CuePipelineEditorInner({
 	const stableYOffsetsRef = useRef(stableYOffsets);
 	stableYOffsetsRef.current = stableYOffsets;
 
+	// Throttle drag updates: buffer the latest positions during drag and
+	// flush at most once per animation frame. This keeps the controlled
+	// nodes in sync with ReactFlow (so the node visually follows the
+	// cursor) while avoiding a full convertToReactFlowNodes recompute
+	// on every mouse-move event, which caused nodes to vanish on Linux.
+	const dragBufferRef = useRef<Map<string, { x: number; y: number }> | null>(null);
+	const rafIdRef = useRef<number | null>(null);
+
+	const flushDragBuffer = useCallback(() => {
+		rafIdRef.current = null;
+		const buffer = dragBufferRef.current;
+		if (!buffer || buffer.size === 0) return;
+		dragBufferRef.current = null;
+
+		setPipelineState((prev) => {
+			const isAllPipelines = prev.selectedPipelineId === null;
+			const yOffsets = stableYOffsetsRef.current;
+
+			const newPipelines = prev.pipelines.map((pipeline) => {
+				const yOffset = isAllPipelines ? (yOffsets.get(pipeline.id) ?? 0) : 0;
+				return {
+					...pipeline,
+					nodes: pipeline.nodes.map((pNode) => {
+						const newPos = buffer.get(`${pipeline.id}:${pNode.id}`);
+						if (newPos) {
+							return {
+								...pNode,
+								position: isAllPipelines ? { x: newPos.x, y: newPos.y - yOffset } : newPos,
+							};
+						}
+						return pNode;
+					}),
+				};
+			});
+			return { ...prev, pipelines: newPipelines };
+		});
+	}, [setPipelineState]);
+
+	// Clean up any pending animation frame on unmount
+	useEffect(() => {
+		return () => {
+			if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
+		};
+	}, []);
+
 	const onNodesChange: OnNodesChange = useCallback(
 		(changes) => {
 			const positionUpdates = new Map<string, { x: number; y: number }>();
 			let hasPositionChange = false;
+			let isDragging = false;
 			for (const change of changes) {
 				if (change.type === 'position' && change.position) {
 					positionUpdates.set(change.id, change.position);
-					if (!change.dragging) {
+					if (change.dragging) {
+						isDragging = true;
+					} else {
 						hasPositionChange = true;
 					}
 				}
 			}
 
+			// During active drag: buffer positions and flush once per frame
+			if (isDragging && positionUpdates.size > 0) {
+				if (!dragBufferRef.current) dragBufferRef.current = new Map();
+				for (const [id, pos] of positionUpdates) {
+					dragBufferRef.current.set(id, pos);
+				}
+				if (rafIdRef.current === null) {
+					rafIdRef.current = requestAnimationFrame(flushDragBuffer);
+				}
+				return;
+			}
+
 			if (positionUpdates.size > 0) {
+				// Cancel any pending drag RAF and merge buffered positions so stale
+				// coordinates cannot flush after we apply the non-drag update
+				if (rafIdRef.current !== null) {
+					cancelAnimationFrame(rafIdRef.current);
+					rafIdRef.current = null;
+				}
+				if (dragBufferRef.current) {
+					for (const [id, pos] of dragBufferRef.current) {
+						if (!positionUpdates.has(id)) {
+							positionUpdates.set(id, pos);
+						}
+					}
+					dragBufferRef.current = null;
+				}
+
 				setPipelineState((prev) => {
 					const isAllPipelines = prev.selectedPipelineId === null;
 
@@ -304,7 +404,7 @@ function CuePipelineEditorInner({
 				persistLayout();
 			}
 		},
-		[persistLayout, setPipelineState]
+		[persistLayout, setPipelineState, flushDragBuffer]
 	);
 
 	const onEdgesChange: OnEdgesChange = useCallback(() => {}, []);

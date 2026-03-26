@@ -88,6 +88,12 @@ export class CueEngine {
 	private pendingYamlWatchers = new Map<string, () => void>();
 	/** Tracks "subName:HH:MM" keys that time.scheduled already fired, preventing double-fire on config refresh */
 	private scheduledFiredKeys = new Set<string>();
+	/** Tracks "sessionId:subName" keys for app.startup subscriptions that already fired this process lifecycle.
+	 *  NOT cleared on stop() — persists across engine stop/start cycles (feature toggling). Only resets on app restart. */
+	private startupFiredKeys = new Set<string>();
+	/** True only during the initial session scan inside start(true). Cleared immediately after the scan
+	 *  completes so that later refreshSession/initSession calls don't fire app.startup subs. */
+	private isBootScan = false;
 	private heartbeat: CueHeartbeat;
 	private deps: CueEngineDeps;
 
@@ -144,11 +150,17 @@ export class CueEngine {
 		});
 	}
 
-	/** Enable the engine and scan all sessions for Cue configs */
-	start(): void {
+	/** Enable the engine and scan all sessions for Cue configs.
+	 *  @param isSystemBoot Pass `true` only at application launch (index.ts). When false (default),
+	 *  app.startup subscriptions will NOT fire — this prevents re-firing when the user toggles Cue on/off. */
+	start(isSystemBoot = false): void {
 		if (this.enabled) return;
 
-		// Initialize Cue database and prune old events — bail if this fails
+		if (isSystemBoot) {
+			this.isBootScan = true;
+		}
+
+		// Initialize Cue database and prune old events — fail gracefully so app startup is not blocked
 		try {
 			initCueDb((level, msg) => this.deps.onLog(level as MainLogLevel, msg));
 			pruneCueEvents(EVENT_PRUNE_AGE_MS);
@@ -160,6 +172,7 @@ export class CueEngine {
 			captureException(error instanceof Error ? error : new Error(String(error)), {
 				extra: { operation: 'cue.dbInit' },
 			});
+			this.isBootScan = false;
 			return;
 		}
 
@@ -170,6 +183,10 @@ export class CueEngine {
 		for (const session of sessions) {
 			this.initSession(session);
 		}
+
+		// Boot scan complete — clear the flag so later refreshSession/initSession
+		// calls (YAML hot-reload, auto-discovery) don't fire app.startup subs
+		this.isBootScan = false;
 
 		// Detect sleep gap from previous heartbeat
 		this.heartbeat.detectSleepAndReconcile();
@@ -198,6 +215,9 @@ export class CueEngine {
 		this.runManager.reset();
 		this.fanInTracker.reset();
 		this.scheduledFiredKeys.clear();
+		// NOTE: startupFiredKeys is NOT cleared here — it persists across engine stop/start
+		// cycles so that toggling Cue off/on does not re-fire app.startup subscriptions.
+		// It only resets when the Electron process restarts (new CueEngine instance).
 
 		// Stop heartbeat and close database
 		this.heartbeat.stop();
@@ -255,6 +275,13 @@ export class CueEngine {
 		this.teardownSession(sessionId);
 		this.sessions.delete(sessionId);
 		this.runManager.clearQueue(sessionId);
+
+		// Clear startup fired keys so re-adding this session will fire startup again
+		for (const key of this.startupFiredKeys) {
+			if (key.startsWith(`${sessionId}:`)) {
+				this.startupFiredKeys.delete(key);
+			}
+		}
 
 		const pendingWatcher = this.pendingYamlWatchers.get(sessionId);
 		if (pendingWatcher) {
@@ -666,6 +693,37 @@ export class CueEngine {
 				setupGitHubPollerSubscription(setupDeps, session, state, sub);
 			}
 			// agent.completed subscriptions are handled reactively via notifyAgentCompleted
+		}
+
+		// Fire app.startup subscriptions (once per system boot, deduplicated across hot-reloads and feature toggles)
+		for (const sub of config.subscriptions) {
+			if (sub.enabled === false) continue;
+			if (sub.agent_id && sub.agent_id !== session.id) continue;
+			if (sub.event !== 'app.startup') continue;
+
+			// Only fire during the initial boot scan (app launch), not on later refreshSession/feature toggle
+			if (!this.isBootScan) continue;
+
+			const firedKey = `${session.id}:${sub.name}`;
+			if (this.startupFiredKeys.has(firedKey)) continue;
+			this.startupFiredKeys.add(firedKey);
+
+			const event = createCueEvent('app.startup', sub.name, {
+				reason: 'system_startup',
+			});
+
+			// Check payload filter
+			if (sub.filter && !matchesFilter(event.payload, sub.filter)) {
+				this.deps.onLog(
+					'cue',
+					`[CUE] "${sub.name}" filter not matched (${describeFilter(sub.filter)})`
+				);
+				continue;
+			}
+
+			this.deps.onLog('cue', `[CUE] "${sub.name}" triggered (app.startup)`);
+			state.lastTriggered = event.timestamp;
+			this.dispatchSubscription(session.id, sub, event, session.name);
 		}
 
 		this.sessions.set(session.id, state);

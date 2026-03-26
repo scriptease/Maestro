@@ -31,6 +31,7 @@ import { SessionsTable } from './SessionsTable';
 import { ActiveRunsList } from './ActiveRunsList';
 import { ActivityLog } from './ActivityLog';
 import { buildSubscriptionPipelineMap } from './cueModalUtils';
+import { notifyToast } from '../../stores/notificationStore';
 
 type CueModalTab = 'dashboard' | 'pipeline';
 
@@ -99,6 +100,17 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 			} else {
 				await enable();
 			}
+		} catch (err) {
+			notifyToast({
+				type: 'error',
+				title: 'Cue',
+				message:
+					err instanceof Error
+						? err.message
+						: isEnabled
+							? 'Failed to disable Cue engine'
+							: 'Failed to enable Cue engine',
+			});
 		} finally {
 			setToggling(false);
 		}
