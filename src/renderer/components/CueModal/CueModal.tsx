@@ -104,7 +104,12 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 			notifyToast({
 				type: 'error',
 				title: 'Cue',
-				message: err instanceof Error ? err.message : 'Failed to enable Cue engine',
+				message:
+					err instanceof Error
+						? err.message
+						: isEnabled
+							? 'Failed to disable Cue engine'
+							: 'Failed to enable Cue engine',
 			});
 		} finally {
 			setToggling(false);

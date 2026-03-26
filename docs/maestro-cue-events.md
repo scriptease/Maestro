@@ -10,7 +10,7 @@ Cue supports eight event types. Each type watches for a different kind of activi
 
 Fires exactly once when the Maestro application launches. Ideal for workspace setup, dependency installation, health checks, or any initialization that should happen once per session.
 
-**Required fields:** None beyond the universal `name`, `event`, and `prompt`.
+**Required fields:** None beyond the universal `name`, `event`, and either `prompt` or `prompt_file`.
 
 **Behavior:**
 

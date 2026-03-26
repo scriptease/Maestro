@@ -91,8 +91,9 @@ export class CueEngine {
 	/** Tracks "sessionId:subName" keys for app.startup subscriptions that already fired this process lifecycle.
 	 *  NOT cleared on stop() — persists across engine stop/start cycles (feature toggling). Only resets on app restart. */
 	private startupFiredKeys = new Set<string>();
-	/** Whether the engine was started as part of system boot (app launch), not a user feature toggle */
-	private isSystemBoot = false;
+	/** True only during the initial session scan inside start(true). Cleared immediately after the scan
+	 *  completes so that later refreshSession/initSession calls don't fire app.startup subs. */
+	private isBootScan = false;
 	private heartbeat: CueHeartbeat;
 	private deps: CueEngineDeps;
 
@@ -156,10 +157,10 @@ export class CueEngine {
 		if (this.enabled) return;
 
 		if (isSystemBoot) {
-			this.isSystemBoot = true;
+			this.isBootScan = true;
 		}
 
-		// Initialize Cue database and prune old events — bail if this fails
+		// Initialize Cue database and prune old events — fail gracefully so app startup is not blocked
 		try {
 			initCueDb((level, msg) => this.deps.onLog(level as MainLogLevel, msg));
 			pruneCueEvents(EVENT_PRUNE_AGE_MS);
@@ -171,7 +172,8 @@ export class CueEngine {
 			captureException(error instanceof Error ? error : new Error(String(error)), {
 				extra: { operation: 'cue.dbInit' },
 			});
-			throw error;
+			this.isBootScan = false;
+			return;
 		}
 
 		this.enabled = true;
@@ -181,6 +183,10 @@ export class CueEngine {
 		for (const session of sessions) {
 			this.initSession(session);
 		}
+
+		// Boot scan complete — clear the flag so later refreshSession/initSession
+		// calls (YAML hot-reload, auto-discovery) don't fire app.startup subs
+		this.isBootScan = false;
 
 		// Detect sleep gap from previous heartbeat
 		this.heartbeat.detectSleepAndReconcile();
@@ -695,8 +701,8 @@ export class CueEngine {
 			if (sub.agent_id && sub.agent_id !== session.id) continue;
 			if (sub.event !== 'app.startup') continue;
 
-			// Only fire on system startup (app launch), not when user toggles Cue feature on/off
-			if (!this.isSystemBoot) continue;
+			// Only fire during the initial boot scan (app launch), not on later refreshSession/feature toggle
+			if (!this.isBootScan) continue;
 
 			const firedKey = `${session.id}:${sub.name}`;
 			if (this.startupFiredKeys.has(firedKey)) continue;

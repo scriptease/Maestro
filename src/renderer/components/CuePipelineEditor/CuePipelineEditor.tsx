@@ -316,6 +316,21 @@ function CuePipelineEditorInner({
 			}
 
 			if (positionUpdates.size > 0) {
+				// Cancel any pending drag RAF and merge buffered positions so stale
+				// coordinates cannot flush after we apply the non-drag update
+				if (rafIdRef.current !== null) {
+					cancelAnimationFrame(rafIdRef.current);
+					rafIdRef.current = null;
+				}
+				if (dragBufferRef.current) {
+					for (const [id, pos] of dragBufferRef.current) {
+						if (!positionUpdates.has(id)) {
+							positionUpdates.set(id, pos);
+						}
+					}
+					dragBufferRef.current = null;
+				}
+
 				setPipelineState((prev) => {
 					const isAllPipelines = prev.selectedPipelineId === null;
 

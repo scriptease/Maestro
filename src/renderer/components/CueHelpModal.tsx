@@ -325,6 +325,8 @@ export function CueHelpContent({ theme, cueShortcutKeys }: CueHelpContentProps) 
 							- name: "Init Workspace"
 							<br />
 							{'  '}event: app.startup
+							<br />
+							{'  '}prompt: prompts/init.md
 						</div>
 						<div>
 							# Interval
