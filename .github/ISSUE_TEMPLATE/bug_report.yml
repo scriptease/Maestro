@@ -145,3 +145,15 @@ body:
       label: Logs, screenshots, or additional context
       description: Paste logs, drag in screenshots, or include links to recordings if available.
       placeholder: Include stack traces, screenshots, session context, or repo/worktree details that help us triage.
+
+  - type: textarea
+    id: advanced_environment_details
+    attributes:
+      label: Advanced environment details
+      description: Optional details that are sometimes useful for harder-to-reproduce issues.
+      placeholder: |
+        Include any of these when relevant:
+        - Node / Electron version
+        - Shell used
+        - Git repo or worktree context
+        - Remote OS details if SSH is involved

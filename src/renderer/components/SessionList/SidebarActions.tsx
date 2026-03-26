@@ -48,7 +48,10 @@ export const SidebarActions = memo(function SidebarActions({
 			</button>
 
 			{leftSidebarOpen && (
-				<div className="flex-1 grid gap-2" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+				<div
+					className="flex-1 grid gap-2"
+					style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
+				>
 					<button
 						type="button"
 						onClick={addNewSession}
