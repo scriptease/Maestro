@@ -54,7 +54,9 @@ export function useFilePreviewSearch({
 	onSearchQueryChange,
 }: UseFilePreviewSearchParams): UseFilePreviewSearchReturn {
 	// Search state - use initialSearchQuery if provided, and notify parent of changes
-	const [internalSearchQuery, setInternalSearchQuery] = useState(initialSearchQuery ?? '');
+	const [internalSearchQuery, setInternalSearchQuery] = useState(
+		(initialSearchQuery ?? '').slice(0, MAX_SEARCH_QUERY_LENGTH)
+	);
 	// Wrapper to update state and notify parent
 	const setSearchQuery = useCallback(
 		(query: string) => {
@@ -211,12 +213,16 @@ export function useFilePreviewSearch({
 				}
 			}
 
-			// Update match count
+			// Update match count and sync current index
 			setTotalMatches(allRanges.length);
 
 			// Create highlights
 			if (allRanges.length > 0) {
-				const targetIndex = Math.max(0, Math.min(currentMatchIndex, allRanges.length - 1));
+				const targetIndex =
+					currentMatchIndex < 0 ? 0 : Math.min(currentMatchIndex, allRanges.length - 1);
+				if (targetIndex !== currentMatchIndex) {
+					setCurrentMatchIndex(targetIndex);
+				}
 
 				// Create highlight for all matches (yellow)
 				const allHighlight = new (window as any).Highlight(...allRanges);
@@ -244,6 +250,7 @@ export function useFilePreviewSearch({
 					scrollParent.scrollTo({ top: Math.max(0, scrollTop), behavior: 'smooth' });
 				}
 			} else {
+				setCurrentMatchIndex(-1);
 				(CSS as any).highlights.delete('search-results');
 				(CSS as any).highlights.delete('search-current');
 			}

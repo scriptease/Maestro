@@ -150,7 +150,7 @@ export const formatFileSize = (bytes: number): string => {
 	if (bytes <= 0) return '0 B';
 	const k = 1024;
 	const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-	const i = Math.floor(Math.log(bytes) / Math.log(k));
+	const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
 	return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 };
 
@@ -176,7 +176,7 @@ export const countMarkdownTasks = (content: string): { open: number; closed: num
 	let closed = 0;
 
 	for (const line of lines) {
-		if (/^(`{3,}|~{3,})/.test(line)) {
+		if (/^ {0,3}(`{3,}|~{3,})/.test(line)) {
 			inCodeFence = !inCodeFence;
 			continue;
 		}
@@ -197,7 +197,7 @@ export const extractHeadings = (content: string): TocEntry[] => {
 	const slugger = new GithubSlugger();
 
 	for (const line of lines) {
-		if (/^(`{3,}|~{3,})/.test(line)) {
+		if (/^ {0,3}(`{3,}|~{3,})/.test(line)) {
 			inCodeFence = !inCodeFence;
 			continue;
 		}
@@ -244,5 +244,6 @@ export const resolveImagePath = (src: string, markdownFilePath: string): string 
 	}
 
 	const markdownDir = markdownFilePath.substring(0, markdownFilePath.lastIndexOf('/'));
+	if (!markdownDir) return normalizePosixPath(src);
 	return normalizePosixPath(`${markdownDir}/${src}`);
 };
