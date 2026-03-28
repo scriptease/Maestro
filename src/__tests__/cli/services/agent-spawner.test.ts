@@ -1165,6 +1165,33 @@ Some text with [x] in it that's not a checkbox
 			expect(result.response).toBe('Hello world');
 		});
 
+		it('should separate multiple assistant messages with newlines', async () => {
+			const resultPromise = spawnAgent('claude-code', '/project', 'prompt');
+
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			mockStdout.emit(
+				'data',
+				Buffer.from(
+					'{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"First part."}]}}\n'
+				)
+			);
+			mockStdout.emit(
+				'data',
+				Buffer.from(
+					'{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Second part."}]}}\n'
+				)
+			);
+			mockStdout.emit('data', Buffer.from('{"type":"result","result":""}\n'));
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			mockChild.emit('close', 0);
+
+			const result = await resultPromise;
+
+			expect(result.success).toBe(true);
+			expect(result.response).toBe('First part.\nSecond part.');
+		});
+
 		it('should ignore non-JSON lines', async () => {
 			const resultPromise = spawnAgent('claude-code', '/project', 'prompt');
 
