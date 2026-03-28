@@ -107,6 +107,22 @@ export const FilePreview = React.memo(
 		const [isSaving, setIsSaving] = useState(false);
 		const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false);
 		const [copyNotificationMessage, setCopyNotificationMessage] = useState('');
+		const notificationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+		// Clear notification timeout on unmount
+		useEffect(() => {
+			return () => {
+				if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
+			};
+		}, []);
+
+		const showNotification = useCallback((message: string) => {
+			setCopyNotificationMessage(message);
+			setShowCopyNotification(true);
+			if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
+			notificationTimeoutRef.current = setTimeout(() => setShowCopyNotification(false), 2000);
+		}, []);
+
 		const codeContainerRef = useRef<HTMLDivElement>(null);
 		const contentRef = useRef<HTMLDivElement>(null);
 		const containerRef = useRef<HTMLDivElement>(null);
@@ -491,18 +507,14 @@ export const FilePreview = React.memo(
 				} catch {
 					// Non-critical — worst case the banner appears briefly
 				}
-				setCopyNotificationMessage('File Saved');
-				setShowCopyNotification(true);
-				setTimeout(() => setShowCopyNotification(false), 2000);
+				showNotification('File Saved');
 			} catch (err) {
 				console.error('Failed to save file:', err);
-				setCopyNotificationMessage('Save Failed');
-				setShowCopyNotification(true);
-				setTimeout(() => setShowCopyNotification(false), 2000);
+				showNotification('Save Failed');
 			} finally {
 				setIsSaving(false);
 			}
-		}, [file, onSave, hasChanges, isSaving, editContent, sshRemoteId]);
+		}, [file, onSave, hasChanges, isSaving, editContent, sshRemoteId, showNotification]);
 
 		// Track scroll position to show/hide stats bar and report changes
 		useEffect(() => {
@@ -647,13 +659,11 @@ export const FilePreview = React.memo(
 			if (!file) return;
 			try {
 				const ok = await safeClipboardWrite(file.path);
-				setCopyNotificationMessage(ok ? 'File Path Copied to Clipboard' : 'Failed to Copy Path');
+				showNotification(ok ? 'File Path Copied to Clipboard' : 'Failed to Copy Path');
 			} catch (err) {
 				captureException(err);
-				setCopyNotificationMessage('Failed to Copy Path');
+				showNotification('Failed to Copy Path');
 			}
-			setShowCopyNotification(true);
-			setTimeout(() => setShowCopyNotification(false), 2000);
 		};
 
 		const copyContentToClipboard = async () => {
@@ -664,26 +674,20 @@ export const FilePreview = React.memo(
 					const blob = await response.blob();
 					const ok = await safeClipboardWriteBlob([new ClipboardItem({ [blob.type]: blob })]);
 					if (ok) {
-						setCopyNotificationMessage('Image Copied to Clipboard');
+						showNotification('Image Copied to Clipboard');
 					} else {
 						const fallbackOk = await safeClipboardWrite(file.content);
-						setCopyNotificationMessage(
-							fallbackOk ? 'Image URL Copied to Clipboard' : 'Failed to Copy Image'
-						);
+						showNotification(fallbackOk ? 'Image URL Copied to Clipboard' : 'Failed to Copy Image');
 					}
 				} catch (err) {
 					captureException(err);
 					const fallbackOk = await safeClipboardWrite(file.content);
-					setCopyNotificationMessage(
-						fallbackOk ? 'Image URL Copied to Clipboard' : 'Failed to Copy Image'
-					);
+					showNotification(fallbackOk ? 'Image URL Copied to Clipboard' : 'Failed to Copy Image');
 				}
 			} else {
 				const ok = await safeClipboardWrite(file.content);
-				setCopyNotificationMessage(ok ? 'Content Copied to Clipboard' : 'Failed to Copy Content');
+				showNotification(ok ? 'Content Copied to Clipboard' : 'Failed to Copy Content');
 			}
-			setShowCopyNotification(true);
-			setTimeout(() => setShowCopyNotification(false), 2000);
 		};
 
 		// Helper to check if a shortcut matches

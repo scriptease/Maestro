@@ -86,56 +86,58 @@ export const isBinaryContent = (content: string): boolean => {
 	return nonPrintableCount / sample.length > 0.1;
 };
 
+/** Known binary file extensions (module-scope Set for O(1) lookup) */
+const BINARY_EXTENSIONS = new Set([
+	// macOS/iOS specific
+	'icns',
+	'car',
+	'actool',
+	// Design files
+	'psd',
+	'ai',
+	'sketch',
+	'fig',
+	'xd',
+	// Compiled/object files
+	'o',
+	'a',
+	'so',
+	'dylib',
+	'dll',
+	'class',
+	'pyc',
+	'pyo',
+	'wasm',
+	// Database files
+	'db',
+	'sqlite',
+	'sqlite3',
+	// Fonts
+	'ttf',
+	'otf',
+	'woff',
+	'woff2',
+	'eot',
+	// Archives
+	'zip',
+	'tar',
+	'gz',
+	'7z',
+	'rar',
+	'bz2',
+	'xz',
+	'tgz',
+	// Other binary
+	'exe',
+	'bin',
+	'dat',
+	'pak',
+]);
+
 /** Check if file extension indicates a known binary format */
 export const isBinaryExtension = (filename: string): boolean => {
 	const ext = filename.split('.').pop()?.toLowerCase();
-	const binaryExtensions = [
-		// macOS/iOS specific
-		'icns',
-		'car',
-		'actool',
-		// Design files
-		'psd',
-		'ai',
-		'sketch',
-		'fig',
-		'xd',
-		// Compiled/object files
-		'o',
-		'a',
-		'so',
-		'dylib',
-		'dll',
-		'class',
-		'pyc',
-		'pyo',
-		'wasm',
-		// Database files
-		'db',
-		'sqlite',
-		'sqlite3',
-		// Fonts
-		'ttf',
-		'otf',
-		'woff',
-		'woff2',
-		'eot',
-		// Archives
-		'zip',
-		'tar',
-		'gz',
-		'7z',
-		'rar',
-		'bz2',
-		'xz',
-		'tgz',
-		// Other binary
-		'exe',
-		'bin',
-		'dat',
-		'pak',
-	];
-	return binaryExtensions.includes(ext || '');
+	return BINARY_EXTENSIONS.has(ext || '');
 };
 
 // ─── Formatting ───────────────────────────────────────────────────────────────
@@ -210,22 +212,34 @@ export const extractHeadings = (content: string): TocEntry[] => {
 	return headings;
 };
 
+/**
+ * Normalize a POSIX-style path by resolving `.` and `..` segments.
+ * Does not use Node's path module (runs in renderer).
+ */
+function normalizePosixPath(p: string): string {
+	const parts = p.split('/');
+	const resolved: string[] = [];
+	for (const part of parts) {
+		if (part === '.' || part === '') continue;
+		if (part === '..') {
+			resolved.pop();
+		} else {
+			resolved.push(part);
+		}
+	}
+	return (p.startsWith('/') ? '/' : '') + resolved.join('/');
+}
+
 /** Resolve image path relative to markdown file directory */
 export const resolveImagePath = (src: string, markdownFilePath: string): string => {
 	if (src.startsWith('data:') || src.startsWith('http://') || src.startsWith('https://')) {
 		return src;
 	}
 
-	const markdownDir = markdownFilePath.substring(0, markdownFilePath.lastIndexOf('/'));
-
 	if (src.startsWith('/')) {
 		return src;
 	}
 
-	let relativePath = src;
-	if (relativePath.startsWith('./')) {
-		relativePath = relativePath.substring(2);
-	}
-
-	return `${markdownDir}/${relativePath}`;
+	const markdownDir = markdownFilePath.substring(0, markdownFilePath.lastIndexOf('/'));
+	return normalizePosixPath(`${markdownDir}/${src}`);
 };

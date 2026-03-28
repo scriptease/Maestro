@@ -85,7 +85,7 @@ export function useFilePreviewSearch({
 	useEffect(() => {
 		if (!searchQuery.trim() || !codeContainerRef.current || isMarkdown || isImage || isCsv) {
 			setTotalMatches(0);
-			setCurrentMatchIndex(0);
+			setCurrentMatchIndex(-1);
 			matchElementsRef.current = [];
 			return;
 		}
@@ -174,7 +174,7 @@ export function useFilePreviewSearch({
 		if (!isMarkdown || markdownEditMode || !searchQuery.trim() || !markdownContainerRef.current) {
 			if (isMarkdown && !markdownEditMode) {
 				setTotalMatches(0);
-				setCurrentMatchIndex(0);
+				setCurrentMatchIndex(-1);
 				matchElementsRef.current = [];
 				// Clear any existing highlights
 				if ('highlights' in CSS) {
@@ -290,7 +290,7 @@ export function useFilePreviewSearch({
 		if (!isEditableText || !markdownEditMode || !searchQuery.trim() || !textareaRef.current) {
 			if (isEditableText && markdownEditMode) {
 				setTotalMatches(0);
-				setCurrentMatchIndex(0);
+				setCurrentMatchIndex(-1);
 			}
 			return;
 		}
@@ -308,7 +308,7 @@ export function useFilePreviewSearch({
 
 		setTotalMatches(matches.length);
 		if (matches.length === 0) {
-			setCurrentMatchIndex(0);
+			setCurrentMatchIndex(-1);
 			return;
 		}
 

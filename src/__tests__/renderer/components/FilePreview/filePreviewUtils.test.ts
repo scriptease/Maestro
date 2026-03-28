@@ -268,10 +268,14 @@ describe('filePreviewUtils', () => {
 			);
 		});
 
-		it('handles ../ paths by concatenation', () => {
+		it('resolves ../ paths by normalization', () => {
 			expect(resolveImagePath('../assets/img.png', '/project/docs/readme.md')).toBe(
-				'/project/docs/../assets/img.png'
+				'/project/assets/img.png'
 			);
+		});
+
+		it('resolves deeply nested ../ paths', () => {
+			expect(resolveImagePath('../../img.png', '/a/b/c/readme.md')).toBe('/a/img.png');
 		});
 	});
 
