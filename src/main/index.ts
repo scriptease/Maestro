@@ -86,6 +86,7 @@ import {
 } from './group-chat/group-chat-router';
 import { createSshRemoteStoreAdapter } from './utils/ssh-remote-resolver';
 import { updateParticipant, loadGroupChat, updateGroupChat } from './group-chat/group-chat-storage';
+import { stopSessionCleanup } from './group-chat/group-chat-moderator';
 import { needsSessionRecovery, initiateSessionRecovery } from './group-chat/session-recovery';
 import { initializeSessionStorages } from './storage';
 import { initializeOutputParsers } from './parsers';
@@ -633,6 +634,8 @@ const quitHandler = createQuitHandler({
 			cueEngine.stop();
 		}
 	},
+	powerManager,
+	stopSessionCleanup,
 });
 quitHandler.setup();
 
