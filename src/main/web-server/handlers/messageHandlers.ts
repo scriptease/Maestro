@@ -32,7 +32,20 @@
 import path from 'path';
 import { WebSocket } from 'ws';
 import { logger } from '../../utils/logger';
-import type { AutoRunDocument, AutoRunState, WebSettings, SettingValue, GroupData, GitStatusResult, GitDiffResult, GroupChatState, CueSubscriptionInfo, CueActivityEntry, UsageDashboardData, AchievementData } from '../types';
+import type {
+	AutoRunDocument,
+	AutoRunState,
+	WebSettings,
+	SettingValue,
+	GroupData,
+	GitStatusResult,
+	GitDiffResult,
+	GroupChatState,
+	CueSubscriptionInfo,
+	CueActivityEntry,
+	UsageDashboardData,
+	AchievementData,
+} from '../types';
 
 // Logger context for all message handler logs
 const LOG_CONTEXT = 'WebServer';
@@ -137,7 +150,12 @@ export interface MessageHandlerCallbacks {
 	renameGroup: (groupId: string, name: string) => Promise<boolean>;
 	deleteGroup: (groupId: string) => Promise<boolean>;
 	moveSessionToGroup: (sessionId: string, groupId: string | null) => Promise<boolean>;
-	createSession: (name: string, toolType: string, cwd: string, groupId?: string) => Promise<{ sessionId: string } | null>;
+	createSession: (
+		name: string,
+		toolType: string,
+		cwd: string,
+		groupId?: string
+	) => Promise<{ sessionId: string } | null>;
 	deleteSession: (sessionId: string) => Promise<boolean>;
 	renameSession: (sessionId: string, newName: string) => Promise<boolean>;
 	getGitStatus: (sessionId: string) => Promise<GitStatusResult>;
@@ -1162,7 +1180,8 @@ export class WebSocketMessageHandler {
 		}
 
 		const detail = this.callbacks.getSessionDetail(sessionId);
-		const state: AutoRunState | null = (detail as any)?.autoRunState as AutoRunState | null ?? null;
+		const state: AutoRunState | null =
+			((detail as any)?.autoRunState as AutoRunState | null) ?? null;
 
 		this.send(client, {
 			type: 'auto_run_state',
@@ -1189,7 +1208,10 @@ export class WebSocketMessageHandler {
 		}
 
 		if (!this.isValidFilename(filename)) {
-			this.sendError(client, 'Invalid filename: must not contain path separators or traversal sequences');
+			this.sendError(
+				client,
+				'Invalid filename: must not contain path separators or traversal sequences'
+			);
 			return;
 		}
 
@@ -1237,7 +1259,10 @@ export class WebSocketMessageHandler {
 		}
 
 		if (!this.isValidFilename(filename)) {
-			this.sendError(client, 'Invalid filename: must not contain path separators or traversal sequences');
+			this.sendError(
+				client,
+				'Invalid filename: must not contain path separators or traversal sequences'
+			);
 			return;
 		}
 
@@ -1395,7 +1420,10 @@ export class WebSocketMessageHandler {
 		}
 
 		if (!toolType || !WebSocketMessageHandler.VALID_AGENT_TYPES.has(toolType)) {
-			this.sendError(client, `Invalid toolType. Must be one of: ${[...WebSocketMessageHandler.VALID_AGENT_TYPES].join(', ')}`);
+			this.sendError(
+				client,
+				`Invalid toolType. Must be one of: ${[...WebSocketMessageHandler.VALID_AGENT_TYPES].join(', ')}`
+			);
 			return;
 		}
 

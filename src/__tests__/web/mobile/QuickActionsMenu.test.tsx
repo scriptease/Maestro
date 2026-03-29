@@ -490,7 +490,9 @@ describe('QuickActionsMenu', () => {
 			const { rerender } = render(<QuickActionsMenu {...defaultProps} />);
 			expect(screen.getByText('Go to Home')).toBeInTheDocument();
 
-			const newActions = [makeAction({ id: 'new-action', label: 'New Action', category: 'Navigation' })];
+			const newActions = [
+				makeAction({ id: 'new-action', label: 'New Action', category: 'Navigation' }),
+			];
 			rerender(<QuickActionsMenu {...defaultProps} actions={newActions} />);
 			expect(screen.getByText('New Action')).toBeInTheDocument();
 			expect(screen.queryByText('Go to Home')).not.toBeInTheDocument();

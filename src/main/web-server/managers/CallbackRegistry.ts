@@ -363,7 +363,12 @@ export class CallbackRegistry {
 		return this.callbacks.moveSessionToGroup(sessionId, groupId);
 	}
 
-	async createSession(name: string, toolType: string, cwd: string, groupId?: string): Promise<{ sessionId: string } | null> {
+	async createSession(
+		name: string,
+		toolType: string,
+		cwd: string,
+		groupId?: string
+	): Promise<{ sessionId: string } | null> {
 		if (!this.callbacks.createSession) return null;
 		return this.callbacks.createSession(name, toolType, cwd, groupId);
 	}
@@ -393,7 +398,10 @@ export class CallbackRegistry {
 		return this.callbacks.getGroupChats();
 	}
 
-	async startGroupChat(topic: string, participantIds: string[]): Promise<{ chatId: string } | null> {
+	async startGroupChat(
+		topic: string,
+		participantIds: string[]
+	): Promise<{ chatId: string } | null> {
 		if (!this.callbacks.startGroupChat) return null;
 		return this.callbacks.startGroupChat(topic, participantIds);
 	}
@@ -443,9 +451,17 @@ export class CallbackRegistry {
 		return this.callbacks.getCueActivity(sessionId, limit);
 	}
 
-	async getUsageDashboard(timeRange: 'day' | 'week' | 'month' | 'all'): Promise<UsageDashboardData> {
+	async getUsageDashboard(
+		timeRange: 'day' | 'week' | 'month' | 'all'
+	): Promise<UsageDashboardData> {
 		if (!this.callbacks.getUsageDashboard) {
-			return { totalTokensIn: 0, totalTokensOut: 0, totalCost: 0, sessionBreakdown: [], dailyUsage: [] };
+			return {
+				totalTokensIn: 0,
+				totalTokensOut: 0,
+				totalCost: 0,
+				sessionBreakdown: [],
+				dailyUsage: [],
+			};
 		}
 		return this.callbacks.getUsageDashboard(timeRange);
 	}

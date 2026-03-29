@@ -672,10 +672,12 @@ export function useRemoteIntegration(deps: UseRemoteIntegrationDeps): UseRemoteI
 
 					// Extract changed file paths from diff output
 					const fileMatches = diff.match(/^diff --git a\/.+ b\/(.+)$/gm) || [];
-					const files = fileMatches.map((line: string) => {
-						const match = line.match(/^diff --git a\/.+ b\/(.+)$/);
-						return match ? match[1] : '';
-					}).filter(Boolean);
+					const files = fileMatches
+						.map((line: string) => {
+							const match = line.match(/^diff --git a\/.+ b\/(.+)$/);
+							return match ? match[1] : '';
+						})
+						.filter(Boolean);
 
 					window.maestro.process.sendRemoteGetGitDiffResponse(responseChannel, {
 						diff,
@@ -698,7 +700,13 @@ export function useRemoteIntegration(deps: UseRemoteIntegrationDeps): UseRemoteI
 	// These dispatch CustomEvents for App.tsx to handle via existing session/group management hooks
 	useEffect(() => {
 		const unsubscribeCreateSession = window.maestro.process.onRemoteCreateSession(
-			(name: string, toolType: string, cwd: string, groupId: string | undefined, responseChannel: string) => {
+			(
+				name: string,
+				toolType: string,
+				cwd: string,
+				groupId: string | undefined,
+				responseChannel: string
+			) => {
 				window.dispatchEvent(
 					new CustomEvent('maestro:remoteCreateSession', {
 						detail: { name, toolType, cwd, groupId, responseChannel },
@@ -747,15 +755,13 @@ export function useRemoteIntegration(deps: UseRemoteIntegrationDeps): UseRemoteI
 			}
 		);
 
-		const unsubscribeDeleteGroup = window.maestro.process.onRemoteDeleteGroup(
-			(groupId: string) => {
-				window.dispatchEvent(
-					new CustomEvent('maestro:remoteDeleteGroup', {
-						detail: { groupId },
-					})
-				);
-			}
-		);
+		const unsubscribeDeleteGroup = window.maestro.process.onRemoteDeleteGroup((groupId: string) => {
+			window.dispatchEvent(
+				new CustomEvent('maestro:remoteDeleteGroup', {
+					detail: { groupId },
+				})
+			);
+		});
 
 		const unsubscribeMoveSessionToGroup = window.maestro.process.onRemoteMoveSessionToGroup(
 			(sessionId: string, groupId: string | null, responseChannel: string) => {

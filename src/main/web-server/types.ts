@@ -475,10 +475,7 @@ export type CreateSessionCallback = (
 export type DeleteSessionCallback = (sessionId: string) => Promise<boolean>;
 export type RenameSessionCallback = (sessionId: string, newName: string) => Promise<boolean>;
 export type GetAutoRunDocsCallback = (sessionId: string) => Promise<AutoRunDocument[]>;
-export type GetAutoRunDocContentCallback = (
-	sessionId: string,
-	filename: string
-) => Promise<string>;
+export type GetAutoRunDocContentCallback = (sessionId: string, filename: string) => Promise<string>;
 export type SaveAutoRunDocCallback = (
 	sessionId: string,
 	filename: string,
@@ -525,7 +522,10 @@ export interface GroupChatState {
 // Group Chat Callback Types
 // =============================================================================
 
-export type StartGroupChatCallback = (topic: string, participantIds: string[]) => Promise<{ chatId: string } | null>;
+export type StartGroupChatCallback = (
+	topic: string,
+	participantIds: string[]
+) => Promise<{ chatId: string } | null>;
 export type GetGroupChatStateCallback = (chatId: string) => Promise<GroupChatState | null>;
 export type StopGroupChatCallback = (chatId: string) => Promise<boolean>;
 export type SendGroupChatMessageCallback = (chatId: string, message: string) => Promise<boolean>;
@@ -535,8 +535,14 @@ export type GetGroupChatsCallback = () => Promise<GroupChatState[]>;
 // Context Management Callback Types
 // =============================================================================
 
-export type MergeContextCallback = (sourceSessionId: string, targetSessionId: string) => Promise<boolean>;
-export type TransferContextCallback = (sourceSessionId: string, targetSessionId: string) => Promise<boolean>;
+export type MergeContextCallback = (
+	sourceSessionId: string,
+	targetSessionId: string
+) => Promise<boolean>;
+export type TransferContextCallback = (
+	sourceSessionId: string,
+	targetSessionId: string
+) => Promise<boolean>;
 export type SummarizeContextCallback = (sessionId: string) => Promise<boolean>;
 
 // =============================================================================
@@ -575,8 +581,14 @@ export interface CueActivityEntry {
 // =============================================================================
 
 export type GetCueSubscriptionsCallback = (sessionId?: string) => Promise<CueSubscriptionInfo[]>;
-export type ToggleCueSubscriptionCallback = (subscriptionId: string, enabled: boolean) => Promise<boolean>;
-export type GetCueActivityCallback = (sessionId?: string, limit?: number) => Promise<CueActivityEntry[]>;
+export type ToggleCueSubscriptionCallback = (
+	subscriptionId: string,
+	enabled: boolean
+) => Promise<boolean>;
+export type GetCueActivityCallback = (
+	sessionId?: string,
+	limit?: number
+) => Promise<CueActivityEntry[]>;
 
 // =============================================================================
 // Usage Dashboard Types
@@ -617,5 +629,7 @@ export interface AchievementData {
 // Usage Dashboard Callback Types
 // =============================================================================
 
-export type GetUsageDashboardCallback = (timeRange: 'day' | 'week' | 'month' | 'all') => Promise<UsageDashboardData>;
+export type GetUsageDashboardCallback = (
+	timeRange: 'day' | 'week' | 'month' | 'all'
+) => Promise<UsageDashboardData>;
 export type GetAchievementsCallback = () => Promise<AchievementData[]>;
