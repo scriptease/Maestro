@@ -821,11 +821,7 @@ function MoveToGroupSheet({
 function findParentSession(session: Session, sessions: Session[]): Session | null {
 	// If parentSessionId is set, use it directly
 	if (session.parentSessionId) {
-		const parent = sessions.find((s) => s.id === session.parentSessionId) || null;
-		console.log(
-			`[findParentSession] ${session.name}: parentSessionId=${session.parentSessionId}, found=${parent?.name || 'null'}`
-		);
-		return parent;
+		return sessions.find((s) => s.id === session.parentSessionId) || null;
 	}
 
 	// Try to infer parent from path patterns
@@ -833,35 +829,21 @@ function findParentSession(session: Session, sessions: Session[]): Session | nul
 
 	// Check for worktree path patterns: ProjectName-WorkTrees/branch or ProjectNameWorkTrees/branch
 	const worktreeMatch = cwd.match(/^(.+?)[-]?WorkTrees[\/\\]([^\/\\]+)/i);
-	console.log(
-		`[findParentSession] ${session.name}: cwd=${cwd}, worktreeMatch=${JSON.stringify(worktreeMatch)}`
-	);
 
 	if (worktreeMatch) {
 		const basePath = worktreeMatch[1];
-		console.log(`[findParentSession] ${session.name}: basePath=${basePath}`);
-
-		// Log all potential parents
-		const potentialParents = sessions.filter((s) => s.id !== session.id && !s.parentSessionId);
-		console.log(
-			`[findParentSession] ${session.name}: potential parents:`,
-			potentialParents.map((s) => ({ name: s.name, cwd: s.cwd }))
-		);
 
 		// Find a session whose cwd matches the base path
-		const parent = sessions.find(
-			(s) =>
-				s.id !== session.id &&
-				!s.parentSessionId && // Not itself a worktree child
-				(s.cwd === basePath ||
-					s.cwd.startsWith(basePath + '/') ||
-					s.cwd.startsWith(basePath + '\\'))
+		return (
+			sessions.find(
+				(s) =>
+					s.id !== session.id &&
+					!s.parentSessionId && // Not itself a worktree child
+					(s.cwd === basePath ||
+						s.cwd.startsWith(basePath + '/') ||
+						s.cwd.startsWith(basePath + '\\'))
+			) || null
 		);
-		if (parent) {
-			console.log(`[findParentSession] ${session.name}: FOUND parent=${parent.name}`);
-			return parent;
-		}
-		console.log(`[findParentSession] ${session.name}: NO parent found for basePath=${basePath}`);
 	}
 
 	return null;

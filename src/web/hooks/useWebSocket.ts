@@ -118,6 +118,8 @@ export type ServerMessageType =
 	| 'active_session_changed'
 	| 'session_output'
 	| 'session_exit'
+	| 'session_live'
+	| 'session_offline'
 	| 'user_input'
 	| 'theme'
 	| 'custom_commands'
@@ -129,6 +131,10 @@ export type ServerMessageType =
 	| 'tabs_changed'
 	| 'group_chat_message'
 	| 'group_chat_state_change'
+	| 'context_operation_progress'
+	| 'context_operation_complete'
+	| 'cue_activity_event'
+	| 'cue_subscriptions_changed'
 	| 'pong'
 	| 'subscribed'
 	| 'echo'
@@ -714,11 +720,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 					return;
 				}
 
-				// Debug: Log all incoming messages (not just session_output)
-				console.log(
-					`[WebSocket] Message received: type=${message.type}`,
-					message.type === 'session_output' ? message : ''
-				);
+				// Log all incoming messages for debugging
+				webLogger.debug(`Message received: type=${message.type}`, 'WebSocket');
 
 				// Call the generic message handler
 				handlersRef.current?.onMessage?.(message);
@@ -808,8 +811,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 						// Dedupe using message ID if available
 						if (outputMsg.msgId) {
 							if (seenMsgIdsRef.current.has(outputMsg.msgId)) {
-								console.log(
-									`[WebSocket] DEDUPE: Skipping duplicate session_output msgId=${outputMsg.msgId}`
+								webLogger.debug(
+									`DEDUPE: Skipping duplicate session_output msgId=${outputMsg.msgId}`,
+									'WebSocket'
 								);
 								break;
 							}
@@ -820,8 +824,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 								seenMsgIdsRef.current = new Set(idsArray.slice(-500));
 							}
 						}
-						console.log(
-							`[WebSocket] Received session_output: msgId=${outputMsg.msgId || 'none'}, session=${outputMsg.sessionId}, tabId=${outputMsg.tabId || 'none'}, source=${outputMsg.source}, dataLen=${outputMsg.data?.length || 0}, hasHandler=${!!handlersRef.current?.onSessionOutput}`
+						webLogger.debug(
+							`Received session_output: msgId=${outputMsg.msgId || 'none'}, session=${outputMsg.sessionId}, tabId=${outputMsg.tabId || 'none'}, source=${outputMsg.source}, dataLen=${outputMsg.data?.length || 0}`,
+							'WebSocket'
 						);
 						handlersRef.current?.onSessionOutput?.(
 							outputMsg.sessionId,

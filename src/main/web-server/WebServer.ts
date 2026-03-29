@@ -639,8 +639,10 @@ export class WebServer {
 				this.callbackRegistry.refreshFileTree(sessionId),
 			refreshAutoRunDocs: async (sessionId: string) =>
 				this.callbackRegistry.refreshAutoRunDocs(sessionId),
-			configureAutoRun: async (sessionId: string, config: any) =>
-				this.callbackRegistry.configureAutoRun(sessionId, config),
+			configureAutoRun: async (
+				sessionId: string,
+				config: Parameters<CallbackRegistry['configureAutoRun']>[1]
+			) => this.callbackRegistry.configureAutoRun(sessionId, config),
 			getSessions: () => this.callbackRegistry.getSessions(),
 			getLiveSessionInfo: (sessionId: string) =>
 				this.liveSessionManager.getLiveSessionInfo(sessionId),
