@@ -48,6 +48,14 @@ export function AutoRunSetupSheet({
 		setTimeout(() => onClose(), 300);
 	}, [onClose]);
 
+	// Reinitialize draft when sessionId or documents change
+	useEffect(() => {
+		setSelectedFiles(new Set(documents.map((d) => d.filename)));
+		setPrompt('');
+		setLoopEnabled(false);
+		setMaxLoops(3);
+	}, [_sessionId, documents]);
+
 	// Animate in on mount
 	useEffect(() => {
 		requestAnimationFrame(() => setIsVisible(true));

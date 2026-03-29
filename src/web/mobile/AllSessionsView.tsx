@@ -179,16 +179,22 @@ function MobileSessionCard({
 	const handleRenameKeyDown = useCallback(
 		(e: React.KeyboardEvent) => {
 			if (e.key === 'Enter') {
+				e.stopPropagation();
+				e.preventDefault();
 				onRenameConfirm();
 			} else if (e.key === 'Escape') {
+				e.stopPropagation();
+				e.preventDefault();
 				onRenameCancel();
 			}
 		},
 		[onRenameConfirm, onRenameCancel]
 	);
 
+	const CardContainer = isRenaming ? 'div' : 'button';
+
 	return (
-		<button
+		<CardContainer
 			onClick={handleClick}
 			onTouchStart={handleTouchStart}
 			onTouchEnd={handleTouchEnd}
@@ -332,7 +338,7 @@ function MobileSessionCard({
 			>
 				{truncatePath(session.cwd, 40)}
 			</div>
-		</button>
+		</CardContainer>
 	);
 }
 

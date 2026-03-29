@@ -81,16 +81,16 @@ export function ContextManagementSheet({
 		requestAnimationFrame(() => setIsVisible(true));
 	}, []);
 
-	// Close on escape key
+	// Close on escape key (but not during execution)
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') {
+			if (e.key === 'Escape' && executionState !== 'executing') {
 				handleClose();
 			}
 		};
 		document.addEventListener('keydown', handleKeyDown);
 		return () => document.removeEventListener('keydown', handleKeyDown);
-	}, [handleClose]);
+	}, [handleClose, executionState]);
 
 	// Cleanup timers on unmount
 	useEffect(() => {

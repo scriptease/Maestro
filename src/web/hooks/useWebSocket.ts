@@ -706,7 +706,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 					const pending = pendingRequestsRef.current.get(requestId)!;
 					clearTimeout(pending.timer);
 					pendingRequestsRef.current.delete(requestId);
-					pending.resolve(message);
+					if ((message as any).type === 'error') {
+						pending.reject(new Error((message as any).message ?? 'Server error'));
+					} else {
+						pending.resolve(message);
+					}
 					return;
 				}
 

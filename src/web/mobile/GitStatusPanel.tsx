@@ -220,8 +220,10 @@ export function GitStatusPanel({ sessionId, gitStatus, onViewDiff }: GitStatusPa
 
 	// Categorize files
 	const staged = status?.files.filter((f) => f.staged) ?? [];
-	const modified = status?.files.filter((f) => !f.staged && f.status !== '?') ?? [];
-	const untracked = status?.files.filter((f) => !f.staged && f.status === '?') ?? [];
+	const modified =
+		status?.files.filter((f) => !f.staged && f.status.trim().charAt(0) !== '?') ?? [];
+	const untracked =
+		status?.files.filter((f) => !f.staged && f.status.trim().charAt(0) === '?') ?? [];
 
 	const isClean = status !== null && status.files.length === 0;
 

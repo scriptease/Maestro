@@ -610,7 +610,9 @@ export function useRemoteIntegration(deps: UseRemoteIntegrationDeps): UseRemoteI
 
 					const files = statusLines.map((line: string) => {
 						const status = line.substring(0, 2);
-						const filePath = line.substring(3).split(' -> ')[0];
+						const pathField = line.substring(3);
+						const renameParts = pathField.split(' -> ');
+						const filePath = renameParts[renameParts.length - 1] || pathField;
 						// Staged if index column (first char) is not space or ?
 						const staged = status[0] !== ' ' && status[0] !== '?';
 						return { path: filePath, status: status.trim(), staged };

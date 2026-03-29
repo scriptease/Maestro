@@ -86,19 +86,20 @@ export function useMobileKeyboardHandler(deps: UseMobileKeyboardHandlerDeps): vo
 		const handleKeyDown = (e: KeyboardEvent) => {
 			// Cmd+K / Ctrl+K: Open command palette
 			if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-				e.preventDefault();
-				if (isCommandPaletteOpen) {
-					onCloseCommandPalette?.();
-				} else {
-					onOpenCommandPalette?.();
+				if (isCommandPaletteOpen && onCloseCommandPalette) {
+					e.preventDefault();
+					onCloseCommandPalette();
+				} else if (onOpenCommandPalette) {
+					e.preventDefault();
+					onOpenCommandPalette();
 				}
 				return;
 			}
 
 			// Escape: Close command palette if open
-			if (e.key === 'Escape' && isCommandPaletteOpen) {
+			if (e.key === 'Escape' && isCommandPaletteOpen && onCloseCommandPalette) {
 				e.preventDefault();
-				onCloseCommandPalette?.();
+				onCloseCommandPalette();
 				return;
 			}
 

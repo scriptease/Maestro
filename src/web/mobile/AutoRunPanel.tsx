@@ -214,10 +214,11 @@ export function AutoRunPanel({
 	}, [onClose]);
 
 	const isRunning = autoRunState?.isRunning ?? false;
-	const totalTasks = autoRunState?.totalTasks ?? 0;
+	const totalTasks = autoRunState?.totalTasks;
 	const completedTasks = autoRunState?.completedTasks ?? 0;
 	const currentTaskIndex = autoRunState?.currentTaskIndex ?? 0;
-	const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+	const progress =
+		totalTasks != null && totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 	const totalDocs = autoRunState?.totalDocuments;
 	const currentDocIndex = autoRunState?.currentDocumentIndex;
 
@@ -371,9 +372,11 @@ export function AutoRunPanel({
 								fontWeight: 500,
 							}}
 						>
-							<span>
-								Task {currentTaskIndex + 1}/{totalTasks}
-							</span>
+							{totalTasks != null && totalTasks > 0 && (
+								<span>
+									Task {currentTaskIndex + 1}/{totalTasks}
+								</span>
+							)}
 							{totalDocs != null && currentDocIndex != null && totalDocs > 1 && (
 								<span>
 									Doc {currentDocIndex + 1}/{totalDocs}

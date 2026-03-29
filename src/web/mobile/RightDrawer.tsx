@@ -57,7 +57,7 @@ const TABS: { id: RightDrawerTab; label: string }[] = [
  */
 export function RightDrawer({
 	sessionId,
-	activeTab = 'files',
+	activeTab = 'history',
 	autoRunState,
 	gitStatus,
 	onClose,

@@ -121,6 +121,10 @@ export function useSettings(
 
 			try {
 				const response = await sendRequest<{ success?: boolean }>('set_setting', { key, value });
+				if (!response.success) {
+					// Rollback on explicit server rejection
+					if (prev) setSettings(prev);
+				}
 				return response.success ?? false;
 			} catch {
 				// Rollback on failure
