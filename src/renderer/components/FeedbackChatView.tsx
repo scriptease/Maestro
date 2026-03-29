@@ -795,7 +795,7 @@ export function FeedbackChatView({ theme, onCancel, onWidthChange }: FeedbackCha
 
 	// --- Chat + Submitting ---
 	return (
-		<div className="flex flex-col h-full relative feedback-chat">
+		<div className="flex flex-col h-full min-h-0 relative feedback-chat">
 			{/* Prose styles for markdown rendering */}
 			<style>{proseStyles}</style>
 
