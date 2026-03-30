@@ -236,8 +236,9 @@ const ABSOLUTE_PATH_PATTERN = new RegExp(
 // Tilde path pattern: Starts with ~/ and contains path segments
 // Matches paths like ~/Downloads/audio/file.wav or ~/Documents/notes.md
 // Requires homeDir to expand ~ to absolute path
+// Path segments use [^\s/] to avoid matching across whitespace boundaries in running text
 const TILDE_PATH_PATTERN = new RegExp(
-	`~\\/(?:[^/\\n]+\\/)*[^/\\n]+\\.(?:${LINKABLE_EXTENSIONS})(?=\\s|$|[.,;:!?\`'"\\)\\]}>])`,
+	`~\\/(?:[^\\s/]+\\/)*[^\\s/]+\\.(?:${LINKABLE_EXTENSIONS})(?=\\s|$|[.,;:!?\`'"\\)\\]}>])`,
 	'g'
 );
 

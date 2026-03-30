@@ -672,27 +672,27 @@ describe('remarkFileLinks', () => {
 
 		it('converts tilde paths outside projectRoot to file:// links', async () => {
 			const result = await processMarkdown(
-				'See ~/Downloads/audio/compare_A.wav for the sample.',
+				'See ~/Downloads/audio/sample.wav for the sample.',
 				sampleFileTree,
 				'',
 				'/Users/pedram/Project',
 				'/Users/pedram'
 			);
 			expect(result).toContain(
-				'[~/Downloads/audio/compare_A.wav](file:///Users/pedram/Downloads/audio/compare_A.wav)'
+				'[~/Downloads/audio/sample.wav](file:///Users/pedram/Downloads/audio/sample.wav)'
 			);
 		});
 
 		it('does not convert tilde paths when homeDir is not provided', async () => {
 			const result = await processMarkdown(
-				'See ~/Downloads/audio/compare_A.wav for the sample.',
+				'See ~/Downloads/audio/sample.wav for the sample.',
 				sampleFileTree,
 				'',
 				'/Users/pedram/Project'
 			);
 			expect(result).not.toContain('file://');
 			expect(result).not.toContain('maestro-file://');
-			expect(result).toContain('~/Downloads/audio/compare_A.wav');
+			expect(result).toContain('~/Downloads/audio/sample.wav');
 		});
 
 		it('handles multiple tilde paths in same text', async () => {
