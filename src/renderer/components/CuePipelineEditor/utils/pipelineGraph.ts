@@ -233,6 +233,13 @@ export function convertToReactFlowEdges(
 
 	for (const pipeline of pipelines) {
 		const isActive = selectedPipelineId === null || pipeline.id === selectedPipelineId;
+
+		// Skip non-active pipelines entirely — their nodes are not rendered by
+		// convertToReactFlowNodes, so edges referencing them would be orphaned.
+		// React Flow may cache the "invalid" state of orphaned edges internally,
+		// causing them to not re-appear when switching back to All Pipelines view.
+		if (!isActive) continue;
+
 		const isRunning = runningPipelineIds?.has(pipeline.id) ?? false;
 
 		for (const pEdge of pipeline.edges) {

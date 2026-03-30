@@ -37,6 +37,7 @@ import { usePipelineSelection } from '../../hooks/cue/usePipelineSelection';
 import { PipelineToolbar } from './PipelineToolbar';
 import { PipelineCanvas } from './PipelineCanvas';
 import { PipelineContextMenu, type ContextMenuState } from './PipelineContextMenu';
+import { DEFAULT_EVENT_PROMPTS } from './cueEventConstants';
 
 export { validatePipelines, DEFAULT_TRIGGER_LABELS } from '../../hooks/cue/usePipelineState';
 export type { SessionInfo, ActiveRunInfo } from '../../hooks/cue/usePipelineState';
@@ -424,6 +425,7 @@ function CuePipelineEditorInner({
 				const pipeline = prev.pipelines.find((p) => p.id === sourcePipelineId);
 				if (!pipeline) return prev;
 
+				const sourceNode = pipeline.nodes.find((n) => n.id === sourceNodeId);
 				const targetNode = pipeline.nodes.find((n) => n.id === targetNodeId);
 				if (!targetNode || targetNode.type === 'trigger') return prev;
 
@@ -434,11 +436,34 @@ function CuePipelineEditorInner({
 					mode: 'pass' as const,
 				};
 
+				// Auto-populate default prompt when connecting a GitHub trigger to an agent
+				// that doesn't have a prompt yet
+				let updatedNodes = pipeline.nodes;
+				if (sourceNode?.type === 'trigger' && targetNode.type === 'agent') {
+					const triggerData = sourceNode.data as TriggerNodeData;
+					const agentData = targetNode.data as AgentNodeData;
+					const defaultPrompt = DEFAULT_EVENT_PROMPTS[triggerData.eventType];
+					const hasExistingPrompt = !!agentData.inputPrompt?.trim();
+					const hasEdgePrompts = pipeline.edges.some(
+						(e) => e.target === targetNodeId && !!e.prompt?.trim()
+					);
+
+					if (defaultPrompt && !hasExistingPrompt && !hasEdgePrompts) {
+						updatedNodes = pipeline.nodes.map((n) => {
+							if (n.id !== targetNodeId) return n;
+							return {
+								...n,
+								data: { ...n.data, inputPrompt: defaultPrompt },
+							};
+						});
+					}
+				}
+
 				return {
 					...prev,
 					pipelines: prev.pipelines.map((p) => {
 						if (p.id !== sourcePipelineId) return p;
-						return { ...p, edges: [...p.edges, newEdge] };
+						return { ...p, nodes: updatedNodes, edges: [...p.edges, newEdge] };
 					}),
 				};
 			});

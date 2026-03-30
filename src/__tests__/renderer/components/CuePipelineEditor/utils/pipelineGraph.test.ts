@@ -544,7 +544,7 @@ describe('convertToReactFlowEdges', () => {
 		expect((edges[0].data as { isActivePipeline: boolean }).isActivePipeline).toBe(true);
 	});
 
-	it('marks edges from non-selected pipeline as isActivePipeline=false', () => {
+	it('excludes edges from non-selected pipeline', () => {
 		const p1 = makePipeline('p1', {
 			nodes: [makeTrigger('t1', 'time.heartbeat'), makeAgent('a1', 'sess-1', 'Alice')],
 			edges: [makeEdge('e1', 't1', 'a1')],
@@ -554,9 +554,10 @@ describe('convertToReactFlowEdges', () => {
 			edges: [makeEdge('e2', 't2', 'a2')],
 		});
 		const edges = convertToReactFlowEdges([p1, p2], 'p2');
-		const e1 = edges.find((e) => e.id === 'p1:e1')!;
+		// Non-active pipeline edges are excluded to prevent orphaned edges
+		// (their source/target nodes are not rendered by convertToReactFlowNodes)
+		expect(edges.find((e) => e.id === 'p1:e1')).toBeUndefined();
 		const e2 = edges.find((e) => e.id === 'p2:e2')!;
-		expect((e1.data as { isActivePipeline: boolean }).isActivePipeline).toBe(false);
 		expect((e2.data as { isActivePipeline: boolean }).isActivePipeline).toBe(true);
 	});
 

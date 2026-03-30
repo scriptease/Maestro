@@ -12,6 +12,7 @@ import {
 	CUE_COLOR,
 	type PipelineNode,
 	type AgentNodeData,
+	type TriggerNodeData,
 	type CuePipeline,
 } from '../../../../shared/cue-pipeline-types';
 import { useDebouncedCallback } from '../../../hooks/utils';
@@ -98,6 +99,19 @@ export function AgentConfigPanel({
 		)
 	);
 
+	// Detect if this agent has an incoming edge from a GitHub trigger
+	const hasGitHubTrigger = agentPipelines.some((p) => {
+		const incomingEdges = p.edges.filter((e) => e.target === node.id);
+		return incomingEdges.some((e) => {
+			const sourceNode = p.nodes.find((n) => n.id === e.source);
+			if (sourceNode?.type !== 'trigger') return false;
+			const triggerData = sourceNode.data as TriggerNodeData;
+			return (
+				triggerData.eventType === 'github.pull_request' || triggerData.eventType === 'github.issue'
+			);
+		});
+	});
+
 	const outputDisabled = !hasOutgoingEdge;
 
 	return (
@@ -145,7 +159,9 @@ export function AgentConfigPanel({
 										? 'Instructions for this agent. Upstream output is auto-included via {{CUE_SOURCE_OUTPUT}}.'
 										: hasIncomingAgentEdges
 											? 'Instructions for this agent. Use {{CUE_SOURCE_OUTPUT}} to include upstream output.'
-											: 'Prompt sent when this agent receives data from the pipeline...'
+											: hasGitHubTrigger
+												? 'Use {{CUE_GH_URL}}, {{CUE_GH_NUMBER}}, {{CUE_GH_TITLE}}, {{CUE_GH_BODY}} etc. for GitHub context...'
+												: 'Prompt sent when this agent receives data from the pipeline...'
 								}
 								style={{
 									...themedInputStyle,
