@@ -1011,23 +1011,29 @@ export class CodexSessionStorage extends BaseSessionStorage {
 						}
 					}
 
-					// Handle response_item function_call (current Codex format)
-					if (entry.type === 'response_item' && entry.payload?.type === 'function_call') {
-						let argsStr = '';
+					// Handle response_item function_call / custom_tool_call (current Codex format)
+					if (
+						entry.type === 'response_item' &&
+						(entry.payload?.type === 'function_call' || entry.payload?.type === 'custom_tool_call')
+					) {
+						let parsedInput: unknown;
 						try {
-							const args = JSON.parse(entry.payload.arguments || '{}');
-							argsStr = JSON.stringify(args, null, 2);
+							parsedInput = JSON.parse(entry.payload.arguments || '{}');
 						} catch {
-							argsStr = entry.payload.arguments || '';
+							parsedInput = entry.payload.arguments || {};
 						}
 						const toolInfo = {
 							tool: entry.payload.name,
 							args: entry.payload.arguments,
+							state: {
+								status: 'running' as const,
+								input: parsedInput,
+							} as { status: string; input: unknown; output?: string },
 						};
 						messages.push({
 							type: 'assistant',
 							role: 'assistant',
-							content: `Tool: ${entry.payload.name}\n${argsStr}`,
+							content: `Tool: ${entry.payload.name}`,
 							timestamp: entry.timestamp || '',
 							uuid: entry.payload.call_id || `codex-msg-${messageIndex}`,
 							toolUse: [toolInfo],
@@ -1035,16 +1041,36 @@ export class CodexSessionStorage extends BaseSessionStorage {
 						messageIndex++;
 					}
 
-					// Handle response_item function_call_output (current Codex format)
-					if (entry.type === 'response_item' && entry.payload?.type === 'function_call_output') {
-						messages.push({
-							type: 'assistant',
-							role: 'assistant',
-							content: entry.payload.output || '[Tool result]',
-							timestamp: entry.timestamp || '',
-							uuid: entry.payload.call_id || `codex-msg-${messageIndex}`,
-						});
-						messageIndex++;
+					// Handle response_item function_call_output / custom_tool_call_output (current Codex format)
+					// Merge output into the preceding tool call message instead of creating a new message
+					if (
+						entry.type === 'response_item' &&
+						(entry.payload?.type === 'function_call_output' ||
+							entry.payload?.type === 'custom_tool_call_output')
+					) {
+						const callId = entry.payload.call_id;
+						const outputText = entry.payload.output || '';
+						// Find the matching tool call message by call_id and merge the output
+						const matchingMsg = callId
+							? messages.find((m) => m.uuid === callId && m.toolUse)
+							: undefined;
+						if (matchingMsg && Array.isArray(matchingMsg.toolUse)) {
+							const toolEntry = (matchingMsg.toolUse as any[])[0];
+							if (toolEntry?.state) {
+								toolEntry.state.status = 'completed';
+								toolEntry.state.output = outputText;
+							}
+						} else {
+							// No matching tool call found - create a standalone message
+							messages.push({
+								type: 'assistant',
+								role: 'assistant',
+								content: outputText || '[Tool result]',
+								timestamp: entry.timestamp || '',
+								uuid: callId || `codex-msg-${messageIndex}`,
+							});
+							messageIndex++;
+						}
 					}
 
 					// Handle item.completed agent_message events (legacy format)
