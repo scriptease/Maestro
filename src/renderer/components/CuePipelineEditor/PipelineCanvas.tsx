@@ -85,6 +85,7 @@ export interface PipelineCanvasProps {
 	selectedEdge: PipelineEdgeType | null;
 	selectedNodeHasOutgoingEdge: boolean;
 	hasIncomingAgentEdges: boolean;
+	incomingAgentEdgeCount: number;
 	incomingTriggerEdges: IncomingTriggerEdgeInfo[];
 	onUpdateNode: (nodeId: string, data: Partial<TriggerNodeData | AgentNodeData>) => void;
 	onUpdateEdgePrompt: (edgeId: string, prompt: string) => void;
@@ -140,6 +141,7 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 	selectedEdge,
 	selectedNodeHasOutgoingEdge,
 	hasIncomingAgentEdges,
+	incomingAgentEdgeCount,
 	incomingTriggerEdges,
 	onUpdateNode,
 	onUpdateEdgePrompt,
@@ -246,7 +248,6 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 				onDragOver={onDragOver}
 				onDrop={onDrop}
 				connectionMode={ConnectionMode.Loose}
-				fitView
 				style={{
 					backgroundColor: theme.colors.bgMain,
 				}}
@@ -301,10 +302,9 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 						alignItems: 'center',
 						gap: 12,
 						padding: '6px 14px',
-						backgroundColor: `${theme.colors.bgActivity}ee`,
+						backgroundColor: `${theme.colors.bgActivity}f5`,
 						border: `1px solid ${theme.colors.border}`,
 						borderRadius: 6,
-						backdropFilter: 'blur(8px)',
 					}}
 				>
 					{pipelines.map((p) => (
@@ -376,6 +376,7 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 							pipelines={pipelines}
 							hasOutgoingEdge={selectedNodeHasOutgoingEdge}
 							hasIncomingAgentEdges={hasIncomingAgentEdges}
+							incomingAgentEdgeCount={incomingAgentEdgeCount}
 							incomingTriggerEdges={incomingTriggerEdges}
 							onUpdateNode={onUpdateNode}
 							onUpdateEdgePrompt={onUpdateEdgePrompt}

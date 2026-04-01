@@ -26,6 +26,7 @@ interface AgentConfigPanelProps {
 	pipelines: CuePipeline[];
 	hasOutgoingEdge?: boolean;
 	hasIncomingAgentEdges?: boolean;
+	incomingAgentEdgeCount?: number;
 	incomingTriggerEdges?: IncomingTriggerEdgeInfo[];
 	onUpdateNode: (nodeId: string, data: Partial<AgentNodeData>) => void;
 	onUpdateEdgePrompt?: (edgeId: string, prompt: string) => void;
@@ -39,6 +40,7 @@ export function AgentConfigPanel({
 	pipelines,
 	hasOutgoingEdge,
 	hasIncomingAgentEdges,
+	incomingAgentEdgeCount,
 	incomingTriggerEdges,
 	onUpdateNode,
 	onUpdateEdgePrompt,
@@ -211,6 +213,62 @@ export function AgentConfigPanel({
 							}}
 						>
 							{localInputPrompt.length} chars
+						</div>
+					</div>
+				)}
+
+				{/* Fan-in Settings */}
+				{(incomingAgentEdgeCount ?? 0) > 1 && (
+					<div
+						style={{
+							padding: '8px 0',
+							borderTop: `1px solid ${theme.colors.border}`,
+							display: 'flex',
+							flexDirection: 'column',
+							gap: 6,
+						}}
+					>
+						<div style={{ fontSize: 11, fontWeight: 600, color: theme.colors.textMain }}>
+							Fan-in Settings
+						</div>
+						<div style={{ color: theme.colors.textDim, fontSize: 10 }}>
+							Waits for {incomingAgentEdgeCount} upstream agents to complete before running
+						</div>
+						<div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+							<label style={{ ...getLabelStyle(theme), flex: 1, margin: 0 }}>
+								<span style={{ fontSize: 10, marginBottom: 2, display: 'block' }}>
+									Timeout (min)
+								</span>
+								<input
+									type="number"
+									min={1}
+									value={data.fanInTimeoutMinutes ?? ''}
+									placeholder="global"
+									onChange={(e) =>
+										onUpdateNode(node.id, {
+											fanInTimeoutMinutes: e.target.value ? Number(e.target.value) : undefined,
+										} as Partial<AgentNodeData>)
+									}
+									style={{ ...getInputStyle(theme), width: '100%' }}
+								/>
+							</label>
+							<label style={{ ...getLabelStyle(theme), flex: 1, margin: 0 }}>
+								<span style={{ fontSize: 10, marginBottom: 2, display: 'block' }}>On timeout</span>
+								<select
+									value={data.fanInTimeoutOnFail ?? ''}
+									onChange={(e) =>
+										onUpdateNode(node.id, {
+											fanInTimeoutOnFail: (e.target.value ||
+												undefined) as AgentNodeData['fanInTimeoutOnFail'],
+										} as Partial<AgentNodeData>)
+									}
+									style={{ ...getInputStyle(theme), width: '100%' }}
+								>
+									<option value="">Global default</option>
+									<option value="break">Wait for all</option>
+									<option value="continue">Continue with partial</option>
+								</select>
+							</label>
 						</div>
 					</div>
 				)}
