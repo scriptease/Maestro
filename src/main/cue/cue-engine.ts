@@ -608,9 +608,11 @@ export class CueEngine {
 						fanOutIndex: i,
 					},
 				};
+				const perTargetPrompt = sub.fan_out_prompts?.[i];
+				const prompt = perTargetPrompt || sub.prompt_file || sub.prompt;
 				this.runManager.execute(
 					targetSession.id,
-					sub.prompt_file ?? sub.prompt,
+					prompt,
 					fanOutEvent,
 					sub.name,
 					sub.output_prompt,

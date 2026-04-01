@@ -32,6 +32,7 @@ import { ActiveRunsList } from './ActiveRunsList';
 import { ActivityLog } from './ActivityLog';
 import { buildSubscriptionPipelineMap } from './cueModalUtils';
 import { notifyToast } from '../../stores/notificationStore';
+import { captureException } from '../../utils/sentry';
 
 type CueModalTab = 'dashboard' | 'pipeline';
 
@@ -130,10 +131,11 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 					return;
 				}
 				if (pipelineDirtyRef.current) {
-					const confirmed = window.confirm(
-						'You have unsaved changes in the pipeline editor. Discard and close?'
+					getModalActions().showConfirmation(
+						'You have unsaved changes in the pipeline editor. Discard and close?',
+						() => onCloseRef.current()
 					);
-					if (!confirmed) return;
+					return;
 				}
 				onCloseRef.current();
 			},
@@ -203,13 +205,37 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 	}, []);
 
 	const handleRemoveCue = useCallback(
-		async (session: CueSessionStatus) => {
-			const confirmed = window.confirm(
-				`Remove Cue configuration for "${session.sessionName}"?\n\nThis will delete the cue.yaml file from this project. This cannot be undone.`
+		(session: CueSessionStatus) => {
+			getModalActions().showConfirmation(
+				`Remove Cue configuration for "${session.sessionName}"?\n\nThis will delete the cue.yaml file from this project. This cannot be undone.`,
+				async () => {
+					try {
+						await window.maestro.cue.deleteYaml(session.projectRoot);
+					} catch (err) {
+						captureException(err, {
+							extra: { context: 'handleRemoveCue', projectRoot: session.projectRoot },
+						});
+						notifyToast({
+							title: 'Failed to remove Cue configuration',
+							message: 'Could not delete cue.yaml. Check file permissions.',
+							type: 'error',
+						});
+						return;
+					}
+					try {
+						await refresh();
+					} catch (err) {
+						captureException(err, {
+							extra: { context: 'handleRemoveCue', projectRoot: session.projectRoot },
+						});
+						notifyToast({
+							title: 'Failed to refresh project',
+							message: 'Cue configuration was removed but the view could not be refreshed.',
+							type: 'error',
+						});
+					}
+				}
 			);
-			if (!confirmed) return;
-			await window.maestro.cue.deleteYaml(session.projectRoot);
-			await refresh();
 		},
 		[refresh]
 	);
@@ -217,10 +243,11 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 	// Close with unsaved changes confirmation
 	const handleCloseWithConfirm = useCallback(() => {
 		if (pipelineDirtyRef.current) {
-			const confirmed = window.confirm(
-				'You have unsaved changes in the pipeline editor. Discard and close?'
+			getModalActions().showConfirmation(
+				'You have unsaved changes in the pipeline editor. Discard and close?',
+				() => onClose()
 			);
-			if (!confirmed) return;
+			return;
 		}
 		onClose();
 	}, [onClose]);
