@@ -235,9 +235,13 @@ if (crashReportingEnabled && !isDevelopment) {
 
 			// Start memory monitoring for crash diagnostics (MAESTRO-5A/4Y)
 			// Records breadcrumbs with memory state every minute, warns above 500MB heap
-			import('./utils/sentry').then(({ startMemoryMonitoring }) => {
-				startMemoryMonitoring(500, 60000);
-			});
+			import('./utils/sentry')
+				.then(({ startMemoryMonitoring }) => {
+					startMemoryMonitoring(500, 60000);
+				})
+				.catch((err) => {
+					logger.warn('Failed to start memory monitoring', 'Startup', { error: String(err) });
+				});
 		})
 		.catch((err) => {
 			logger.warn('Failed to initialize Sentry', 'Startup', { error: String(err) });
