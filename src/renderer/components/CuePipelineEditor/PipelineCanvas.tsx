@@ -57,6 +57,7 @@ export interface PipelineCanvasProps {
 	onEdgeClick: (event: React.MouseEvent, edge: Edge) => void;
 	onPaneClick: () => void;
 	onNodeContextMenu: (event: React.MouseEvent, node: Node) => void;
+	onNodeDragStop: (event: React.MouseEvent, node: Node, nodes: Node[]) => void;
 	onDragOver: (event: React.DragEvent) => void;
 	onDrop: (event: React.DragEvent) => void;
 	// Drawers
@@ -118,6 +119,7 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 	onEdgeClick,
 	onPaneClick,
 	onNodeContextMenu,
+	onNodeDragStop,
 	onDragOver,
 	onDrop,
 	triggerDrawerOpen,
@@ -245,6 +247,7 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 				onEdgeClick={onEdgeClick}
 				onPaneClick={onPaneClick}
 				onNodeContextMenu={onNodeContextMenu}
+				onNodeDragStop={onNodeDragStop}
 				onDragOver={onDragOver}
 				onDrop={onDrop}
 				connectionMode={ConnectionMode.Loose}

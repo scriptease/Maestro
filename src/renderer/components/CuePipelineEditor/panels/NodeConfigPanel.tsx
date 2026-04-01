@@ -79,7 +79,8 @@ export function NodeConfigPanel({
 	const Icon = triggerData ? (EVENT_ICONS[triggerData.eventType] ?? Zap) : null;
 	const ExpandIcon = expanded ? ChevronsDown : ChevronsUp;
 
-	const collapsedHeight = isTrigger ? 'auto' : 240;
+	const hasFanIn = (incomingAgentEdgeCount ?? 0) > 1;
+	const collapsedHeight = isTrigger ? 'auto' : hasFanIn ? 340 : 240;
 
 	return (
 		<div

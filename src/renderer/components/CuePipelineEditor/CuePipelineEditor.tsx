@@ -306,36 +306,36 @@ function CuePipelineEditorInner({
 	stableYOffsetsRef.current = stableYOffsets;
 
 	// Apply ALL node changes (including mid-drag) to the local displayNodes
-	// so ReactFlow can render smooth dragging. Only commit final positions
-	// to pipelineState on drag end — this avoids the expensive
-	// convertToReactFlowNodes recompute on every mouse-move that caused
-	// nodes to vanish on Linux.
-	const onNodesChange: OnNodesChange = useCallback(
-		(changes: NodeChange[]) => {
-			// Let ReactFlow update the local display nodes for visual feedback
-			setDisplayNodes((nds) => applyNodeChanges(changes, nds));
+	// so ReactFlow can render smooth dragging. Position commits to the
+	// canonical pipelineState happen in onNodeDragStop instead, because
+	// ReactFlow may fire the drag-end change without a position property.
+	const onNodesChange: OnNodesChange = useCallback((changes: NodeChange[]) => {
+		setDisplayNodes((nds) => applyNodeChanges(changes, nds));
+	}, []);
 
-			// Collect drag-end position commits
-			const positionUpdates = new Map<string, { x: number; y: number }>();
-			for (const change of changes) {
-				if (change.type === 'position' && change.position && !change.dragging) {
-					positionUpdates.set(change.id, change.position);
-				}
-			}
-
-			// Nothing to commit to canonical state
-			if (positionUpdates.size === 0) return;
+	// Commit final positions to canonical pipelineState when drag ends.
+	// ReactFlow's onNodeDragStop reliably provides the final node with its
+	// position, unlike onNodesChange which may omit position on drag end.
+	const onNodeDragStop = useCallback(
+		(_event: React.MouseEvent, _node: Node, draggedNodes: Node[]) => {
+			if (draggedNodes.length === 0) return;
 
 			setPipelineState((prev) => {
 				const isAllPipelines = prev.selectedPipelineId === null;
 				const yOffsets = stableYOffsetsRef.current;
+
+				// Build a lookup from composite ID → final position
+				const finalPositions = new Map<string, { x: number; y: number }>();
+				for (const dn of draggedNodes) {
+					if (dn.position) finalPositions.set(dn.id, dn.position);
+				}
 
 				const newPipelines = prev.pipelines.map((pipeline) => {
 					const yOffset = isAllPipelines ? (yOffsets.get(pipeline.id) ?? 0) : 0;
 					return {
 						...pipeline,
 						nodes: pipeline.nodes.map((pNode) => {
-							const newPos = positionUpdates.get(`${pipeline.id}:${pNode.id}`);
+							const newPos = finalPositions.get(`${pipeline.id}:${pNode.id}`);
 							if (!newPos) return pNode;
 							return {
 								...pNode,
@@ -709,6 +709,7 @@ function CuePipelineEditorInner({
 				onEdgeClick={onEdgeClick}
 				onPaneClick={onPaneClick}
 				onNodeContextMenu={onNodeContextMenu}
+				onNodeDragStop={onNodeDragStop}
 				onDragOver={onDragOver}
 				onDrop={onDrop}
 				triggerDrawerOpen={triggerDrawerOpen}

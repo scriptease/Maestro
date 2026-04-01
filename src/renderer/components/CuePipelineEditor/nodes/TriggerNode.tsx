@@ -50,7 +50,7 @@ export const TriggerNode = memo(function TriggerNode({
 				display: 'flex',
 				flexDirection: 'row',
 				alignItems: 'stretch',
-				overflow: 'hidden',
+				overflow: 'visible',
 				cursor: 'default',
 				transition: 'border-color 0.15s, box-shadow 0.15s',
 				position: 'relative',

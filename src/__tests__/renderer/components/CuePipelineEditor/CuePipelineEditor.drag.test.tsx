@@ -2,10 +2,9 @@
  * Tests for canvas drag logic in CuePipelineEditor.
  *
  * Verifies that:
- * - During active drag (change.dragging=true), state is NOT updated
- * - On drag end (change.dragging=false), positions are committed
- * - Y-offsets are correctly subtracted in "All Pipelines" view
- * - persistLayout is called only on drag end
+ * - onNodesChange never commits to pipelineState (visual only)
+ * - onNodeDragStop commits final positions to pipelineState
+ * - persistLayout is called only on drag stop
  * - Multiple nodes dragged simultaneously all commit
  */
 
@@ -13,16 +12,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import React from 'react';
 
-// Capture the onNodesChange prop passed to ReactFlow
+// Capture props passed to PipelineCanvas
 let capturedOnNodesChange: any = null;
+let capturedOnNodeDragStop: any = null;
 
 vi.mock('reactflow', () => {
-	const MockReactFlow = (props: any) => {
-		capturedOnNodesChange = props.onNodesChange;
-		return <div data-testid="react-flow">{props.children}</div>;
-	};
 	return {
-		default: MockReactFlow,
+		default: (props: any) => <div data-testid="react-flow">{props.children}</div>,
 		ReactFlowProvider: ({ children }: any) => <>{children}</>,
 		useReactFlow: () => ({
 			fitView: vi.fn(),
@@ -40,10 +36,10 @@ vi.mock('reactflow', () => {
 	};
 });
 
-// Mock all child components
 vi.mock('../../../../renderer/components/CuePipelineEditor/PipelineCanvas', () => ({
 	PipelineCanvas: React.memo((props: any) => {
 		capturedOnNodesChange = props.onNodesChange;
+		capturedOnNodeDragStop = props.onNodeDragStop;
 		return <div data-testid="pipeline-canvas" />;
 	}),
 }));
@@ -54,7 +50,6 @@ vi.mock('../../../../renderer/components/CuePipelineEditor/PipelineContextMenu',
 	PipelineContextMenu: () => null,
 }));
 
-// Mock hooks
 const mockSetPipelineState = vi.fn();
 const mockPersistLayout = vi.fn();
 
@@ -170,6 +165,7 @@ describe('CuePipelineEditor drag logic', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		capturedOnNodesChange = null;
+		capturedOnNodeDragStop = null;
 	});
 
 	function renderEditor() {
@@ -184,79 +180,62 @@ describe('CuePipelineEditor drag logic', () => {
 		);
 	}
 
-	it('does not update state during active drag (dragging=true)', () => {
+	it('onNodesChange never commits to pipelineState', () => {
 		renderEditor();
 		expect(capturedOnNodesChange).toBeTruthy();
 
+		// Mid-drag change
 		capturedOnNodesChange([
-			{
-				type: 'position',
-				id: 'p1:agent-1',
-				position: { x: 300, y: 50 },
-				dragging: true,
-			},
+			{ type: 'position', id: 'p1:agent-1', position: { x: 300, y: 50 }, dragging: true },
 		]);
-
 		expect(mockSetPipelineState).not.toHaveBeenCalled();
-		expect(mockPersistLayout).not.toHaveBeenCalled();
-	});
 
-	it('commits position on drag end (dragging=false)', () => {
-		renderEditor();
-		expect(capturedOnNodesChange).toBeTruthy();
-
+		// Drag-end change
 		capturedOnNodesChange([
-			{
-				type: 'position',
-				id: 'p1:agent-1',
-				position: { x: 350, y: 100 },
-				dragging: false,
-			},
+			{ type: 'position', id: 'p1:agent-1', position: { x: 350, y: 100 }, dragging: false },
 		]);
+		expect(mockSetPipelineState).not.toHaveBeenCalled();
 
-		expect(mockSetPipelineState).toHaveBeenCalledTimes(1);
-		expect(mockPersistLayout).toHaveBeenCalledTimes(1);
-	});
-
-	it('does not update state when no position changes', () => {
-		renderEditor();
-		expect(capturedOnNodesChange).toBeTruthy();
-
+		// Selection change
 		capturedOnNodesChange([{ type: 'select', id: 'p1:agent-1', selected: true }]);
-
 		expect(mockSetPipelineState).not.toHaveBeenCalled();
 		expect(mockPersistLayout).not.toHaveBeenCalled();
 	});
 
-	it('ignores position changes without position data', () => {
+	it('onNodeDragStop commits final positions to pipelineState', () => {
 		renderEditor();
-		expect(capturedOnNodesChange).toBeTruthy();
+		expect(capturedOnNodeDragStop).toBeTruthy();
 
-		capturedOnNodesChange([{ type: 'position', id: 'p1:agent-1', dragging: false }]);
-
-		expect(mockSetPipelineState).not.toHaveBeenCalled();
-	});
-
-	it('commits multiple nodes dragged simultaneously', () => {
-		renderEditor();
-		expect(capturedOnNodesChange).toBeTruthy();
-
-		capturedOnNodesChange([
-			{
-				type: 'position',
-				id: 'p1:trigger-1',
-				position: { x: 50, y: 10 },
-				dragging: false,
-			},
-			{
-				type: 'position',
-				id: 'p1:agent-1',
-				position: { x: 350, y: 100 },
-				dragging: false,
-			},
-		]);
+		const mockEvent = {} as React.MouseEvent;
+		const draggedNode = { id: 'p1:agent-1', position: { x: 350, y: 100 } };
+		capturedOnNodeDragStop(mockEvent, draggedNode, [draggedNode]);
 
 		expect(mockSetPipelineState).toHaveBeenCalledTimes(1);
 		expect(mockPersistLayout).toHaveBeenCalledTimes(1);
+	});
+
+	it('onNodeDragStop commits multiple nodes simultaneously', () => {
+		renderEditor();
+		expect(capturedOnNodeDragStop).toBeTruthy();
+
+		const mockEvent = {} as React.MouseEvent;
+		const nodes = [
+			{ id: 'p1:trigger-1', position: { x: 50, y: 10 } },
+			{ id: 'p1:agent-1', position: { x: 350, y: 100 } },
+		];
+		capturedOnNodeDragStop(mockEvent, nodes[0], nodes);
+
+		expect(mockSetPipelineState).toHaveBeenCalledTimes(1);
+		expect(mockPersistLayout).toHaveBeenCalledTimes(1);
+	});
+
+	it('onNodeDragStop does nothing with empty nodes', () => {
+		renderEditor();
+		expect(capturedOnNodeDragStop).toBeTruthy();
+
+		capturedOnNodeDragStop({} as React.MouseEvent, {} as any, []);
+
+		expect(mockSetPipelineState).not.toHaveBeenCalled();
+		expect(mockPersistLayout).not.toHaveBeenCalled();
 	});
 });
