@@ -174,7 +174,7 @@ export function createWebServerFactory(deps: WebServerFactoryDependencies) {
 
 			// Get the requested tab's logs (or active tab if no tabId provided)
 			// Tabs are the source of truth for AI conversation history
-			// Filter out thinking and tool logs - these should never be shown on the web interface
+			// AI logs include thinking and tool entries for UX parity with desktop
 			let aiLogs: any[] = [];
 			const targetTabId = tabId || session.activeTabId;
 			if (session.aiTabs && session.aiTabs.length > 0) {
@@ -185,8 +185,8 @@ export function createWebServerFactory(deps: WebServerFactoryDependencies) {
 					aiLogs = [];
 				} else {
 					const rawLogs = (targetTab || session.aiTabs[0])?.logs || [];
-					// Web interface should never show thinking/tool logs regardless of desktop settings
-					aiLogs = rawLogs.filter((log: any) => log.source !== 'thinking' && log.source !== 'tool');
+					// Include thinking and tool logs for UX parity with desktop
+					aiLogs = rawLogs;
 				}
 			}
 
@@ -270,6 +270,82 @@ export function createWebServerFactory(deps: WebServerFactoryDependencies) {
 			const result = processManager.write(targetSessionId, data);
 			logger.debug(`Write result: ${result}`, 'WebServer');
 			return result;
+		});
+
+		// Set up callbacks for raw terminal PTY write and resize (for xterm.js in web client)
+		server.setWriteToTerminalCallback((sessionId: string, data: string) => {
+			const processManager = getProcessManager();
+			if (!processManager) {
+				logger.warn('processManager is null for writeToTerminal', 'WebServer');
+				return false;
+			}
+			return processManager.write(`${sessionId}-terminal`, data);
+		});
+
+		server.setResizeTerminalCallback((sessionId: string, cols: number, rows: number) => {
+			const processManager = getProcessManager();
+			if (!processManager) {
+				logger.warn('processManager is null for resizeTerminal', 'WebServer');
+				return false;
+			}
+			return processManager.resize(`${sessionId}-terminal`, cols, rows);
+		});
+
+		// Spawn a dedicated terminal PTY for the web client
+		// Uses session ID format {sessionId}-terminal so data-listener broadcasts terminal_data
+		server.setSpawnTerminalForWebCallback(
+			async (sessionId: string, config: { cwd: string; cols?: number; rows?: number }) => {
+				const processManager = getProcessManager();
+				if (!processManager) {
+					logger.warn('processManager is null for spawnTerminalForWeb', 'WebServer');
+					return { success: false, pid: 0 };
+				}
+				const terminalSessionId = `${sessionId}-terminal`;
+				// Check if a process already exists for this terminal session
+				if (processManager.get(terminalSessionId)) {
+					logger.info(
+						`Terminal PTY already exists for web client: ${terminalSessionId}`,
+						'WebServer'
+					);
+					return { success: true, pid: 0 };
+				}
+				// Resolve shell: custom path > default from settings > system default
+				const customShellPath = settingsStore.get<string>('customShellPath', '');
+				const defaultShell = settingsStore.get<string>(
+					'defaultShell',
+					process.platform === 'win32' ? 'powershell' : 'bash'
+				);
+				const shell = (customShellPath && customShellPath.trim()) || defaultShell;
+				const shellArgs = settingsStore.get<string>('shellArgs', '');
+
+				logger.info(`Spawning terminal PTY for web client: ${terminalSessionId}`, 'WebServer', {
+					shell,
+					cwd: config.cwd,
+				});
+				return processManager.spawnTerminalTab({
+					sessionId: terminalSessionId,
+					cwd: config.cwd,
+					shell,
+					shellArgs,
+					cols: config.cols,
+					rows: config.rows,
+				});
+			}
+		);
+
+		// Kill the web client's dedicated terminal PTY
+		server.setKillTerminalForWebCallback((sessionId: string) => {
+			const processManager = getProcessManager();
+			if (!processManager) {
+				logger.warn('processManager is null for killTerminalForWeb', 'WebServer');
+				return false;
+			}
+			const terminalSessionId = `${sessionId}-terminal`;
+			if (!processManager.get(terminalSessionId)) {
+				return true; // Already gone
+			}
+			logger.info(`Killing terminal PTY for web client: ${terminalSessionId}`, 'WebServer');
+			return processManager.kill(terminalSessionId);
 		});
 
 		// Set up callback for web server to execute commands through the desktop

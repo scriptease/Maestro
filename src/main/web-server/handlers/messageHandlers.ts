@@ -18,6 +18,7 @@
  * - rename_tab: Rename a tab within a session
  * - open_file_tab: Open a file in a preview tab
  * - refresh_file_tree: Refresh the file tree for a session
+ * - get_file_tree: Read directory tree from filesystem for web file explorer
  * - refresh_auto_run_docs: Refresh auto-run documents for a session
  * - configure_auto_run: Configure and optionally launch an auto-run session
  * - get_auto_run_docs: List auto-run documents for a session
@@ -84,6 +85,7 @@ export interface SessionDetailForHandler {
 	state: string;
 	inputMode: string;
 	agentSessionId?: string;
+	cwd?: string;
 }
 
 /**
@@ -173,6 +175,13 @@ export interface MessageHandlerCallbacks {
 	getCueActivity: (sessionId?: string, limit?: number) => Promise<CueActivityEntry[]>;
 	getUsageDashboard: (timeRange: 'day' | 'week' | 'month' | 'all') => Promise<UsageDashboardData>;
 	getAchievements: () => Promise<AchievementData[]>;
+	writeToTerminal: (sessionId: string, data: string) => boolean;
+	resizeTerminal: (sessionId: string, cols: number, rows: number) => boolean;
+	spawnTerminalForWeb: (
+		sessionId: string,
+		config: { cwd: string; cols?: number; rows?: number }
+	) => Promise<{ success: boolean; pid: number }>;
+	killTerminalForWeb: (sessionId: string) => boolean;
 }
 
 /**
@@ -277,6 +286,10 @@ export class WebSocketMessageHandler {
 
 			case 'refresh_file_tree':
 				this.handleRefreshFileTree(client, message);
+				break;
+
+			case 'get_file_tree':
+				this.handleGetFileTree(client, message);
 				break;
 
 			case 'refresh_auto_run_docs':
@@ -407,6 +420,14 @@ export class WebSocketMessageHandler {
 				this.handleGetAchievements(client, message);
 				break;
 
+			case 'terminal_write':
+				this.handleTerminalWrite(client, message);
+				break;
+
+			case 'terminal_resize':
+				this.handleTerminalResize(client, message);
+				break;
+
 			default:
 				this.handleUnknown(client, message);
 		}
@@ -522,6 +543,9 @@ export class WebSocketMessageHandler {
 
 	/**
 	 * Handle switch_mode message - switch between AI and terminal mode
+	 *
+	 * When switching to terminal mode, spawns a dedicated PTY process for the web client
+	 * (session ID: {sessionId}-terminal). When switching back to AI, kills it.
 	 */
 	private handleSwitchMode(client: WebClient, message: WebClientMessage): void {
 		const sessionId = message.sessionId as string;
@@ -547,7 +571,37 @@ export class WebSocketMessageHandler {
 		logger.info(`[Web] Calling switchModeCallback for session ${sessionId}: ${mode}`, LOG_CONTEXT);
 		this.callbacks
 			.switchMode(sessionId, mode)
-			.then((success) => {
+			.then(async (success) => {
+				// Spawn or kill the web terminal PTY based on mode
+				if (success && mode === 'terminal') {
+					// Look up session CWD for the terminal working directory
+					const sessionDetail = this.callbacks.getSessionDetail?.(sessionId);
+					const cwd = sessionDetail?.cwd || process.cwd();
+					try {
+						const spawnResult = await this.callbacks.spawnTerminalForWeb?.(sessionId, { cwd });
+						logger.info(
+							`[Web] Terminal PTY spawn for ${sessionId}: success=${spawnResult?.success}`,
+							LOG_CONTEXT
+						);
+						// Notify the web client that the PTY is ready so it can re-send
+						// its current dimensions (the initial resize fired before the PTY existed)
+						if (spawnResult?.success) {
+							this.send(client, {
+								type: 'terminal_ready',
+								sessionId,
+							});
+						}
+					} catch (err) {
+						logger.error(
+							`[Web] Failed to spawn terminal PTY for ${sessionId}: ${err}`,
+							LOG_CONTEXT
+						);
+					}
+				}
+				// When switching back to AI, keep the terminal PTY alive so the user
+				// can return to a running process (e.g. npm run dev). The PTY is only
+				// killed when the session itself is removed.
+
 				this.send(client, {
 					type: 'mode_switch_result',
 					success,
@@ -926,6 +980,146 @@ export class WebSocketMessageHandler {
 			.catch((error) => {
 				this.sendError(client, `Failed to refresh file tree: ${error.message}`);
 			});
+	}
+
+	/**
+	 * Handle get_file_tree message - read directory tree for file explorer
+	 * Uses Node.js fs directly (no IPC to renderer needed)
+	 */
+	private handleGetFileTree(client: WebClient, message: WebClientMessage): void {
+		const sessionId = message.sessionId as string;
+		const dirPath = message.path as string;
+		const maxDepth = Math.min((message.maxDepth as number) || 3, 5);
+
+		if (!dirPath) {
+			this.sendError(client, 'Missing path for get_file_tree');
+			return;
+		}
+
+		// Validate dirPath is within the session's working directory
+		const sessionDetail = this.callbacks.getSessionDetail?.(sessionId);
+		if (sessionDetail?.cwd) {
+			const resolvedDir = path.resolve(dirPath);
+			const resolvedCwd = path.resolve(sessionDetail.cwd);
+			if (!resolvedDir.startsWith(resolvedCwd + path.sep) && resolvedDir !== resolvedCwd) {
+				this.sendError(client, 'Requested path is outside the session working directory');
+				return;
+			}
+		}
+
+		this.buildFileTree(dirPath, maxDepth)
+			.then((tree) => {
+				this.send(client, {
+					type: 'file_tree_data',
+					sessionId,
+					tree,
+					path: dirPath,
+					requestId: message.requestId,
+				});
+			})
+			.catch((error) => {
+				this.send(client, {
+					type: 'file_tree_data',
+					sessionId,
+					tree: [],
+					error: error.message,
+					path: dirPath,
+					requestId: message.requestId,
+				});
+			});
+	}
+
+	/**
+	 * Recursively build a file tree from a directory path
+	 */
+	private async buildFileTree(
+		dirPath: string,
+		maxDepth: number,
+		currentDepth = 0
+	): Promise<
+		Array<{
+			name: string;
+			type: 'file' | 'folder';
+			children?: Array<{ name: string; type: 'file' | 'folder'; children?: any[]; path: string }>;
+			path: string;
+		}>
+	> {
+		const fs = await import('fs/promises');
+		const pathModule = await import('path');
+
+		// Common ignore patterns
+		const IGNORE = new Set([
+			'node_modules',
+			'.git',
+			'.next',
+			'.nuxt',
+			'dist',
+			'build',
+			'.cache',
+			'__pycache__',
+			'.tox',
+			'.mypy_cache',
+			'.pytest_cache',
+			'venv',
+			'.venv',
+			'target',
+			'.idea',
+			'.vscode',
+			'.DS_Store',
+			'Thumbs.db',
+			'.turbo',
+			'coverage',
+			'.nyc_output',
+			'.parcel-cache',
+			'.svelte-kit',
+		]);
+
+		try {
+			const entries = await fs.readdir(dirPath, { withFileTypes: true });
+			const result: Array<{
+				name: string;
+				type: 'file' | 'folder';
+				children?: any[];
+				path: string;
+			}> = [];
+
+			// Sort: folders first, then alphabetically
+			const sorted = entries
+				.filter((e) => !IGNORE.has(e.name) && !e.name.startsWith('.'))
+				.sort((a, b) => {
+					if (a.isDirectory() && !b.isDirectory()) return -1;
+					if (!a.isDirectory() && b.isDirectory()) return 1;
+					return a.name.localeCompare(b.name);
+				});
+
+			for (const entry of sorted) {
+				const fullPath = pathModule.join(dirPath, entry.name);
+
+				if (entry.isDirectory()) {
+					const children =
+						currentDepth < maxDepth
+							? await this.buildFileTree(fullPath, maxDepth, currentDepth + 1)
+							: undefined;
+					result.push({
+						name: entry.name,
+						type: 'folder',
+						children,
+						path: fullPath,
+					});
+				} else {
+					result.push({
+						name: entry.name,
+						type: 'file',
+						path: fullPath,
+					});
+				}
+			}
+
+			return result;
+		} catch {
+			// Permission denied or other errors — return empty
+			return [];
+		}
 	}
 
 	/**
@@ -2155,6 +2349,59 @@ export class WebSocketMessageHandler {
 			.catch((error) => {
 				this.sendError(client, `Failed to get achievements: ${error.message}`);
 			});
+	}
+
+	/**
+	 * Handle terminal_write - write raw data to the terminal PTY
+	 */
+	private handleTerminalWrite(client: WebClient, message: WebClientMessage): void {
+		const sessionId = message.sessionId;
+		const data = message.data as string | undefined;
+		if (!sessionId || typeof data !== 'string') {
+			this.send(client, {
+				type: 'terminal_write_result',
+				success: false,
+				error: 'Missing sessionId or data',
+			});
+			return;
+		}
+		if (!this.callbacks.writeToTerminal) {
+			this.send(client, {
+				type: 'terminal_write_result',
+				success: false,
+				error: 'writeToTerminal not available',
+			});
+			return;
+		}
+		const success = this.callbacks.writeToTerminal(sessionId, data);
+		this.send(client, { type: 'terminal_write_result', success, sessionId });
+	}
+
+	/**
+	 * Handle terminal_resize - resize the terminal PTY
+	 */
+	private handleTerminalResize(client: WebClient, message: WebClientMessage): void {
+		const sessionId = message.sessionId;
+		const cols = message.cols as number | undefined;
+		const rows = message.rows as number | undefined;
+		if (!sessionId || typeof cols !== 'number' || typeof rows !== 'number') {
+			this.send(client, {
+				type: 'terminal_resize_result',
+				success: false,
+				error: 'Missing sessionId, cols, or rows',
+			});
+			return;
+		}
+		if (!this.callbacks.resizeTerminal) {
+			this.send(client, {
+				type: 'terminal_resize_result',
+				success: false,
+				error: 'resizeTerminal not available',
+			});
+			return;
+		}
+		const success = this.callbacks.resizeTerminal(sessionId, cols, rows);
+		this.send(client, { type: 'terminal_resize_result', success, sessionId });
 	}
 
 	/**
