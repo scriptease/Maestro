@@ -592,6 +592,7 @@ export function ThinkingToggleButton({
 				if (isOff && !disabled) e.currentTarget.style.opacity = '0.4';
 			}}
 			aria-label={title}
+			aria-pressed={isSticky ? 'mixed' : !isOff}
 			title={title}
 		>
 			{/* Brain icon (matching lucide Brain) */}

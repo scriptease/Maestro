@@ -1111,6 +1111,7 @@ export default function MobileApp() {
 	// UI state (not part of session management)
 	const [showAllSessions, setShowAllSessions] = useState(savedState.showAllSessions);
 	const [showLeftPanel, setShowLeftPanel] = useState(false);
+	const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 	const [showRightDrawer, setShowRightDrawer] = useState(false);
 	const [rightDrawerTab, setRightDrawerTab] = useState<RightDrawerTab>('files');
 	const [showTabSearch, setShowTabSearch] = useState(savedState.showTabSearch);
@@ -1335,7 +1336,6 @@ export default function MobileApp() {
 		handleRenameTab,
 		handleStarTab,
 		handleReorderTab,
-		handleToggleBookmark,
 		addUserLogEntry,
 		sessionsHandlers,
 	} = useMobileSessionManagement({
@@ -1399,16 +1399,20 @@ export default function MobileApp() {
 					);
 				}
 			},
-			onTerminalData: (_sessionId, data) => {
+			onTerminalData: (sessionId, data) => {
+				const inputMode = (activeSession?.inputMode as InputMode | undefined) || 'ai';
+				if (sessionId !== activeSessionId || inputMode !== 'terminal') return;
 				webTerminalRef.current?.write(data);
 			},
 			onTerminalReady: (sessionId) => {
+				const inputMode = (activeSession?.inputMode as InputMode | undefined) || 'ai';
+				if (sessionId !== activeSessionId || inputMode !== 'terminal') return;
 				// PTY just spawned — refit xterm and re-send current dimensions
 				// so the PTY matches the actual terminal viewport.
 				// Use wsSendRef (not send) to avoid circular dependency — send
 				// comes from useWebSocket which is still being initialized here.
 				const size = webTerminalRef.current?.fitAndGetSize();
-				if (size) {
+				if (size && size.cols > 0 && size.rows > 0) {
 					wsSendRef.current?.({
 						type: 'terminal_resize',
 						sessionId,
@@ -1814,11 +1818,6 @@ export default function MobileApp() {
 	});
 
 	// Handle opening All Sessions view
-	const handleOpenAllSessions = useCallback(() => {
-		setShowAllSessions(true);
-		triggerHaptic(HAPTIC_PATTERNS.tap);
-	}, []);
-
 	// Handle closing All Sessions view
 	const handleCloseAllSessions = useCallback(() => {
 		setShowAllSessions(false);
@@ -1927,10 +1926,6 @@ export default function MobileApp() {
 	}, []);
 
 	// Handle opening History panel — redirects to right drawer History tab
-	const handleOpenHistoryPanel = useCallback(() => {
-		handleOpenRightDrawer('history');
-	}, [handleOpenRightDrawer]);
-
 	// Handle opening Tab Search modal
 	const handleOpenTabSearch = useCallback(() => {
 		setShowTabSearch(true);
@@ -2922,7 +2917,7 @@ export default function MobileApp() {
 				) : (
 					<MessageHistory
 						logs={currentLogs}
-						inputMode={'ai'}
+						inputMode={currentInputMode}
 						autoScroll={true}
 						maxHeight="none"
 						thinkingMode={thinkingMode}
@@ -3232,6 +3227,8 @@ export default function MobileApp() {
 						panelRef={isMobile ? undefined : leftPanelResize.panelRef}
 						width={isMobile ? undefined : leftPanelResize.width}
 						onResizeStart={isMobile ? undefined : leftPanelResize.onResizeStart}
+						collapsedGroups={collapsedGroups}
+						setCollapsedGroups={setCollapsedGroups}
 					/>
 				)}
 
@@ -3315,7 +3312,7 @@ export default function MobileApp() {
 								: `Ask ${activeSession?.toolType === 'claude-code' ? 'Claude' : activeSession?.toolType || 'AI'} about ${activeSession?.name || 'this session'}...`
 					}
 					disabled={!activeSessionId}
-					inputMode={'ai'}
+					inputMode={currentInputMode}
 					isSessionBusy={activeSession?.state === 'busy'}
 					onInterrupt={handleInterrupt}
 					cwd={activeSession?.cwd}

@@ -6,10 +6,11 @@
  * but rendered as a persistent, toggleable side panel for desktop-like UX.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useThemeColors } from '../components/ThemeProvider';
 import { GitStatusPanel } from './GitStatusPanel';
 import { FilesTabContent, HistoryTabContent, AutoRunTabContent } from './RightDrawer';
+import { useSwipeGestures } from '../hooks/useSwipeGestures';
 import { triggerHaptic, HAPTIC_PATTERNS } from './constants';
 import type { AutoRunState, UseWebSocketReturn } from '../hooks/useWebSocket';
 import type { UseGitStatusReturn } from '../hooks/useGitStatus';
@@ -64,10 +65,43 @@ export function RightPanel({
 	const colors = useThemeColors();
 	const [currentTab, setCurrentTab] = useState<RightDrawerTab>(activeTab);
 
+	// Slide-in animation state (full-screen overlay mode only)
+	const [isOpen, setIsOpen] = useState(false);
+	useEffect(() => {
+		if (isFullScreen) {
+			requestAnimationFrame(() => setIsOpen(true));
+		}
+	}, [isFullScreen]);
+
+	// Swipe right to close (full-screen overlay mode only)
+	const {
+		handlers: swipeHandlers,
+		offsetX,
+		isSwiping,
+	} = useSwipeGestures({
+		onSwipeRight: () => handleClose(),
+		trackOffset: true,
+		maxOffset: 200,
+		threshold: 50,
+		lockDirection: true,
+		enabled: !!isFullScreen,
+	});
+
+	const handleClose = useCallback(() => {
+		triggerHaptic(HAPTIC_PATTERNS.tap);
+		setIsOpen(false);
+		// Wait for close animation before unmounting
+		setTimeout(() => onClose(), 300);
+	}, [onClose]);
+
 	const handleTabChange = useCallback((tab: RightDrawerTab) => {
 		triggerHaptic(HAPTIC_PATTERNS.tap);
 		setCurrentTab(tab);
 	}, []);
+
+	// Calculate drawer transform based on open state and swipe offset
+	const swipeOffset = isSwiping && offsetX > 0 ? offsetX : 0;
+	const drawerTransform = isOpen ? `translateX(${swipeOffset}px)` : 'translateX(100%)';
 
 	const panelStyle: React.CSSProperties = isFullScreen
 		? {
@@ -81,6 +115,9 @@ export function RightPanel({
 				flexDirection: 'column',
 				backgroundColor: colors.bgMain,
 				overflow: 'hidden',
+				transform: drawerTransform,
+				transition: isSwiping ? 'none' : 'transform 0.3s ease',
+				touchAction: 'pan-y',
 			}
 		: {
 				width: `${width ?? 320}px`,
@@ -97,20 +134,21 @@ export function RightPanel({
 		<>
 			{isFullScreen && (
 				<div
-					onClick={onClose}
+					onClick={handleClose}
 					style={{
 						position: 'fixed',
 						top: 0,
 						left: 0,
 						right: 0,
 						bottom: 0,
-						backgroundColor: 'rgba(0, 0, 0, 0.5)',
+						backgroundColor: isOpen ? 'rgba(0, 0, 0, 0.5)' : 'rgba(0, 0, 0, 0)',
 						zIndex: 49,
+						transition: 'background-color 0.3s ease',
 					}}
 					aria-label="Close panel"
 				/>
 			)}
-			<div ref={panelRef} style={panelStyle}>
+			<div ref={panelRef} {...(isFullScreen ? swipeHandlers : {})} style={panelStyle}>
 				{!isFullScreen && onResizeStart && (
 					<div
 						onMouseDown={onResizeStart}

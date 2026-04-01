@@ -845,7 +845,9 @@ export function TabBar({
 						</svg>
 						Terminal
 						{onCloseTerminal && inputMode === 'terminal' && (
-							<span
+							<button
+								type="button"
+								aria-label="Close terminal"
 								onClick={(e) => {
 									e.stopPropagation();
 									triggerHaptic(HAPTIC_PATTERNS.tap);
@@ -861,6 +863,11 @@ export function TabBar({
 									marginLeft: '4px',
 									cursor: 'pointer',
 									opacity: 0.6,
+									background: 'none',
+									border: 'none',
+									padding: 0,
+									color: 'inherit',
+									font: 'inherit',
 								}}
 							>
 								<svg
@@ -876,7 +883,7 @@ export function TabBar({
 									<line x1="18" y1="6" x2="6" y2="18" />
 									<line x1="6" y1="6" x2="18" y2="18" />
 								</svg>
-							</span>
+							</button>
 						)}
 					</button>
 				)}

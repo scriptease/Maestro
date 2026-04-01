@@ -564,7 +564,7 @@ export function useMobileSessionManagement(
 				// (user selected a session in web, server echoed it back — but user may
 				// have already clicked another session by the time the echo arrives)
 				const timeSinceLocalSelect = Date.now() - lastLocalSelectionRef.current;
-				if (timeSinceLocalSelect < 2000) {
+				if (timeSinceLocalSelect < 2000 && sessionId === activeSessionIdRef.current) {
 					webLogger.debug(
 						`Ignoring server echo for ${sessionId} (${timeSinceLocalSelect}ms after local select)`,
 						'Mobile'

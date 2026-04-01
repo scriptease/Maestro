@@ -26,6 +26,9 @@ export interface LeftPanelProps {
 	onResizeStart?: (e: React.MouseEvent) => void;
 	/** When true, renders as a full-screen overlay (mobile) instead of an inline side panel */
 	isFullScreen?: boolean;
+	/** Lifted group collapse state — persists across panel open/close */
+	collapsedGroups: Set<string>;
+	setCollapsedGroups: React.Dispatch<React.SetStateAction<Set<string>>>;
 }
 
 /**
@@ -154,6 +157,8 @@ export function LeftPanel({
 	width,
 	onResizeStart,
 	isFullScreen,
+	collapsedGroups,
+	setCollapsedGroups,
 }: LeftPanelProps) {
 	const colors = useThemeColors();
 
@@ -174,7 +179,7 @@ export function LeftPanel({
 		onSwipeLeft: () => handleClose(),
 		trackOffset: true,
 		maxOffset: 200,
-		threshold: 100,
+		threshold: 50,
 		lockDirection: true,
 		enabled: !!isFullScreen,
 	});
@@ -186,19 +191,20 @@ export function LeftPanel({
 		setTimeout(() => onClose(), 300);
 	}, [onClose]);
 
-	const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-
-	const toggleGroup = useCallback((groupName: string) => {
-		setCollapsedGroups((prev) => {
-			const next = new Set(prev);
-			if (next.has(groupName)) {
-				next.delete(groupName);
-			} else {
-				next.add(groupName);
-			}
-			return next;
-		});
-	}, []);
+	const toggleGroup = useCallback(
+		(groupName: string) => {
+			setCollapsedGroups((prev) => {
+				const next = new Set(prev);
+				if (next.has(groupName)) {
+					next.delete(groupName);
+				} else {
+					next.add(groupName);
+				}
+				return next;
+			});
+		},
+		[setCollapsedGroups]
+	);
 
 	const { groups: grouped, worktreeChildrenMap } = useMemo(
 		() => groupSessions(sessions),
@@ -496,8 +502,7 @@ export function LeftPanel({
 									const isWorktreeExpanded = expandedWorktrees.has(session.id);
 									return (
 										<div key={session.id}>
-											<button
-												onClick={() => handleSelect(session.id)}
+											<div
 												style={{
 													display: 'flex',
 													alignItems: 'center',
@@ -505,13 +510,8 @@ export function LeftPanel({
 													width: '100%',
 													padding: '8px 10px',
 													borderRadius: '6px',
-													border: 'none',
 													backgroundColor: isActive ? `${colors.accent}15` : 'transparent',
 													color: colors.textMain,
-													cursor: 'pointer',
-													textAlign: 'left',
-													touchAction: 'manipulation',
-													WebkitTapHighlightColor: 'transparent',
 													marginBottom: '1px',
 													transition: 'background-color 0.1s ease',
 												}}
@@ -526,66 +526,100 @@ export function LeftPanel({
 														? `${colors.accent}15`
 														: 'transparent';
 												}}
-												aria-pressed={isActive}
-												title={`${session.name} — ${session.cwd ? truncatePath(session.cwd, 40) : ''}`}
 											>
-												<div style={{ position: 'relative', flexShrink: 0 }}>
-													<StatusDot status={getStatus(session.state)} size="sm" />
-													{!isActive && session.aiTabs?.some((tab: any) => tab.hasUnread) && (
-														<div
-															style={{
-																position: 'absolute',
-																top: '-2px',
-																right: '-2px',
-																width: '6px',
-																height: '6px',
-																borderRadius: '50%',
-																backgroundColor: colors.error ?? '#ef4444',
-															}}
-															title="Unread messages"
-														/>
-													)}
-												</div>
-												<div
+												<button
+													onClick={() => handleSelect(session.id)}
 													style={{
+														display: 'flex',
+														alignItems: 'center',
+														gap: '8px',
 														flex: 1,
 														minWidth: 0,
-														display: 'flex',
-														flexDirection: 'column',
-														gap: '1px',
+														padding: 0,
+														border: 'none',
+														backgroundColor: 'transparent',
+														color: 'inherit',
+														cursor: 'pointer',
+														textAlign: 'left',
+														touchAction: 'manipulation',
+														WebkitTapHighlightColor: 'transparent',
 													}}
+													aria-pressed={isActive}
+													title={`${session.name} — ${session.cwd ? truncatePath(session.cwd, 40) : ''}`}
 												>
-													<span
+													<div style={{ position: 'relative', flexShrink: 0 }}>
+														<StatusDot status={getStatus(session.state)} size="sm" />
+														{!isActive && session.aiTabs?.some((tab: any) => tab.hasUnread) && (
+															<div
+																style={{
+																	position: 'absolute',
+																	top: '-2px',
+																	right: '-2px',
+																	width: '6px',
+																	height: '6px',
+																	borderRadius: '50%',
+																	backgroundColor: colors.error ?? '#ef4444',
+																}}
+																title="Unread messages"
+															/>
+														)}
+													</div>
+													<div
 														style={{
-															fontSize: '13px',
-															fontWeight: isActive ? 600 : 400,
-															color: isActive ? colors.accent : colors.textMain,
-															overflow: 'hidden',
-															textOverflow: 'ellipsis',
-															whiteSpace: 'nowrap',
+															flex: 1,
+															minWidth: 0,
+															display: 'flex',
+															flexDirection: 'column',
+															gap: '1px',
 														}}
 													>
-														{session.name}
-													</span>
+														<span
+															style={{
+																fontSize: '13px',
+																fontWeight: isActive ? 600 : 400,
+																color: isActive ? colors.accent : colors.textMain,
+																overflow: 'hidden',
+																textOverflow: 'ellipsis',
+																whiteSpace: 'nowrap',
+															}}
+														>
+															{session.name}
+														</span>
+														<span
+															style={{
+																fontSize: '10px',
+																color: colors.textDim,
+																overflow: 'hidden',
+																textOverflow: 'ellipsis',
+																whiteSpace: 'nowrap',
+															}}
+														>
+															{getAgentDisplayName(session.toolType)}
+														</span>
+													</div>
+													{/* Mode indicator */}
 													<span
 														style={{
-															fontSize: '10px',
-															color: colors.textDim,
-															overflow: 'hidden',
-															textOverflow: 'ellipsis',
-															whiteSpace: 'nowrap',
+															fontSize: '9px',
+															fontWeight: 600,
+															color: session.inputMode === 'ai' ? colors.accent : colors.textDim,
+															backgroundColor:
+																session.inputMode === 'ai'
+																	? `${colors.accent}15`
+																	: `${colors.textDim}15`,
+															padding: '2px 5px',
+															borderRadius: '3px',
+															flexShrink: 0,
 														}}
 													>
-														{getAgentDisplayName(session.toolType)}
+														{session.inputMode === 'ai' ? 'AI' : 'SH'}
 													</span>
-												</div>
+												</button>
 												{/* Worktree expand/collapse badge */}
 												{hasWorktrees && (
-													<span
-														onClick={(e) => {
-															e.stopPropagation();
-															toggleWorktrees(session.id);
-														}}
+													<button
+														type="button"
+														onClick={() => toggleWorktrees(session.id)}
 														style={{
 															display: 'inline-flex',
 															alignItems: 'center',
@@ -596,11 +630,11 @@ export function LeftPanel({
 															padding: '2px 5px',
 															borderRadius: '3px',
 															backgroundColor: `${colors.accent}15`,
+															border: 'none',
 															flexShrink: 0,
 														}}
-														role="button"
 														aria-expanded={isWorktreeExpanded}
-														aria-label={`${children.length} worktree${children.length > 1 ? 's' : ''}`}
+														aria-label={`${isWorktreeExpanded ? 'Collapse' : 'Expand'} ${children.length} worktree${children.length > 1 ? 's' : ''}`}
 													>
 														<GitBranchIcon size={10} color={colors.accent} />
 														{children.length}
@@ -620,26 +654,9 @@ export function LeftPanel({
 														>
 															<polyline points="9 18 15 12 9 6" />
 														</svg>
-													</span>
+													</button>
 												)}
-												{/* Mode indicator */}
-												<span
-													style={{
-														fontSize: '9px',
-														fontWeight: 600,
-														color: session.inputMode === 'ai' ? colors.accent : colors.textDim,
-														backgroundColor:
-															session.inputMode === 'ai'
-																? `${colors.accent}15`
-																: `${colors.textDim}15`,
-														padding: '2px 5px',
-														borderRadius: '3px',
-														flexShrink: 0,
-													}}
-												>
-													{session.inputMode === 'ai' ? 'AI' : 'SH'}
-												</span>
-											</button>
+											</div>
 											{/* Worktree children */}
 											{hasWorktrees &&
 												isWorktreeExpanded &&

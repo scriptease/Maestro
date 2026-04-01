@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 export interface UseResizableWebPanelOptions {
 	side: 'left' | 'right';
@@ -23,7 +23,7 @@ export function useResizableWebPanel({
 				const parsed = parseInt(saved, 10);
 				if (!isNaN(parsed) && parsed >= minWidth && parsed <= maxWidth) return parsed;
 			}
-		} catch (_e) {
+		} catch {
 			/* ignore localStorage errors */
 		}
 		return defaultWidth;
@@ -33,6 +33,14 @@ export function useResizableWebPanel({
 	const isResizing = useRef(false);
 	const startX = useRef(0);
 	const startWidth = useRef(0);
+	const cleanupRef = useRef<(() => void) | null>(null);
+
+	// Clean up listeners and overlay on unmount
+	useEffect(() => {
+		return () => {
+			cleanupRef.current?.();
+		};
+	}, []);
 
 	// Persist to localStorage when width changes (not during drag — only on commit)
 	const commitWidth = useCallback(
@@ -41,7 +49,7 @@ export function useResizableWebPanel({
 			setWidth(clamped);
 			try {
 				localStorage.setItem(storageKey, String(clamped));
-			} catch (_e) {
+			} catch {
 				/* ignore localStorage errors */
 			}
 		},
@@ -69,13 +77,17 @@ export function useResizableWebPanel({
 				panelRef.current.style.width = `${newWidth}px`;
 			};
 
-			const onMouseUp = (ev: MouseEvent) => {
+			const cleanup = () => {
 				isResizing.current = false;
 				document.removeEventListener('mousemove', onMouseMove);
 				document.removeEventListener('mouseup', onMouseUp);
+				cleanupRef.current = null;
 				const el = document.getElementById('resize-overlay');
 				if (el) el.remove();
+			};
 
+			const onMouseUp = (ev: MouseEvent) => {
+				cleanup();
 				// Commit final width to React state + localStorage
 				const delta = side === 'left' ? ev.clientX - startX.current : startX.current - ev.clientX;
 				commitWidth(startWidth.current + delta);
@@ -83,6 +95,7 @@ export function useResizableWebPanel({
 
 			document.addEventListener('mousemove', onMouseMove);
 			document.addEventListener('mouseup', onMouseUp);
+			cleanupRef.current = cleanup;
 		},
 		[side, width, minWidth, maxWidth, commitWidth]
 	);

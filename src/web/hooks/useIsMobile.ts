@@ -26,6 +26,8 @@ export function useIsMobile(breakpoint: number = MOBILE_BREAKPOINT): boolean {
 	const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
+		setIsMobile(window.innerWidth <= breakpoint);
+
 		const handleResize = () => {
 			if (timerRef.current) {
 				clearTimeout(timerRef.current);

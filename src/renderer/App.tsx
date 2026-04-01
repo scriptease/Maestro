@@ -2022,8 +2022,33 @@ function MaestroConsoleInner() {
 					session.autoRunFolderPath,
 					sshRemoteId
 				);
-				const files = listResult.success ? listResult.files || [] : [];
-				window.maestro.process.sendRemoteGetAutoRunDocsResponse(responseChannel, files);
+				const filePaths: string[] = listResult.success ? listResult.files || [] : [];
+
+				// Transform file paths into AutoRunDocument objects with task counts
+				const docs = await Promise.all(
+					filePaths.map(async (filePath) => {
+						const filename = filePath.split('/').pop() || filePath;
+						let taskCount = 0;
+						let completedCount = 0;
+						try {
+							const result = await window.maestro.autorun.readDoc(
+								session.autoRunFolderPath!,
+								filePath,
+								sshRemoteId
+							);
+							if (result?.content) {
+								const unchecked = result.content.match(/^[\s]*-\s*\[\s*\]\s*.+$/gm);
+								const checked = result.content.match(/^[\s]*-\s*\[x\]\s*.+$/gim);
+								taskCount = (unchecked?.length || 0) + (checked?.length || 0);
+								completedCount = checked?.length || 0;
+							}
+						} catch {
+							// If reading fails, leave counts at 0
+						}
+						return { filename, path: filePath, taskCount, completedCount };
+					})
+				);
+				window.maestro.process.sendRemoteGetAutoRunDocsResponse(responseChannel, docs);
 			} catch (error) {
 				console.error('[Remote] Failed to get auto-run docs:', error);
 				window.maestro.process.sendRemoteGetAutoRunDocsResponse(responseChannel, []);

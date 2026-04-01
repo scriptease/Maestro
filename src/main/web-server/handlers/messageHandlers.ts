@@ -989,11 +989,22 @@ export class WebSocketMessageHandler {
 	private handleGetFileTree(client: WebClient, message: WebClientMessage): void {
 		const sessionId = message.sessionId as string;
 		const dirPath = message.path as string;
-		const maxDepth = (message.maxDepth as number) || 3;
+		const maxDepth = Math.min((message.maxDepth as number) || 3, 5);
 
 		if (!dirPath) {
 			this.sendError(client, 'Missing path for get_file_tree');
 			return;
+		}
+
+		// Validate dirPath is within the session's working directory
+		const sessionDetail = this.callbacks.getSessionDetail?.(sessionId);
+		if (sessionDetail?.cwd) {
+			const resolvedDir = path.resolve(dirPath);
+			const resolvedCwd = path.resolve(sessionDetail.cwd);
+			if (!resolvedDir.startsWith(resolvedCwd + path.sep) && resolvedDir !== resolvedCwd) {
+				this.sendError(client, 'Requested path is outside the session working directory');
+				return;
+			}
 		}
 
 		this.buildFileTree(dirPath, maxDepth)

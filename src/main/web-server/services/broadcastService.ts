@@ -458,13 +458,23 @@ export class BroadcastService {
 			};
 		}
 	): void {
-		this.broadcastToSession(sessionId, {
+		// Only send tool events to clients explicitly subscribed to this session.
+		// Unlike broadcastToSession, this excludes unsubscribed clients (e.g., dashboard/overview)
+		// to avoid unnecessary fan-out of high-volume, potentially sensitive tool data.
+		if (!this.getWebClients) return;
+
+		const data = JSON.stringify({
 			type: 'tool_event',
 			sessionId,
 			tabId,
 			toolLog,
 			timestamp: Date.now(),
 		});
+		for (const client of this.getWebClients().values()) {
+			if (client.socket.readyState === WebSocket.OPEN && client.subscribedSessionId === sessionId) {
+				client.socket.send(data);
+			}
+		}
 	}
 
 	/**

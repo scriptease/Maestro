@@ -12,7 +12,7 @@ describe('Forwarding Listeners', () => {
 	let mockProcessManager: ProcessManager;
 	let mockSafeSend: SafeSendFn;
 	let eventHandlers: Map<string, (...args: unknown[]) => void>;
-	 
+
 	let mockDeps: any;
 
 	beforeEach(() => {
