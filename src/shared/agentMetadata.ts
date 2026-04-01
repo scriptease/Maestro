@@ -20,6 +20,7 @@ export const AGENT_DISPLAY_NAMES: Record<AgentId, string> = {
 	'qwen3-coder': 'Qwen3 Coder',
 	opencode: 'OpenCode',
 	'factory-droid': 'Factory Droid',
+	'copilot-cli': 'Copilot CLI',
 	aider: 'Aider',
 };
 
@@ -64,7 +65,11 @@ export function getReadOnlyModeTooltip(agentId: AgentId | string): string {
  * Agents currently in beta/experimental status.
  * Used to render "(Beta)" badges throughout the UI.
  */
-export const BETA_AGENTS: ReadonlySet<AgentId> = new Set<AgentId>(['opencode', 'factory-droid']);
+export const BETA_AGENTS: ReadonlySet<AgentId> = new Set<AgentId>([
+	'opencode',
+	'factory-droid',
+	'copilot-cli',
+]);
 
 /**
  * Check whether an agent is in beta status.
