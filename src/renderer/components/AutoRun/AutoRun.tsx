@@ -437,7 +437,6 @@ const AutoRunInner = forwardRef<AutoRunHandle, AutoRunProps>(function AutoRunInn
 		textareaRef,
 		pushUndoState,
 		lastUndoSnapshotRef,
-		scheduleUndoSnapshot,
 		handleUndo,
 		handleRedo,
 		isDirty,

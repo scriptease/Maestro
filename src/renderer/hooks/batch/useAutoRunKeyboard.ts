@@ -6,7 +6,6 @@ export interface UseAutoRunKeyboardParams {
 	textareaRef: RefObject<HTMLTextAreaElement | null>;
 	pushUndoState: (content?: string, cursor?: number) => void;
 	lastUndoSnapshotRef: MutableRefObject<string>;
-	scheduleUndoSnapshot: (previousContent: string, previousCursor: number) => void;
 	handleUndo: () => void;
 	handleRedo: () => void;
 	isDirty: boolean;
@@ -34,7 +33,6 @@ export function useAutoRunKeyboard(params: UseAutoRunKeyboardParams) {
 		textareaRef,
 		pushUndoState,
 		lastUndoSnapshotRef,
-		scheduleUndoSnapshot: _scheduleUndoSnapshot,
 		handleUndo,
 		handleRedo,
 		isDirty,
@@ -93,7 +91,9 @@ export function useAutoRunKeyboard(params: UseAutoRunKeyboardParams) {
 			e.preventDefault();
 			e.stopPropagation();
 			if (isDirty) {
-				handleSave();
+				handleSave().catch(() => {
+					// Save errors are logged by handleSave; nothing to do here
+				});
 			}
 			return;
 		}
@@ -152,11 +152,11 @@ export function useAutoRunKeyboard(params: UseAutoRunKeyboardParams) {
 			setLocalContent(newContent);
 			// Update lastUndoSnapshot since we pushed state explicitly
 			lastUndoSnapshotRef.current = newContent;
-			setTimeout(() => {
+			requestAnimationFrame(() => {
 				if (textareaRef.current) {
 					textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
 				}
-			}, 0);
+			});
 			return;
 		}
 
@@ -187,7 +187,7 @@ export function useAutoRunKeyboard(params: UseAutoRunKeyboardParams) {
 						const newPos = cursorPos + indent.length + 7; // "\n" + indent + "- [ ] "
 						textareaRef.current.setSelectionRange(newPos, newPos);
 					}
-				}, 0);
+				});
 			} else if (unorderedListMatch) {
 				// Unordered list: continue with same marker
 				const indent = unorderedListMatch[1];
@@ -203,7 +203,7 @@ export function useAutoRunKeyboard(params: UseAutoRunKeyboardParams) {
 						const newPos = cursorPos + indent.length + 3; // "\n" + indent + marker + " "
 						textareaRef.current.setSelectionRange(newPos, newPos);
 					}
-				}, 0);
+				});
 			} else if (orderedListMatch) {
 				// Ordered list: increment number
 				const indent = orderedListMatch[1];
@@ -219,7 +219,7 @@ export function useAutoRunKeyboard(params: UseAutoRunKeyboardParams) {
 						const newPos = cursorPos + indent.length + (num + 1).toString().length + 3; // "\n" + indent + num + ". "
 						textareaRef.current.setSelectionRange(newPos, newPos);
 					}
-				}, 0);
+				});
 			}
 		}
 	};

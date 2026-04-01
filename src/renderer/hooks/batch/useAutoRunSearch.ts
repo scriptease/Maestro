@@ -18,7 +18,6 @@ export interface UseAutoRunSearchReturn {
 	goToNextMatchWithFlag: () => void;
 	goToPrevMatchWithFlag: () => void;
 	handleMatchRendered: (index: number, element: HTMLElement) => void;
-	matchElementsRef: RefObject<HTMLElement[]>;
 }
 
 export function useAutoRunSearch({
@@ -32,8 +31,6 @@ export function useAutoRunSearch({
 	const [searchQuery, setSearchQuery] = useState('');
 	const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
 	const [totalMatches, setTotalMatches] = useState(0);
-	const matchElementsRef = useRef<HTMLElement[]>([]);
-
 	// Track if the user manually navigated to a match (prev/next buttons or Enter key)
 	// vs just typing in the search box
 	const userNavigatedToMatchRef = useRef(false);
@@ -49,7 +46,6 @@ export function useAutoRunSearch({
 		setSearchQuery('');
 		setCurrentMatchIndex(0);
 		setTotalMatches(0);
-		matchElementsRef.current = [];
 		userNavigatedToMatchRef.current = false;
 		// Refocus appropriate element
 		if (mode === 'edit' && textareaRef.current) {
@@ -75,9 +71,8 @@ export function useAutoRunSearch({
 				const matches = localContent.match(regex);
 				const count = matches ? matches.length : 0;
 				setTotalMatches(count);
-				if (count > 0 && currentMatchIndex >= count) {
-					setCurrentMatchIndex(0);
-				}
+				// Use functional updater to avoid stale currentMatchIndex from closure
+				setCurrentMatchIndex((prev) => (count > 0 && prev >= count ? 0 : prev));
 			}, 150); // Short delay for search responsiveness
 		} else {
 			setTotalMatches(0);
@@ -105,16 +100,18 @@ export function useAutoRunSearch({
 		setCurrentMatchIndex(prevIndex);
 	}, [currentMatchIndex, totalMatches]);
 
-	// Wrapped navigation handlers that set the flag
+	// Wrapped navigation handlers that set the flag only when navigation will proceed
 	const goToNextMatchWithFlag = useCallback(() => {
+		if (totalMatches === 0) return;
 		userNavigatedToMatchRef.current = true;
 		goToNextMatch();
-	}, [goToNextMatch]);
+	}, [goToNextMatch, totalMatches]);
 
 	const goToPrevMatchWithFlag = useCallback(() => {
+		if (totalMatches === 0) return;
 		userNavigatedToMatchRef.current = true;
 		goToPrevMatch();
-	}, [goToPrevMatch]);
+	}, [goToPrevMatch, totalMatches]);
 
 	// Scroll to current match in edit mode
 	// Only run when user explicitly navigated to a match (not on every keystroke)
@@ -196,6 +193,5 @@ export function useAutoRunSearch({
 		goToNextMatchWithFlag,
 		goToPrevMatchWithFlag,
 		handleMatchRendered,
-		matchElementsRef,
 	};
 }
