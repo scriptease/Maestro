@@ -58,12 +58,16 @@ export function EditAgentModal({
 	const nameInputRef = useRef<HTMLInputElement>(null);
 	const copyTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-	// Clear copy timeout on unmount
+	// Clear copy timeout and reset copied state on unmount, close, or session change
 	useEffect(() => {
+		if (!isOpen) {
+			if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+			setCopiedId(false);
+		}
 		return () => {
 			if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
 		};
-	}, []);
+	}, [isOpen, session?.id]);
 
 	// Copy session ID to clipboard
 	const handleCopySessionId = useCallback(async () => {
@@ -81,74 +85,86 @@ export function EditAgentModal({
 
 	// Load agent info, config, custom settings, and models when modal opens or provider changes
 	useEffect(() => {
-		if (isOpen && session) {
-			const activeToolType = selectedToolType;
-			const isProviderSwitch = activeToolType !== session.toolType;
+		if (!isOpen || !session) return;
 
-			// Load agent definition to get configOptions
-			window.maestro.agents.detect().then((agents: AgentConfig[]) => {
-				const foundAgent = agents.find((a) => a.id === activeToolType);
-				setAgent(foundAgent || null);
+		let stale = false;
+		const activeToolType = selectedToolType;
+		const isProviderSwitch = activeToolType !== session.toolType;
 
-				// Load models if agent supports model selection
-				if (foundAgent?.capabilities?.supportsModelSelection) {
-					setLoadingModels(true);
-					window.maestro.agents
-						.getModels(activeToolType)
-						.then((models) => setAvailableModels(models))
-						.catch((err) => console.error('Failed to load models:', err))
-						.finally(() => setLoadingModels(false));
-				} else {
-					setAvailableModels([]);
-				}
-			});
-			// Load agent config for defaults, but use session-level overrides when available
-			// Both model and contextWindow are now per-session
-			window.maestro.agents.getConfig(activeToolType).then((globalConfig) => {
-				if (isProviderSwitch) {
-					// When provider changed, use global defaults for the new provider
-					setAgentConfig(globalConfig);
-				} else {
-					// Use session-level values if set, otherwise use global defaults
-					const modelValue = session.customModel ?? globalConfig.model ?? '';
-					const contextWindowValue = session.customContextWindow ?? globalConfig.contextWindow;
-					setAgentConfig({ ...globalConfig, model: modelValue, contextWindow: contextWindowValue });
-				}
-			});
+		// Load agent definition to get configOptions
+		window.maestro.agents.detect().then((agents: AgentConfig[]) => {
+			if (stale) return;
+			const foundAgent = agents.find((a) => a.id === activeToolType);
+			setAgent(foundAgent || null);
 
-			// Load SSH remote config from session (per-session, not global)
-			if (session.sessionSshRemoteConfig?.enabled && session.sessionSshRemoteConfig?.remoteId) {
-				setSshRemoteConfig({
-					enabled: true,
-					remoteId: session.sessionSshRemoteConfig.remoteId,
-					workingDirOverride: session.sessionSshRemoteConfig.workingDirOverride,
-				});
+			// Load models if agent supports model selection
+			if (foundAgent?.capabilities?.supportsModelSelection) {
+				setLoadingModels(true);
+				window.maestro.agents
+					.getModels(activeToolType)
+					.then((models) => {
+						if (!stale) setAvailableModels(models);
+					})
+					.catch((err) => console.error('Failed to load models:', err))
+					.finally(() => {
+						if (!stale) setLoadingModels(false);
+					});
 			} else {
-				setSshRemoteConfig(undefined);
+				setAvailableModels([]);
 			}
-
-			// Load SSH remote configurations
-			window.maestro.sshRemote
-				.getConfigs()
-				.then((result) => {
-					if (result.success && result.configs) {
-						setSshRemotes(result.configs);
-					}
-				})
-				.catch((err) => console.error('Failed to load SSH remotes:', err));
-
-			// Load per-session config (stored on the session/agent instance)
-			// When provider changed, clear provider-specific overrides
+		});
+		// Load agent config for defaults, but use session-level overrides when available
+		// Both model and contextWindow are now per-session
+		window.maestro.agents.getConfig(activeToolType).then((globalConfig) => {
+			if (stale) return;
 			if (isProviderSwitch) {
-				setCustomPath('');
-				setCustomArgs('');
-				setCustomEnvVars({});
+				// When provider changed, use global defaults for the new provider
+				setAgentConfig(globalConfig);
 			} else {
-				setCustomPath(session.customPath ?? '');
-				setCustomArgs(session.customArgs ?? '');
-				setCustomEnvVars(session.customEnvVars ?? {});
+				// Use session-level values if set, otherwise use global defaults
+				const modelValue = session.customModel ?? globalConfig.model ?? '';
+				const contextWindowValue = session.customContextWindow ?? globalConfig.contextWindow;
+				setAgentConfig({ ...globalConfig, model: modelValue, contextWindow: contextWindowValue });
 			}
+		});
+
+		// Load SSH remote config from session (per-session, not global)
+		if (session.sessionSshRemoteConfig?.enabled && session.sessionSshRemoteConfig?.remoteId) {
+			setSshRemoteConfig({
+				enabled: true,
+				remoteId: session.sessionSshRemoteConfig.remoteId,
+				workingDirOverride: session.sessionSshRemoteConfig.workingDirOverride,
+			});
+		} else {
+			setSshRemoteConfig(undefined);
 		}
+
+		// Load SSH remote configurations
+		window.maestro.sshRemote
+			.getConfigs()
+			.then((result) => {
+				if (stale) return;
+				if (result.success && result.configs) {
+					setSshRemotes(result.configs);
+				}
+			})
+			.catch((err) => console.error('Failed to load SSH remotes:', err));
+
+		// Load per-session config (stored on the session/agent instance)
+		// When provider changed, clear provider-specific overrides
+		if (isProviderSwitch) {
+			setCustomPath('');
+			setCustomArgs('');
+			setCustomEnvVars({});
+		} else {
+			setCustomPath(session.customPath ?? '');
+			setCustomArgs(session.customArgs ?? '');
+			setCustomEnvVars(session.customEnvVars ?? {});
+		}
+
+		return () => {
+			stale = true;
+		};
 	}, [isOpen, session, selectedToolType]);
 
 	// Populate form when session changes or modal opens
@@ -185,9 +201,10 @@ export function EditAgentModal({
 	}, [isSshEnabled, sshRemoteConfig?.remoteId, sshRemotes]);
 
 	// Validate remote path when SSH is enabled (debounced)
+	// Prefer workingDirOverride (user-specified remote path) over session.projectRoot
 	const remotePathValidation = useRemotePathValidation({
 		isSshEnabled: !!isSshEnabled,
-		path: session?.projectRoot ?? '',
+		path: sshRemoteConfig?.workingDirOverride ?? session?.projectRoot ?? '',
 		sshRemoteId: sshRemoteConfig?.remoteId,
 	});
 

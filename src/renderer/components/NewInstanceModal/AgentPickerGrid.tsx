@@ -106,7 +106,7 @@ export const AgentPickerGrid = React.memo(function AgentPickerGrid({
 								<div
 									onClick={handleAgentHeaderActivate}
 									onKeyDown={(e) => {
-										if (e.key === 'Enter' || e.key === ' ') {
+										if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
 											e.preventDefault();
 											handleAgentHeaderActivate();
 										}
@@ -167,6 +167,7 @@ export const AgentPickerGrid = React.memo(function AgentPickerGrid({
 													</span>
 												)}
 												<button
+													type="button"
 													onClick={(e) => {
 														e.stopPropagation();
 														onRefreshAgent(agent.id);
@@ -307,6 +308,7 @@ export const AgentPickerGrid = React.memo(function AgentPickerGrid({
 						</div>
 					</div>
 					<button
+						type="button"
 						onClick={onDismissDebug}
 						className="mt-2 text-xs underline"
 						style={{ color: theme.colors.textDim }}
