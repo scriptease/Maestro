@@ -17,6 +17,7 @@ import { useSessionStore } from '../../stores/sessionStore';
 import { useBatchStore } from '../../stores/batchStore';
 import { useUIStore } from '../../stores/uiStore';
 import { useAgentErrorRecovery } from '../agent/useAgentErrorRecovery';
+import type { ToolType } from '../../../shared/types';
 import { notifyToast } from '../../stores/notificationStore';
 import { generateId } from '../../utils/ids';
 import { getAutoRunSessionsForGroupChat } from '../../utils/groupChatAutoRunRegistry';
@@ -143,11 +144,13 @@ export function useGroupChatHandlers(): GroupChatHandlersReturn {
 		setTimeout(() => groupChatInputRef.current?.focus(), 0);
 	}, []);
 
+	const groupChats = useGroupChatStore((s) => s.groupChats);
+	const moderatorAgentId = (groupChats.find((c) => c.id === activeGroupChatId)?.moderatorAgentId ??
+		'claude-code') as ToolType;
+
 	const { recoveryActions: groupChatRecoveryActions } = useAgentErrorRecovery({
 		error: groupChatError?.error,
-		// TODO: Read actual moderator agent type from the active group chat config
-		// instead of hardcoding. Error recovery suggestions will be wrong for non-Claude moderators.
-		agentId: 'claude-code',
+		agentId: moderatorAgentId,
 		sessionId: groupChatError?.groupChatId || '',
 		onRetry: handleClearGroupChatError,
 		onClearError: handleClearGroupChatError,
