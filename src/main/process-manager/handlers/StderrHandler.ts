@@ -6,6 +6,7 @@ import { logger } from '../../utils/logger';
 import { matchSshErrorPattern } from '../../parsers/error-patterns';
 import { appendToBuffer } from '../utils/bufferUtils';
 import type { ManagedProcess, AgentError } from '../types';
+import type { InactivityWatchdog } from './InactivityWatchdog';
 
 /**
  * Matches Codex Rust tracing log lines emitted to stderr.
@@ -18,6 +19,7 @@ const CODEX_TRACING_LINE =
 interface StderrHandlerDependencies {
 	processes: Map<string, ManagedProcess>;
 	emitter: EventEmitter;
+	inactivityWatchdog?: InactivityWatchdog;
 }
 
 /**
@@ -27,10 +29,12 @@ interface StderrHandlerDependencies {
 export class StderrHandler {
 	private processes: Map<string, ManagedProcess>;
 	private emitter: EventEmitter;
+	private inactivityWatchdog: InactivityWatchdog | null;
 
 	constructor(deps: StderrHandlerDependencies) {
 		this.processes = deps.processes;
 		this.emitter = deps.emitter;
+		this.inactivityWatchdog = deps.inactivityWatchdog ?? null;
 	}
 
 	/**
@@ -39,6 +43,12 @@ export class StderrHandler {
 	handleData(sessionId: string, stderrData: string): void {
 		const managedProcess = this.processes.get(sessionId);
 		if (!managedProcess) return;
+
+		// Record activity for the inactivity watchdog.
+		// Stderr output also counts as process activity.
+		if (this.inactivityWatchdog) {
+			this.inactivityWatchdog.recordActivity(sessionId);
+		}
 
 		const { outputParser, toolType } = managedProcess;
 
