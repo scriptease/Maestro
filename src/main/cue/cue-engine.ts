@@ -406,9 +406,7 @@ export class CueEngine {
 				sessionId,
 				sessionName: session.name,
 				toolType: session.toolType,
-				subscriptions: state.config.subscriptions.filter(
-					(s) => !s.agent_id || s.agent_id === sessionId
-				),
+				subscriptions: state.config.subscriptions,
 			});
 		}
 
@@ -423,9 +421,7 @@ export class CueEngine {
 					sessionId: session.id,
 					sessionName: session.name,
 					toolType: session.toolType,
-					subscriptions: config.subscriptions.filter(
-						(s) => !s.agent_id || s.agent_id === session.id
-					),
+					subscriptions: config.subscriptions,
 				});
 			}
 		}
