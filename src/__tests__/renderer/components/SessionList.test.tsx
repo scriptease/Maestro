@@ -3001,14 +3001,14 @@ describe('SessionList', () => {
 				useSettingsStore.setState({ leftSidebarWidth: 300 });
 			}); // Reset for second drag
 
-			// Try to drag below min (256px)
+			// Try to drag below min (280px)
 			fireEvent.mouseDown(resizeHandle!, { clientX: 300 });
 			fireEvent.mouseMove(document, { clientX: 100 });
 			// State is only updated on mouseUp for performance
 			fireEvent.mouseUp(document);
 
-			// Should be clamped to 256
-			expect(setLeftSidebarWidthState).toHaveBeenCalledWith(256);
+			// Should be clamped to 280
+			expect(setLeftSidebarWidthState).toHaveBeenCalledWith(280);
 		});
 	});
 
