@@ -950,6 +950,8 @@ export function EncoreTab({ theme, isOpen }: EncoreTabProps) {
 										availableModels={ac.availableModels}
 										loadingModels={ac.loadingModels}
 										onRefreshModels={ac.refreshModels}
+										dynamicOptions={ac.dynamicOptions}
+										loadingDynamicOptions={ac.loadingDynamicOptions}
 										onRefreshAgent={ac.refreshAgent}
 										refreshingAgent={ac.refreshingAgent}
 										compact

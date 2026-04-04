@@ -106,6 +106,10 @@ export function NewInstanceModal({
 	const [agentConfigs, setAgentConfigs] = useState<Record<string, Record<string, any>>>({});
 	const [availableModels, setAvailableModels] = useState<Record<string, string[]>>({});
 	const [loadingModels, setLoadingModels] = useState<Record<string, boolean>>({});
+	const [dynamicOptions, setDynamicOptions] = useState<Record<string, Record<string, string[]>>>(
+		{}
+	);
+	const [loadingDynamicOptions, setLoadingDynamicOptions] = useState<Record<string, boolean>>({});
 	const [directoryWarningAcknowledged, setDirectoryWarningAcknowledged] = useState(false);
 	// SSH Remote configuration
 	const [sshRemotes, setSshRemotes] = useState<SshRemoteConfig[]>([]);
@@ -422,6 +426,41 @@ export function NewInstanceModal({
 			}
 		},
 		[agents, availableModels]
+	);
+
+	// Load dynamic config options for an agent (e.g., effort levels, reasoning levels)
+	const loadDynamicOptionsForAgent = React.useCallback(
+		async (agentId: string) => {
+			const agent = agents.find((a) => a.id === agentId);
+			if (!agent?.configOptions) return;
+
+			const dynamicSelects = agent.configOptions.filter(
+				(opt: any) => opt.type === 'select' && opt.dynamic
+			);
+			if (dynamicSelects.length === 0) return;
+
+			// Skip if already loaded
+			if (dynamicOptions[agentId] && Object.keys(dynamicOptions[agentId]).length > 0) return;
+
+			setLoadingDynamicOptions((prev) => ({ ...prev, [agentId]: true }));
+			try {
+				const results: Record<string, string[]> = {};
+				await Promise.all(
+					dynamicSelects.map(async (opt: any) => {
+						try {
+							const options = await window.maestro.agents.getConfigOptions(agentId, opt.key);
+							results[opt.key] = options;
+						} catch {
+							// Fall back to static options
+						}
+					})
+				);
+				setDynamicOptions((prev) => ({ ...prev, [agentId]: results }));
+			} finally {
+				setLoadingDynamicOptions((prev) => ({ ...prev, [agentId]: false }));
+			}
+		},
+		[agents, dynamicOptions]
 	);
 
 	const handleCreate = React.useCallback(() => {
@@ -763,6 +802,10 @@ export function NewInstanceModal({
 											if (nowExpanded && agent.capabilities?.supportsModelSelection) {
 												loadModelsForAgent(agent.id);
 											}
+											// Load dynamic config options when expanding
+											if (nowExpanded) {
+												loadDynamicOptionsForAgent(agent.id);
+											}
 										}
 									};
 
@@ -987,6 +1030,8 @@ export function NewInstanceModal({
 														availableModels={availableModels[agent.id] || []}
 														loadingModels={loadingModels[agent.id] || false}
 														onRefreshModels={() => loadModelsForAgent(agent.id, true)}
+														dynamicOptions={dynamicOptions[agent.id] || {}}
+														loadingDynamicOptions={loadingDynamicOptions[agent.id] || false}
 														onRefreshAgent={() => handleRefreshAgent(agent.id)}
 														refreshingAgent={refreshingAgent === agent.id}
 														showBuiltInEnvVars
@@ -1236,6 +1281,8 @@ export function EditAgentModal({
 	const [agentConfig, setAgentConfig] = useState<Record<string, any>>({});
 	const [availableModels, setAvailableModels] = useState<string[]>([]);
 	const [loadingModels, setLoadingModels] = useState(false);
+	const [editDynamicOptions, setEditDynamicOptions] = useState<Record<string, string[]>>({});
+	const [editLoadingDynamicOptions, setEditLoadingDynamicOptions] = useState(false);
 	const [customPath, setCustomPath] = useState('');
 	const [customArgs, setCustomArgs] = useState('');
 	const [customEnvVars, setCustomEnvVars] = useState<Record<string, string>>({});
@@ -1295,6 +1342,34 @@ export function EditAgentModal({
 						.finally(() => setLoadingModels(false));
 				} else {
 					setAvailableModels([]);
+				}
+
+				// Load dynamic config options
+				const dynamicSelects = foundAgent?.configOptions?.filter(
+					(opt: any) => opt.type === 'select' && opt.dynamic
+				);
+				if (dynamicSelects && dynamicSelects.length > 0) {
+					setEditLoadingDynamicOptions(true);
+					Promise.all(
+						dynamicSelects.map(async (opt: any) => {
+							try {
+								return {
+									key: opt.key,
+									options: await window.maestro.agents.getConfigOptions(activeToolType, opt.key),
+								};
+							} catch {
+								return { key: opt.key, options: [] as string[] };
+							}
+						})
+					)
+						.then((results) => {
+							const opts: Record<string, string[]> = {};
+							for (const r of results) opts[r.key] = r.options;
+							setEditDynamicOptions(opts);
+						})
+						.finally(() => setEditLoadingDynamicOptions(false));
+				} else {
+					setEditDynamicOptions({});
 				}
 			});
 			// Load agent config for defaults, but use session-level overrides when available
@@ -1821,6 +1896,8 @@ export function EditAgentModal({
 								availableModels={availableModels}
 								loadingModels={loadingModels}
 								onRefreshModels={refreshModels}
+								dynamicOptions={editDynamicOptions}
+								loadingDynamicOptions={editLoadingDynamicOptions}
 								onRefreshAgent={handleRefreshAgent}
 								refreshingAgent={refreshingAgent}
 								showBuiltInEnvVars

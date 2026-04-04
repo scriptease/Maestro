@@ -48,11 +48,17 @@ interface NumberConfigOption extends BaseConfigOption {
 
 /**
  * Select configuration option (string value from predefined options)
+ *
+ * Options can be:
+ * - Static: `options` array provided directly (e.g., Factory Droid reasoning effort)
+ * - Dynamic: `dynamic: true` with optional `options` as fallback.
+ *   Dynamic options are fetched at runtime via `agents:getConfigOptions` IPC.
  */
 interface SelectConfigOption extends BaseConfigOption {
 	type: 'select';
 	default: string;
-	options: string[];
+	options?: string[]; // Static options (or fallback for dynamic). Optional when dynamic is true.
+	dynamic?: boolean; // If true, options are fetched at runtime via discoverConfigOptions()
 	argBuilder?: (value: string) => string[];
 }
 
@@ -139,6 +145,32 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
 		resumeArgs: (sessionId: string) => ['--resume', sessionId], // Resume with session ID
 		readOnlyArgs: ['--permission-mode', 'plan'], // Read-only/plan mode
 		readOnlyCliEnforced: true, // CLI enforces read-only via --permission-mode plan
+		modelArgs: (modelId: string) => ['--model', modelId], // Model selection: claude --model sonnet
+		configOptions: [
+			{
+				key: 'model',
+				type: 'text',
+				label: 'Model',
+				description:
+					'Model override (e.g., "sonnet", "opus", "haiku", or full name like "claude-sonnet-4-6"). Leave empty to use the default.',
+				default: '',
+				argBuilder: (value: string) => {
+					if (value && value.trim()) {
+						return ['--model', value.trim()];
+					}
+					return [];
+				},
+			},
+			{
+				key: 'effort',
+				type: 'select',
+				label: 'Effort',
+				description: 'How much effort the model should put into its response.',
+				dynamic: true,
+				default: '',
+				argBuilder: (value: string) => (value && value.trim() ? ['--effort', value.trim()] : []),
+			},
+		],
 	},
 	{
 		id: 'codex',
@@ -177,6 +209,16 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
 					}
 					return [];
 				},
+			},
+			{
+				key: 'reasoningEffort',
+				type: 'select',
+				label: 'Reasoning Effort',
+				description: 'How much the model should reason before responding.',
+				dynamic: true,
+				default: '',
+				argBuilder: (value: string) =>
+					value && value.trim() ? ['-c', `reasoning.effort="${value.trim()}"`] : [],
 			},
 			{
 				key: 'contextWindow',

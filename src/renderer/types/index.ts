@@ -742,6 +742,7 @@ export interface AgentConfigOption {
 	description: string;
 	default: any;
 	options?: string[];
+	dynamic?: boolean; // If true, options are fetched at runtime via agents:getConfigOptions IPC
 	argBuilder?: (value: any) => string[];
 }
 

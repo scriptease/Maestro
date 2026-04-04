@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, memo, useMemo } from 'react';
-import { Search, Mail } from 'lucide-react';
+import { Search, Bell } from 'lucide-react';
 import type { AITab } from '../../types';
 import { hasDraft } from '../../utils/tabHelpers';
 import { formatShortcutKeys } from '../../utils/shortcutFormatter';
@@ -381,11 +381,13 @@ function TabBarInner({
 							: `Filter unread tabs (${formatShortcutKeys(tabShortcuts.filterUnreadTabs?.keys ?? ['Meta', 'u'])})`
 					}
 				>
-					<Mail className="w-4 h-4" />
-					<div
-						className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full"
-						style={{ backgroundColor: theme.colors.accent }}
-					/>
+					<Bell className="w-4 h-4" />
+					{tabs.some((t) => t.hasUnread) && (
+						<div
+							className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full"
+							style={{ backgroundColor: theme.colors.accent }}
+						/>
+					)}
 				</button>
 			</div>
 

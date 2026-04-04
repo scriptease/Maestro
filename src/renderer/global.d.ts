@@ -882,6 +882,11 @@ interface MaestroAPI {
 		getCustomEnvVars: (agentId: string) => Promise<Record<string, string> | null>;
 		getAllCustomEnvVars: () => Promise<Record<string, Record<string, string>>>;
 		getModels: (agentId: string, forceRefresh?: boolean, sshRemoteId?: string) => Promise<string[]>;
+		getConfigOptions: (
+			agentId: string,
+			optionKey: string,
+			forceRefresh?: boolean
+		) => Promise<string[]>;
 		discoverSlashCommands: (
 			agentId: string,
 			cwd: string,

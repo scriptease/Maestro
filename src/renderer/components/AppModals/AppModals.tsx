@@ -310,6 +310,7 @@ export interface AppModalsProps {
 	onPromptToggleTabSaveToHistory?: () => void;
 	promptTabReadOnlyMode: boolean;
 	onPromptToggleTabReadOnlyMode: () => void;
+	promptComposerAgentId?: string;
 	promptTabShowThinking: ThinkingMode;
 	onPromptToggleTabShowThinking?: () => void;
 	promptSupportsThinking: boolean;
@@ -677,6 +678,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 		onPromptToggleTabSaveToHistory,
 		promptTabReadOnlyMode,
 		onPromptToggleTabReadOnlyMode,
+		promptComposerAgentId,
 		promptTabShowThinking,
 		onPromptToggleTabShowThinking,
 		promptSupportsThinking,
@@ -999,6 +1001,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 				onPromptToggleTabSaveToHistory={onPromptToggleTabSaveToHistory}
 				promptTabReadOnlyMode={promptTabReadOnlyMode}
 				onPromptToggleTabReadOnlyMode={onPromptToggleTabReadOnlyMode}
+				promptComposerAgentId={promptComposerAgentId}
 				promptTabShowThinking={promptTabShowThinking}
 				onPromptToggleTabShowThinking={onPromptToggleTabShowThinking}
 				promptSupportsThinking={promptSupportsThinking}
