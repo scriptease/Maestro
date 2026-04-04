@@ -372,8 +372,8 @@ function TabBarInner({
 					onClick={toggleUnreadFilter}
 					className="relative flex items-center justify-center w-6 h-6 rounded transition-colors"
 					style={{
-						color: showUnreadOnly ? theme.colors.accent : theme.colors.textDim,
-						opacity: showUnreadOnly ? 1 : 0.5,
+						color: showUnreadOnly ? theme.colors.accentForeground : theme.colors.textDim,
+						backgroundColor: showUnreadOnly ? theme.colors.accent : undefined,
 					}}
 					title={
 						showUnreadOnly

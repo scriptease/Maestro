@@ -220,14 +220,6 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
 				argBuilder: (value: string) =>
 					value && value.trim() ? ['-c', `reasoning.effort="${value.trim()}"`] : [],
 			},
-			{
-				key: 'contextWindow',
-				type: 'number',
-				label: 'Context Window Size',
-				description:
-					'Maximum context window size in tokens. Required for context usage display. Common values: 400000 (GPT-5.2/5.3), 128000 (GPT-4o).',
-				default: 400000, // Default for GPT-5.2+ models
-			},
 		],
 	},
 	{

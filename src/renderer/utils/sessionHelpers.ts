@@ -71,6 +71,8 @@ export interface BuildSpawnConfigOptions {
 	sessionCustomEnvVars?: Record<string, string>;
 	/** Per-session custom model override */
 	sessionCustomModel?: string;
+	/** Per-session custom effort/reasoning level */
+	sessionCustomEffort?: string;
 	/** Per-session custom context window */
 	sessionCustomContextWindow?: number;
 	/** Per-session SSH remote config (takes precedence over agent-level SSH config) */
@@ -120,6 +122,7 @@ export async function buildSpawnConfigForAgent(
 		sessionCustomArgs,
 		sessionCustomEnvVars,
 		sessionCustomModel,
+		sessionCustomEffort,
 		sessionCustomContextWindow,
 		sessionSshRemoteConfig,
 		hasImages = false,
@@ -170,6 +173,7 @@ export async function buildSpawnConfigForAgent(
 		sessionCustomArgs,
 		sessionCustomEnvVars,
 		sessionCustomModel,
+		sessionCustomEffort,
 		sessionCustomContextWindow,
 		// Per-session SSH remote config (takes precedence over agent-level SSH config)
 		sessionSshRemoteConfig,

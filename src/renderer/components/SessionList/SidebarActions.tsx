@@ -92,8 +92,8 @@ export const SidebarActions = memo(function SidebarActions({
 					onClick={toggleShowUnreadAgentsOnly}
 					className="relative flex items-center justify-center p-2 rounded transition-colors w-8 h-8 shrink-0 hover:bg-white/5"
 					style={{
-						color: showUnreadAgentsOnly ? theme.colors.accent : undefined,
-						opacity: showUnreadAgentsOnly ? 1 : 0.5,
+						color: showUnreadAgentsOnly ? theme.colors.accentForeground : undefined,
+						backgroundColor: showUnreadAgentsOnly ? theme.colors.accent : undefined,
 					}}
 					title={
 						showUnreadAgentsOnly

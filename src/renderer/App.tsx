@@ -1704,6 +1704,7 @@ function MaestroConsoleInner() {
 	const {
 		handleSaveEditAgent,
 		handleRenameTab,
+		handleAutoNameTab,
 		performDeleteSession,
 		showConfirmation,
 		toggleTabStar,
@@ -3253,6 +3254,7 @@ function MaestroConsoleInner() {
 					renameTabInitialName={renameTabInitialName}
 					onCloseRenameTabModal={handleCloseRenameTabModal}
 					onRenameTab={handleRenameTab}
+					onAutoNameTab={handleAutoNameTab}
 					// AppGroupModals props
 					createGroupModalOpen={createGroupModalOpen}
 					onCloseCreateGroupModal={handleCloseCreateGroupModal}

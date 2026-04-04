@@ -448,6 +448,7 @@ app.whenReady().then(async () => {
 				customArgs: storedSession.customArgs,
 				customEnvVars: storedSession.customEnvVars,
 				customModel: storedSession.customModel,
+				customEffort: storedSession.customEffort,
 				onLog: (level, message) => {
 					if (level === 'error') {
 						logger.error(message, 'Cue');

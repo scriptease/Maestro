@@ -35,6 +35,7 @@ interface ProcessConfig {
 	sessionCustomArgs?: string;
 	sessionCustomEnvVars?: Record<string, string>;
 	sessionCustomModel?: string;
+	sessionCustomEffort?: string;
 	sessionCustomContextWindow?: number;
 	// Per-session SSH remote config (takes precedence over agent-level SSH config)
 	sessionSshRemoteConfig?: {
@@ -185,6 +186,7 @@ type GroupChatData = {
 		customArgs?: string;
 		customEnvVars?: Record<string, string>;
 		customModel?: string;
+		customEffort?: string;
 		sshRemoteConfig?: {
 			enabled: boolean;
 			remoteId: string | null;

@@ -704,6 +704,61 @@ export const MainPanel = React.memo(
 		// Get agent capabilities for conditional feature rendering
 		const { hasCapability } = useAgentCapabilities(activeSession?.toolType);
 
+		// Model/Effort pills: available options, current values, and agent-level defaults
+		const [pillModels, setPillModels] = useState<string[]>([]);
+		const [pillEfforts, setPillEfforts] = useState<string[]>([]);
+		const [agentDefaultModel, setAgentDefaultModel] = useState('');
+		const [agentDefaultEffort, setAgentDefaultEffort] = useState('');
+		const updateSession = useSessionStore((s) => s.updateSession);
+
+		// Fetch available models, effort levels, and agent defaults when agent type changes
+		useEffect(() => {
+			if (!activeSession?.toolType) return;
+			const agentId = activeSession.toolType;
+			// Fetch models
+			window.maestro.agents
+				.getModels(agentId)
+				.then(setPillModels)
+				.catch(() => setPillModels([]));
+			// Fetch effort options — use the effort-related config key for this agent
+			const effortKey = agentId === 'codex' ? 'reasoningEffort' : 'effort';
+			window.maestro.agents
+				.getConfigOptions(agentId, effortKey)
+				.then(setPillEfforts)
+				.catch(() => setPillEfforts([]));
+			// Fetch agent-level config for default model/effort
+			window.maestro.agents
+				.getConfig(agentId)
+				.then((config) => {
+					setAgentDefaultModel(config?.model || '');
+					setAgentDefaultEffort(config?.effort || config?.reasoningEffort || '');
+				})
+				.catch(() => {
+					setAgentDefaultModel('');
+					setAgentDefaultEffort('');
+				});
+		}, [activeSession?.toolType]);
+
+		// Resolved current model/effort: session override > agent config > empty
+		const resolvedModel = activeSession?.customModel || agentDefaultModel;
+		const resolvedEffort = activeSession?.customEffort || agentDefaultEffort;
+
+		const handleModelChange = useCallback(
+			(model: string) => {
+				if (!activeSession) return;
+				updateSession(activeSession.id, { customModel: model || undefined });
+			},
+			[activeSession, updateSession]
+		);
+
+		const handleEffortChange = useCallback(
+			(effort: string) => {
+				if (!activeSession) return;
+				updateSession(activeSession.id, { customEffort: effort || undefined });
+			},
+			[activeSession, updateSession]
+		);
+
 		// Expose methods to parent via ref
 		useImperativeHandle(
 			ref,
@@ -941,9 +996,10 @@ export const MainPanel = React.memo(
 			<>
 				<ErrorBoundary>
 					<div
-						className={`flex-1 flex flex-col min-w-0 relative ${activeFocus === 'main' ? 'ring-1 ring-inset' : ''}`}
+						className={`flex-1 flex flex-col relative ${activeFocus === 'main' ? 'ring-1 ring-inset' : ''}`}
 						style={
 							{
+								minWidth: '400px',
 								backgroundColor: theme.colors.bgMain,
 								'--tw-ring-color': theme.colors.accent,
 							} as React.CSSProperties
@@ -1931,6 +1987,13 @@ export const MainPanel = React.memo(
 													onExitWizard={onExitWizard}
 													wizardShowThinking={activeTab?.wizardState?.showWizardThinking ?? false}
 													onToggleWizardShowThinking={props.onToggleWizardShowThinking}
+													// Model/Effort quick-change pills
+													currentModel={resolvedModel}
+													currentEffort={resolvedEffort}
+													availableModels={pillModels}
+													availableEfforts={pillEfforts}
+													onModelChange={handleModelChange}
+													onEffortChange={handleEffortChange}
 												/>
 											</div>
 										)}

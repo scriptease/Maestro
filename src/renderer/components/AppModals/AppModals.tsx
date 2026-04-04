@@ -135,6 +135,7 @@ export interface AppModalsProps {
 	renameTabInitialName: string;
 	onCloseRenameTabModal: () => void;
 	onRenameTab: (newName: string) => void;
+	onAutoNameTab: () => void;
 
 	// --- AppGroupModals props ---
 	createGroupModalOpen: boolean;
@@ -526,6 +527,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 		renameTabInitialName,
 		onCloseRenameTabModal,
 		onRenameTab,
+		onAutoNameTab,
 		// Group modals
 		createGroupModalOpen,
 		onCloseCreateGroupModal,
@@ -813,6 +815,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 				renameTabInitialName={renameTabInitialName}
 				onCloseRenameTabModal={onCloseRenameTabModal}
 				onRenameTab={onRenameTab}
+				onAutoNameTab={onAutoNameTab}
 				onOpenManualSetup={() =>
 					useModalStore.getState().openModal('newInstance', { duplicatingSessionId: null })
 				}
