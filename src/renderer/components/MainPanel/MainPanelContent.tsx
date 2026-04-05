@@ -534,7 +534,7 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 								onReplayMessage={onReplayMessage}
 								fileTree={fileTree}
 								cwd={
-									activeSession.cwd.startsWith(activeSession.fullPath)
+									activeSession.cwd?.startsWith(activeSession.fullPath)
 										? activeSession.cwd.slice(activeSession.fullPath.length + 1)
 										: ''
 								}

@@ -200,9 +200,19 @@ export function registerSystemHandlers(deps: SystemHandlerDependencies): void {
 		try {
 			parsed = new URL(url);
 		} catch {
-			// Non-URL strings (e.g. relative file paths like "LICENSE", "./README.md") should not
-			// crash — log and return gracefully. Fixes MAESTRO-F4/E5/E3/BB/BA Sentry noise.
-			logger.warn(`Ignoring non-URL string passed to openExternal: "${url}"`, 'Shell');
+			// Detect absolute file paths and redirect to openPath — Fixes MAESTRO-FN/FA/F4
+			if (path.isAbsolute(url)) {
+				if (fsSync.existsSync(url)) {
+					const errorMessage = await shell.openPath(url);
+					if (errorMessage) {
+						throw new Error(errorMessage);
+					}
+					return;
+				}
+				throw new Error(`Path does not exist: ${url}`);
+			}
+			// Relative paths (LICENSE, ./README.md, vscode/**) are not actionable — log and return
+			logger.warn(`Ignored non-URL string passed to openExternal: "${url}"`, 'Shell');
 			return;
 		}
 		// Redirect file:// URLs to shell.openPath instead of rejecting — Fixes MAESTRO-9M
