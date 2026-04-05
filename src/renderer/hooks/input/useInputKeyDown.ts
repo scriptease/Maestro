@@ -253,6 +253,22 @@ export function useInputKeyDown(deps: InputKeyDownDeps): InputKeyDownReturn {
 						const fpMainKey = fpKeys[fpKeys.length - 1];
 						const metaPressed = e.metaKey || e.ctrlKey;
 
+						console.log('[ForcedParallel] Shortcut check:', {
+							metaPressed,
+							fpNeedsMeta,
+							shiftKey: e.shiftKey,
+							fpNeedsShift,
+							altKey: e.altKey,
+							fpNeedsAlt,
+							key: e.key.toLowerCase(),
+							fpMainKey,
+							match:
+								metaPressed === fpNeedsMeta &&
+								e.shiftKey === fpNeedsShift &&
+								e.altKey === fpNeedsAlt &&
+								e.key.toLowerCase() === fpMainKey,
+						});
+
 						if (
 							metaPressed === fpNeedsMeta &&
 							e.shiftKey === fpNeedsShift &&
@@ -260,6 +276,7 @@ export function useInputKeyDown(deps: InputKeyDownDeps): InputKeyDownReturn {
 							e.key.toLowerCase() === fpMainKey
 						) {
 							e.preventDefault();
+							console.log('[ForcedParallel] Shortcut matched, calling processInput');
 							processInput(undefined, { forceParallel: true });
 							return;
 						}

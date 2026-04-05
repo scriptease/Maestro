@@ -157,7 +157,18 @@ export function useInputProcessing(deps: UseInputProcessingDeps): UseInputProces
 			flushBatchedUpdates?.();
 
 			const effectiveInputValue = overrideInputValue ?? inputValue;
+			if (options?.forceParallel) {
+				console.log('[ForcedParallel] processInput called:', {
+					hasActiveSession: !!activeSession,
+					inputValue: effectiveInputValue.substring(0, 50),
+					inputMode: activeSession?.inputMode,
+					sessionState: activeSession?.state,
+				});
+			}
 			if (!activeSession || (!effectiveInputValue.trim() && stagedImages.length === 0)) {
+				if (options?.forceParallel) {
+					console.log('[ForcedParallel] Early return: no session or empty input');
+				}
 				return;
 			}
 
@@ -893,6 +904,14 @@ export function useInputProcessing(deps: UseInputProcessingDeps): UseInputProces
 			// Batch mode agents spawn a new process per message rather than writing to stdin
 			const isBatchModeAgent =
 				currentMode === 'ai' && hasCapabilityCached(activeSession.toolType, 'supportsBatchMode');
+
+			if (isForceParallel) {
+				console.log('[ForcedParallel] Reached spawn path:', {
+					targetSessionId,
+					isBatchModeAgent,
+					toolType: activeSession.toolType,
+				});
+			}
 
 			if (isBatchModeAgent) {
 				// Batch mode: Spawn new agent process with prompt
