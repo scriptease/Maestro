@@ -7,6 +7,7 @@ import { ProcessManager } from '../../process-manager';
 import { AgentDetector } from '../../agents';
 import { logger } from '../../utils/logger';
 import { isWindows } from '../../../shared/platformDetection';
+import { getChildProcesses } from '../../process-manager/utils/childProcessInfo';
 import { addBreadcrumb, captureException } from '../../utils/sentry';
 import { isWebContentsAvailable } from '../../utils/safe-send';
 import {
@@ -751,17 +752,29 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 			const processManager = requireProcessManager(getProcessManager);
 			const processes = processManager.getAll();
 			// Return serializable process info (exclude non-serializable PTY/child process objects)
-			const result: Array<Record<string, unknown>> = processes.map((p) => ({
-				sessionId: p.sessionId,
-				toolType: p.toolType,
-				pid: p.pid,
-				cwd: p.cwd,
-				isTerminal: p.isTerminal,
-				isBatchMode: p.isBatchMode || false,
-				startTime: p.startTime,
-				command: p.command,
-				args: p.args,
-			}));
+			// For terminal processes, also fetch child processes to show what's running inside the shell
+			const result: Array<Record<string, unknown>> = await Promise.all(
+				processes.map(async (p) => {
+					const entry: Record<string, unknown> = {
+						sessionId: p.sessionId,
+						toolType: p.toolType,
+						pid: p.pid,
+						cwd: p.cwd,
+						isTerminal: p.isTerminal,
+						isBatchMode: p.isBatchMode || false,
+						startTime: p.startTime,
+						command: p.command,
+						args: p.args,
+					};
+					if (p.isTerminal && p.pid) {
+						const children = await getChildProcesses(p.pid);
+						if (children.length > 0) {
+							entry.childProcesses = children;
+						}
+					}
+					return entry;
+				})
+			);
 
 			// Append active Cue run processes if available
 			const cueProcesses = deps.getCueProcesses?.() ?? [];

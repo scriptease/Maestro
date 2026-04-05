@@ -46,6 +46,7 @@ interface ActiveProcess {
 	cueSessionName?: string;
 	cueSubscriptionName?: string;
 	cueEventType?: string;
+	childProcesses?: Array<{ pid: number; command: string }>;
 }
 
 interface ProcessNode {
@@ -86,6 +87,7 @@ interface ProcessNode {
 	cueEventType?: string; // Event type that triggered this Cue run
 	cueSessionName?: string; // Target session name for this Cue run
 	tabName?: string; // AI tab name (e.g., user-assigned tab label)
+	childProcesses?: Array<{ pid: number; command: string }>; // Child processes running inside terminal
 }
 
 // Format runtime in human readable format (e.g., "2m 30s", "1h 5m", "3d 2h")
@@ -129,6 +131,7 @@ interface ProcessDetailData {
 	cueEventType?: string;
 	cueSessionName?: string;
 	tabName?: string;
+	childProcesses?: Array<{ pid: number; command: string }>;
 }
 
 export function ProcessMonitor(props: ProcessMonitorProps) {
@@ -407,7 +410,14 @@ export function ProcessMonitor(props: ProcessMonitorProps) {
 				let label: string;
 				let isAutoRun = false;
 				if (processType === 'terminal') {
-					label = 'Terminal Shell';
+					// Show the running command if there are child processes
+					if (proc.childProcesses && proc.childProcesses.length > 0) {
+						const lastChild = proc.childProcesses[proc.childProcesses.length - 1];
+						const cmdBasename = lastChild.command.split('/').pop() || lastChild.command;
+						label = `Terminal: ${cmdBasename}`;
+					} else {
+						label = 'Terminal Shell';
+					}
 				} else if (processType === 'batch') {
 					label = `AI Agent (${proc.toolType})`;
 					isAutoRun = true;
@@ -472,6 +482,7 @@ export function ProcessMonitor(props: ProcessMonitorProps) {
 					args: proc.args,
 					sshRemote,
 					tabName,
+					childProcesses: proc.childProcesses,
 				});
 			});
 
@@ -747,6 +758,7 @@ export function ProcessMonitor(props: ProcessMonitorProps) {
 			cueEventType: node.cueEventType,
 			cueSessionName: node.cueSessionName,
 			tabName: node.tabName,
+			childProcesses: node.childProcesses,
 		});
 	};
 
@@ -1660,6 +1672,29 @@ export function ProcessMonitor(props: ProcessMonitorProps) {
 								{commandLine}
 							</code>
 						</div>
+
+						{/* Child Processes (terminal only) */}
+						{detailView.childProcesses && detailView.childProcesses.length > 0 && (
+							<div className="p-4 rounded-lg" style={{ backgroundColor: theme.colors.bgMain }}>
+								<div className="flex items-center gap-2 mb-2">
+									<Activity className="w-4 h-4" style={{ color: theme.colors.accent }} />
+									<span
+										className="text-xs font-medium uppercase tracking-wide"
+										style={{ color: theme.colors.textDim }}
+									>
+										Running in Terminal
+									</span>
+								</div>
+								<div className="flex flex-col gap-1">
+									{detailView.childProcesses.map((child) => (
+										<div key={child.pid} className="flex items-center gap-3 text-sm font-mono">
+											<span style={{ color: theme.colors.textDim }}>PID {child.pid}</span>
+											<span style={{ color: theme.colors.textMain }}>{child.command}</span>
+										</div>
+									))}
+								</div>
+							</div>
+						)}
 
 						{/* Start Time */}
 						<div className="p-4 rounded-lg" style={{ backgroundColor: theme.colors.bgMain }}>
