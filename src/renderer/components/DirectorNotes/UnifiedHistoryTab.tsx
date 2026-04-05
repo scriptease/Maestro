@@ -23,7 +23,7 @@ import {
 import type { GraphBucket } from '../History/ActivityGraph';
 import type { HistoryStats } from '../History';
 import { HistoryDetailModal } from '../HistoryDetailModal';
-import { useListNavigation, useSettings } from '../../hooks';
+import { useListNavigation, useSettings, useThrottledCallback } from '../../hooks';
 import { useSessionStore } from '../../stores/sessionStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { TabFocusHandle } from './OverviewTab';
@@ -91,6 +91,10 @@ export const UnifiedHistoryTab = forwardRef<TabFocusHandle, UnifiedHistoryTabPro
 		const [graphEntries, setGraphEntries] = useState<UnifiedHistoryEntry[]>([]);
 		// Pre-computed graph buckets from backend (covers ALL entries, not just first page)
 		const [graphBuckets, setGraphBuckets] = useState<GraphBucket[] | undefined>(undefined);
+		// Viewport range for the red scroll indicator on the activity graph
+		const [graphViewportRange, setGraphViewportRange] = useState<
+			{ start: number; end: number } | undefined
+		>(undefined);
 
 		const listRef = useRef<HTMLDivElement>(null);
 		const loadingMoreRef = useRef(false); // Guard against concurrent loads
@@ -340,20 +344,6 @@ export const UnifiedHistoryTab = forwardRef<TabFocusHandle, UnifiedHistoryTabPro
 			setHistoryStats(null);
 		}, []);
 
-		// Load next page when scrolling near the bottom
-		const handleScroll = useCallback(() => {
-			if (!hasMore || loadingMoreRef.current || isLoading) return;
-
-			const el = listRef.current;
-			if (!el) return;
-
-			const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_LOAD_THRESHOLD;
-			if (nearBottom) {
-				loadingMoreRef.current = true;
-				loadPage(entries.length, true, lookbackHours);
-			}
-		}, [hasMore, isLoading, entries.length, loadPage, lookbackHours]);
-
 		// Filter entries client-side
 		const filteredEntries = useMemo(() => {
 			return entries.filter((entry) => {
@@ -439,6 +429,64 @@ export const UnifiedHistoryTab = forwardRef<TabFocusHandle, UnifiedHistoryTabPro
 				virtualizer.scrollToIndex(selectedIndex, { align: 'auto' });
 			}
 		}, [selectedIndex, virtualizer]);
+
+		// Scroll handler: pagination + viewport indicator
+		const scrollTargetRef = useRef<HTMLDivElement | null>(null);
+
+		const handleScrollInner = useCallback(() => {
+			const el = scrollTargetRef.current || listRef.current;
+
+			// Pagination: load next page when near bottom
+			if (el && hasMore && !loadingMoreRef.current && !isLoading) {
+				const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_LOAD_THRESHOLD;
+				if (nearBottom) {
+					loadingMoreRef.current = true;
+					loadPage(entries.length, true, lookbackHours);
+				}
+			}
+
+			// Viewport indicator: track which entries are visible
+			const visibleItems = virtualizer.getVirtualItems();
+			if (visibleItems.length === 0) {
+				setGraphViewportRange(undefined);
+				return;
+			}
+
+			if (
+				el &&
+				el.scrollTop < 10 &&
+				visibleItems[visibleItems.length - 1]?.index >= filteredEntries.length - 1
+			) {
+				setGraphViewportRange(undefined);
+			} else {
+				const firstIdx = visibleItems[0]?.index ?? 0;
+				const lastIdx = visibleItems[visibleItems.length - 1]?.index ?? 0;
+				const topEntry = filteredEntries[firstIdx];
+				const bottomEntry = filteredEntries[lastIdx];
+				if (topEntry && bottomEntry) {
+					setGraphViewportRange({
+						start: bottomEntry.timestamp,
+						end: topEntry.timestamp,
+					});
+				}
+			}
+		}, [hasMore, isLoading, entries.length, loadPage, lookbackHours, virtualizer, filteredEntries]);
+
+		// Throttle to ~240fps for smooth indicator movement
+		const throttledScrollHandler = useThrottledCallback(handleScrollInner, 4);
+
+		const handleScroll = useCallback(
+			(e: React.UIEvent<HTMLDivElement>) => {
+				scrollTargetRef.current = e.currentTarget;
+				throttledScrollHandler();
+			},
+			[throttledScrollHandler]
+		);
+
+		// Reset viewport indicator when filters or lookback change
+		useEffect(() => {
+			setGraphViewportRange(undefined);
+		}, [activeFilters, searchQuery, lookbackHours]);
 
 		// Search toggle
 		const openSearch = useCallback(() => {
@@ -592,6 +640,7 @@ export const UnifiedHistoryTab = forwardRef<TabFocusHandle, UnifiedHistoryTabPro
 						lookbackHours={lookbackHours}
 						onLookbackChange={handleLookbackChange}
 						precomputedBuckets={graphBuckets}
+						viewportRange={graphViewportRange}
 						onBarClick={(start, end) => {
 							// Find first entry in range and select it
 							const idx = filteredEntries.findIndex(
