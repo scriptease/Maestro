@@ -72,6 +72,7 @@ interface UseBatchProcessorProps {
 		response?: string;
 		agentSessionId?: string;
 		usageStats?: UsageStats;
+		contextUsage?: number;
 	}>;
 	onAddHistoryEntry: (entry: Omit<HistoryEntry, 'id'>) => void | Promise<void>;
 	onComplete?: (info: BatchCompleteInfo) => void;
@@ -1140,6 +1141,7 @@ export function useBatchProcessor({
 								shortSummary,
 								fullSynopsis,
 								usageStats,
+								contextUsage,
 								elapsedTimeMs,
 								agentSessionId,
 								success,
@@ -1272,6 +1274,7 @@ export function useBatchProcessor({
 								sessionId: sessionId,
 								success,
 								usageStats,
+								contextUsage,
 								elapsedTimeMs,
 							});
 

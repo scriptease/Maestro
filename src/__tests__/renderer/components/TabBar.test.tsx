@@ -501,7 +501,7 @@ describe('TabBar', () => {
 
 			const unreadDot = container.querySelector('[title="New messages"]');
 			expect(unreadDot).toBeInTheDocument();
-			expect(unreadDot).toHaveStyle({ backgroundColor: mockTheme.colors.accent });
+			expect(unreadDot).toHaveStyle({ backgroundColor: mockTheme.colors.error });
 		});
 
 		it('shows unread indicator for active tab (when manually marked)', () => {
@@ -522,7 +522,7 @@ describe('TabBar', () => {
 			// This allows users to mark a tab as unread and see the indicator right away
 			const unreadDot = container.querySelector('[title="New messages"]');
 			expect(unreadDot).toBeInTheDocument();
-			expect(unreadDot).toHaveStyle({ backgroundColor: mockTheme.colors.accent });
+			expect(unreadDot).toHaveStyle({ backgroundColor: mockTheme.colors.error });
 		});
 
 		it('does not show unread indicator for busy tab', () => {

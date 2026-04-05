@@ -192,6 +192,8 @@ export interface LogEntry {
 	delivered?: boolean;
 	// For user messages - tracks if message was sent in read-only mode
 	readOnly?: boolean;
+	// For user messages - tracks if message was sent via forced parallel execution
+	forceParallel?: boolean;
 	// For error entries - stores the full AgentError for "View Details" functionality
 	agentError?: AgentError;
 	// For tool execution entries - stores tool state and details

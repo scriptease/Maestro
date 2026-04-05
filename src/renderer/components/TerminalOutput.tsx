@@ -11,6 +11,7 @@ import {
 	AlertCircle,
 	Save,
 	Share2,
+	Zap,
 } from 'lucide-react';
 import type { Session, Theme, LogEntry, FocusArea, AgentError } from '../types';
 import type { FileNode } from '../types/fileTree';
@@ -974,6 +975,18 @@ const LogItemComponent = memo(
 									<Trash2 className="w-3.5 h-3.5" />
 								</button>
 							))}
+						{/* Force parallel indicator for messages sent via Cmd+Shift+Enter */}
+						{isUserMessage && isAIMode && log.forceParallel && (
+							<span
+								title="Sent via forced parallel execution (bypassed queue)"
+								className="flex items-center"
+							>
+								<Zap
+									className="w-3.5 h-3.5"
+									style={{ color: theme.colors.warning, opacity: 0.7 }}
+								/>
+							</span>
+						)}
 						{/* Delivery checkmark for user messages in AI mode - positioned at the end */}
 						{isUserMessage && isAIMode && log.delivered && (
 							<span title="Message delivered" className="flex items-center">
@@ -996,6 +1009,7 @@ const LogItemComponent = memo(
 			prevProps.log.text === nextProps.log.text &&
 			prevProps.log.delivered === nextProps.log.delivered &&
 			prevProps.log.readOnly === nextProps.log.readOnly &&
+			prevProps.log.forceParallel === nextProps.log.forceParallel &&
 			prevProps.isExpanded === nextProps.isExpanded &&
 			prevProps.localFilterQuery === nextProps.localFilterQuery &&
 			prevProps.filterMode.mode === nextProps.filterMode.mode &&

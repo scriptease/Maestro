@@ -498,6 +498,9 @@ export function useInputProcessing(deps: UseInputProcessingDeps): UseInputProces
 			const isAutoRunReadOnly = currentBatchState.isRunning && !currentBatchState.worktreeActive;
 			const isReadOnlyEntry = activeTabForEntry?.readOnlyMode === true || isAutoRunReadOnly;
 
+			const isForceParallelEntry =
+				options?.forceParallel === true && useSettingsStore.getState().forcedParallelExecution;
+
 			const newEntry: LogEntry = {
 				id: generateId(),
 				timestamp: Date.now(),
@@ -505,6 +508,7 @@ export function useInputProcessing(deps: UseInputProcessingDeps): UseInputProces
 				text: effectiveInputValue,
 				images: [...stagedImages],
 				...(isReadOnlyEntry && { readOnly: true }),
+				...(isForceParallelEntry && { forceParallel: true }),
 			};
 
 			// Track shell CWD changes when in terminal mode

@@ -25,6 +25,8 @@ export interface HistoryEntryInput {
 	success?: boolean;
 	/** Task execution time in milliseconds */
 	elapsedTimeMs?: number;
+	/** Context usage percentage from the agent run (used when activeSession context isn't available) */
+	contextUsage?: number;
 }
 
 /**
@@ -126,7 +128,13 @@ export function useAgentSessionManagement(
 					sessionId: targetSessionId,
 					sessionName: sessionName,
 					projectPath: targetProjectPath,
-					...(shouldIncludeContextUsage ? { contextUsage: activeSession?.contextUsage } : {}),
+					// Prefer active session's live context percentage; fall back to entry's own estimate
+					...(() => {
+						const ctx = shouldIncludeContextUsage
+							? (activeSession?.contextUsage ?? entry.contextUsage)
+							: entry.contextUsage;
+						return ctx != null ? { contextUsage: ctx } : {};
+					})(),
 					// Only include usageStats if explicitly provided (per-task tracking)
 					// Never use cumulative session stats - they're lifetime totals
 					usageStats: entry.usageStats,

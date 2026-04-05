@@ -385,7 +385,7 @@ function TabBarInner({
 					{tabs.some((t) => t.hasUnread) && (
 						<div
 							className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full"
-							style={{ backgroundColor: theme.colors.accent }}
+							style={{ backgroundColor: theme.colors.error }}
 						/>
 					)}
 				</button>

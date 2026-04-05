@@ -107,6 +107,7 @@ export interface UseAgentListenersDeps {
 				response?: string;
 				agentSessionId?: string;
 				usageStats?: UsageStats;
+				contextUsage?: number;
 		  }>)
 		| null
 	>;
@@ -850,6 +851,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 									fullResponse: parsed.fullSynopsis,
 									agentSessionId: synopsisData!.agentSessionId,
 									usageStats: result.usageStats,
+									contextUsage: result.contextUsage,
 									sessionId: synopsisData!.sessionId,
 									projectPath: synopsisData!.cwd,
 									sessionName: synopsisData!.tabName,

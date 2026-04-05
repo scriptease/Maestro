@@ -494,7 +494,7 @@ export const AITab = memo(function AITab({
 			{tab.state !== 'busy' && tab.hasUnread && (
 				<div
 					className="w-2 h-2 rounded-full shrink-0"
-					style={{ backgroundColor: theme.colors.accent }}
+					style={{ backgroundColor: theme.colors.error }}
 					title="New messages"
 				/>
 			)}
