@@ -16,11 +16,12 @@ import {
 	Eye,
 	EyeOff,
 } from 'lucide-react';
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { Theme, GroupChatParticipant, SessionState } from '../types';
 import { getStatusColor } from '../utils/theme';
 import { formatCost } from '../utils/formatters';
 import { safeClipboardWrite } from '../utils/clipboard';
+import { parsePeekOutput, formatPeekLines } from '../utils/peekOutputParser';
 
 interface ParticipantCardProps {
 	theme: Theme;
@@ -61,12 +62,20 @@ export function ParticipantCard({
 	const [peekOpen, setPeekOpen] = useState(false);
 	const peekRef = useRef<HTMLPreElement>(null);
 
+	// Parse raw JSONL into formatted output
+	const formattedOutput = useMemo(() => {
+		if (!liveOutput) return '';
+		const trimmed = liveOutput.length > 50000 ? liveOutput.slice(-50000) : liveOutput;
+		const parsed = parsePeekOutput(trimmed);
+		return formatPeekLines(parsed);
+	}, [liveOutput]);
+
 	// Auto-scroll peek output to bottom
 	useEffect(() => {
 		if (peekOpen && peekRef.current) {
 			peekRef.current.scrollTop = peekRef.current.scrollHeight;
 		}
-	}, [peekOpen, liveOutput]);
+	}, [peekOpen, formattedOutput]);
 
 	// Use agent's session ID (clean GUID) when available, otherwise show pending
 	const agentSessionId = participant.agentSessionId;
@@ -357,11 +366,7 @@ export function ParticipantCard({
 						border: `1px solid ${theme.colors.border}`,
 					}}
 				>
-					{liveOutput
-						? liveOutput.length > 4096
-							? liveOutput.slice(-4096)
-							: liveOutput
-						: '(no live output yet)'}
+					{formattedOutput || '(no live output yet)'}
 				</pre>
 			)}
 		</div>

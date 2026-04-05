@@ -322,6 +322,7 @@ export function useGroupChatHandlers(): GroupChatHandlersReturn {
 				setGroupChatExecutionQueue,
 				setGroupChatState: setGCState,
 				setGroupChatStates: setGCStates,
+				setGroupChatMessages: setGCMessages,
 			} = useGroupChatStore.getState();
 
 			const [nextItem, ...remainingQueue] = groupChatExecutionQueue;
@@ -333,12 +334,31 @@ export function useGroupChatHandlers(): GroupChatHandlersReturn {
 				next.set(activeGroupChatId, 'moderator-thinking');
 				return next;
 			});
-			window.maestro.groupChat.sendToModerator(
-				activeGroupChatId,
-				nextItem.text || '',
-				nextItem.images,
-				nextItem.readOnlyMode
-			);
+			window.maestro.groupChat
+				.sendToModerator(
+					activeGroupChatId,
+					nextItem.text || '',
+					nextItem.images,
+					nextItem.readOnlyMode
+				)
+				.catch((err: unknown) => {
+					const msg = err instanceof Error ? err.message : String(err);
+					// Reset to idle so user can retry
+					setGCState('idle');
+					setGCStates((prev) => {
+						const next = new Map(prev);
+						next.set(activeGroupChatId, 'idle');
+						return next;
+					});
+					setGCMessages((prev) => [
+						...prev,
+						{
+							timestamp: new Date().toISOString(),
+							from: 'system',
+							content: `⚠️ Moderator is not available. Try sending your message again. (${msg})`,
+						},
+					]);
+				});
 		}
 	}, [groupChatState, groupChatExecutionQueue, activeGroupChatId]);
 
@@ -626,7 +646,31 @@ export function useGroupChatHandlers(): GroupChatHandlersReturn {
 				next.set(activeGroupChatId, 'moderator-thinking');
 				return next;
 			});
-			await window.maestro.groupChat.sendToModerator(activeGroupChatId, content, images, readOnly);
+			try {
+				await window.maestro.groupChat.sendToModerator(
+					activeGroupChatId,
+					content,
+					images,
+					readOnly
+				);
+			} catch (err: unknown) {
+				const msg = err instanceof Error ? err.message : String(err);
+				// Reset to idle so user can retry
+				setGroupChatState('idle');
+				setGroupChatStates((prev) => {
+					const next = new Map(prev);
+					next.set(activeGroupChatId, 'idle');
+					return next;
+				});
+				useGroupChatStore.getState().setGroupChatMessages((prev) => [
+					...prev,
+					{
+						timestamp: new Date().toISOString(),
+						from: 'system',
+						content: `⚠️ Moderator is not available. Try sending your message again. (${msg})`,
+					},
+				]);
+			}
 		},
 		[]
 	);

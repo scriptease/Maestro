@@ -47,6 +47,7 @@ import {
 	sendToModerator as _sendToModerator,
 	killModerator,
 	getModeratorSessionId,
+	isModeratorActive,
 	type IProcessManager as _IProcessManager,
 } from '../../group-chat/group-chat-moderator';
 
@@ -465,6 +466,17 @@ export function registerGroupChatHandlers(deps: GroupChatHandlerDependencies): v
 
 				console.log(`[GroupChat:Debug] Process manager available: ${!!processManager}`);
 				console.log(`[GroupChat:Debug] Agent detector available: ${!!agentDetector}`);
+
+				// Auto-restart moderator if it exited (e.g., after completing a turn)
+				if (!isModeratorActive(id) && processManager) {
+					console.log(`[GroupChat:Debug] Moderator not active, auto-restarting...`);
+					const chat = await loadGroupChat(id);
+					if (!chat) {
+						throw new Error(`Group chat not found: ${id}`);
+					}
+					await spawnModerator(chat, processManager);
+					console.log(`[GroupChat:Debug] Moderator auto-restarted`);
+				}
 
 				// Route through the user message router which handles logging and forwarding
 				await routeUserMessage(
