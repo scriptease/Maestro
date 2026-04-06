@@ -12,10 +12,6 @@ import {
 } from '../../../../renderer/components/AutoRun/AutoRunToolbar';
 import type { Theme } from '../../../../renderer/types';
 
-vi.mock('../../../../renderer/utils/shortcutFormatter', () => ({
-	formatShortcutKeys: (keys: string[]) => keys.join('+'),
-}));
-
 // jsdom converts shorthand hex colors to rgb() in computed styles.
 // This helper converts a shorthand or full hex color to its rgb() equivalent for assertions.
 const hexToRgb = (hex: string): string => {
@@ -54,14 +50,11 @@ const createMockTheme = (): Theme => ({
 
 const createDefaultProps = (overrides: Partial<AutoRunToolbarProps> = {}): AutoRunToolbarProps => ({
 	theme: createMockTheme(),
-	mode: 'edit',
-	isLocked: false,
 	isAutoRunActive: false,
 	isStopping: false,
 	isAgentBusy: false,
 	isDirty: false,
 	sessionId: 'test-session-1',
-	onSwitchMode: vi.fn(),
 	onOpenHelp: vi.fn(),
 	onSave: vi.fn().mockResolvedValue(undefined),
 	fileInputRef: { current: null } as React.RefObject<HTMLInputElement>,
@@ -72,110 +65,6 @@ const createDefaultProps = (overrides: Partial<AutoRunToolbarProps> = {}): AutoR
 describe('AutoRunToolbar', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-	});
-
-	describe('Expand button', () => {
-		it('renders expand button when onExpand is provided', () => {
-			const onExpand = vi.fn();
-			render(<AutoRunToolbar {...createDefaultProps({ onExpand })} />);
-			const expandBtn = screen.getByTitle(/Expand to full screen/);
-			expect(expandBtn).toBeDefined();
-		});
-
-		it('does not render expand button when onExpand is not provided', () => {
-			render(<AutoRunToolbar {...createDefaultProps()} />);
-			const expandBtn = screen.queryByTitle(/Expand to full screen/);
-			expect(expandBtn).toBeNull();
-		});
-
-		it('calls onExpand when clicked', () => {
-			const onExpand = vi.fn();
-			render(<AutoRunToolbar {...createDefaultProps({ onExpand })} />);
-			fireEvent.click(screen.getByTitle(/Expand to full screen/));
-			expect(onExpand).toHaveBeenCalledTimes(1);
-		});
-
-		it('shows shortcut hint in tooltip when shortcuts provided', () => {
-			const onExpand = vi.fn();
-			const shortcuts = {
-				toggleAutoRunExpanded: { keys: ['Ctrl', 'Shift', 'E'], label: 'Expand' },
-			};
-			render(<AutoRunToolbar {...createDefaultProps({ onExpand, shortcuts })} />);
-			const expandBtn = screen.getByTitle('Expand to full screen (Ctrl+Shift+E)');
-			expect(expandBtn).toBeDefined();
-		});
-
-		it('does not show shortcut hint when shortcuts not provided', () => {
-			const onExpand = vi.fn();
-			render(<AutoRunToolbar {...createDefaultProps({ onExpand })} />);
-			const expandBtn = screen.getByTitle('Expand to full screen');
-			expect(expandBtn).toBeDefined();
-		});
-	});
-
-	describe('Edit button', () => {
-		it('is enabled when not locked', () => {
-			render(<AutoRunToolbar {...createDefaultProps({ isLocked: false })} />);
-			const editBtn = screen.getByTitle('Edit document');
-			expect(editBtn).toBeDefined();
-			expect(editBtn.hasAttribute('disabled')).toBe(false);
-		});
-
-		it('is disabled when locked', () => {
-			render(<AutoRunToolbar {...createDefaultProps({ isLocked: true })} />);
-			const editBtn = screen.getByTitle('Editing disabled while Auto Run active');
-			expect(editBtn).toBeDefined();
-			expect(editBtn.hasAttribute('disabled')).toBe(true);
-		});
-
-		it('calls onSwitchMode with edit when clicked and not locked', () => {
-			const onSwitchMode = vi.fn();
-			render(<AutoRunToolbar {...createDefaultProps({ onSwitchMode, isLocked: false })} />);
-			fireEvent.click(screen.getByTitle('Edit document'));
-			expect(onSwitchMode).toHaveBeenCalledWith('edit');
-		});
-
-		it('does not call onSwitchMode when clicked and locked', () => {
-			const onSwitchMode = vi.fn();
-			render(<AutoRunToolbar {...createDefaultProps({ onSwitchMode, isLocked: true })} />);
-			fireEvent.click(screen.getByTitle('Editing disabled while Auto Run active'));
-			expect(onSwitchMode).not.toHaveBeenCalled();
-		});
-
-		it('shows active styling when mode is edit and not locked', () => {
-			const theme = createMockTheme();
-			render(<AutoRunToolbar {...createDefaultProps({ mode: 'edit', isLocked: false, theme })} />);
-			const editBtn = screen.getByTitle('Edit document');
-			expect(editBtn.style.backgroundColor).toBe(hexToRgb(theme.colors.bgActivity));
-			expect(editBtn.style.border).toContain(hexToRgb(theme.colors.accent));
-		});
-	});
-
-	describe('Preview button', () => {
-		it('calls onSwitchMode with preview when clicked', () => {
-			const onSwitchMode = vi.fn();
-			render(<AutoRunToolbar {...createDefaultProps({ onSwitchMode })} />);
-			fireEvent.click(screen.getByTitle('Preview document'));
-			expect(onSwitchMode).toHaveBeenCalledWith('preview');
-		});
-
-		it('shows active styling when mode is preview', () => {
-			const theme = createMockTheme();
-			render(
-				<AutoRunToolbar {...createDefaultProps({ mode: 'preview', isLocked: false, theme })} />
-			);
-			const previewBtn = screen.getByTitle('Preview document');
-			expect(previewBtn.style.backgroundColor).toBe(hexToRgb(theme.colors.bgActivity));
-			expect(previewBtn.style.border).toContain(hexToRgb(theme.colors.accent));
-		});
-
-		it('shows active styling when isLocked is true regardless of mode', () => {
-			const theme = createMockTheme();
-			render(<AutoRunToolbar {...createDefaultProps({ mode: 'edit', isLocked: true, theme })} />);
-			const previewBtn = screen.getByTitle('Preview document');
-			expect(previewBtn.style.backgroundColor).toBe(hexToRgb(theme.colors.bgActivity));
-			expect(previewBtn.style.border).toContain(hexToRgb(theme.colors.accent));
-		});
 	});
 
 	describe('Run button', () => {
@@ -351,9 +240,10 @@ describe('AutoRunToolbar', () => {
 	});
 
 	describe('Wizard button', () => {
-		it('is shown when onLaunchWizard is provided', () => {
+		it('is shown with text when onLaunchWizard is provided', () => {
 			const onLaunchWizard = vi.fn();
 			render(<AutoRunToolbar {...createDefaultProps({ onLaunchWizard })} />);
+			expect(screen.getByText('Wizard')).toBeDefined();
 			const wizardBtn = screen.getByTitle('Launch In-Tab Wizard');
 			expect(wizardBtn).toBeDefined();
 		});

@@ -28,6 +28,8 @@ import { useAutoRunSearch } from '../../hooks/batch/useAutoRunSearch';
 import { useAutoRunKeyboard } from '../../hooks/batch/useAutoRunKeyboard';
 import { useAutoRunMarkdown } from '../../hooks/batch/useAutoRunMarkdown';
 import { useAutoRunScrollSync } from '../../hooks/batch/useAutoRunScrollSync';
+import { Maximize2, Edit as EditIcon, Eye } from 'lucide-react';
+import { formatShortcutKeys } from '../../utils/shortcutFormatter';
 
 // Inner implementation component
 const AutoRunInner = forwardRef<AutoRunHandle, AutoRunProps>(function AutoRunInner(
@@ -505,16 +507,11 @@ const AutoRunInner = forwardRef<AutoRunHandle, AutoRunProps>(function AutoRunInn
 			{folderPath && !hideTopControls && (
 				<AutoRunToolbar
 					theme={theme}
-					mode={mode}
-					isLocked={isLocked}
 					isAutoRunActive={isAutoRunActive}
 					isStopping={isStopping}
 					isAgentBusy={isAgentBusy}
 					isDirty={isDirty}
 					sessionId={sessionId}
-					shortcuts={shortcuts}
-					onSwitchMode={switchMode}
-					onExpand={onExpand}
 					onOpenBatchRunner={onOpenBatchRunner}
 					onStopBatchRun={onStopBatchRun}
 					onOpenMarketplace={onOpenMarketplace}
@@ -683,6 +680,62 @@ const AutoRunInner = forwardRef<AutoRunHandle, AutoRunProps>(function AutoRunInn
 							</ReactMarkdown>
 						</div>
 					)}
+				</div>
+			)}
+
+			{/* Editor Mode Bar - Expand, Edit/Preview toggle below content area */}
+			{folderPath && documentList.length > 0 && (
+				<div className="flex mx-2 mt-1 mb-1 gap-1 shrink-0">
+					{/* Expand button */}
+					{onExpand && (
+						<button
+							onClick={onExpand}
+							className="flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs transition-colors hover:bg-white/10"
+							style={{
+								color: theme.colors.textDim,
+								border: `1px solid ${theme.colors.border}`,
+							}}
+							title={`Expand to full screen${shortcuts?.toggleAutoRunExpanded ? ` (${formatShortcutKeys(shortcuts.toggleAutoRunExpanded.keys)})` : ''}`}
+						>
+							<Maximize2 className="w-3 h-3" />
+							Expand
+						</button>
+					)}
+					{/* Edit / Preview toggle - fills remaining space */}
+					<button
+						onClick={() => {
+							if (mode === 'edit') {
+								switchMode('preview');
+							} else if (!isLocked) {
+								switchMode('edit');
+							}
+						}}
+						disabled={mode === 'preview' && isLocked}
+						className={`flex-1 flex items-center justify-center gap-1.5 py-1 rounded text-xs transition-colors ${mode === 'preview' && isLocked ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10'}`}
+						style={{
+							color: theme.colors.textDim,
+							border: `1px solid ${theme.colors.border}`,
+						}}
+						title={
+							mode === 'edit'
+								? 'Switch to preview'
+								: isLocked
+									? 'Editing disabled while Auto Run active'
+									: 'Switch to edit'
+						}
+					>
+						{mode === 'edit' ? (
+							<>
+								<Eye className="w-3 h-3" />
+								Preview
+							</>
+						) : (
+							<>
+								<EditIcon className="w-3 h-3" />
+								Edit
+							</>
+						)}
+					</button>
 				</div>
 			)}
 

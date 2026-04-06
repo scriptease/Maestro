@@ -875,9 +875,9 @@ describe('useAgentListeners', () => {
 	// ========================================================================
 
 	describe('onExit', () => {
-		it('transitions AI session from busy to idle on process exit', async () => {
+		it('transitions AI session from busy to idle on process exit and clears agentSessionId', async () => {
 			const deps = createMockDeps();
-			const tab = createMockTab({ id: 'tab-1' });
+			const tab = createMockTab({ id: 'tab-1', agentSessionId: 'old-session-id' });
 			const session = createMockSession({
 				id: 'sess-1',
 				state: 'busy',
@@ -900,6 +900,10 @@ describe('useAgentListeners', () => {
 
 			const updated = useSessionStore.getState().sessions.find((s) => s.id === 'sess-1');
 			expect(updated?.state).toBe('idle');
+			// agentSessionId must be cleared so the next spawn starts a fresh session
+			// instead of trying --resume with a stale ID
+			const updatedTab = updated?.aiTabs.find((t) => t.id === 'tab-1');
+			expect(updatedTab?.agentSessionId).toBeNull();
 		});
 
 		it('processes execution queue on exit', async () => {

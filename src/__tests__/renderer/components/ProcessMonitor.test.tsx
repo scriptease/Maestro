@@ -720,7 +720,7 @@ describe('ProcessMonitor', () => {
 			const claudeIdButton = screen.getByTitle('Click to navigate to this session');
 			fireEvent.click(claudeIdButton);
 
-			expect(onNavigateToSession).toHaveBeenCalledWith('session-1', 'tab-1');
+			expect(onNavigateToSession).toHaveBeenCalledWith('session-1', 'tab-1', 'ai');
 			expect(onClose).toHaveBeenCalled();
 		});
 
@@ -759,7 +759,7 @@ describe('ProcessMonitor', () => {
 			});
 
 			fireEvent.click(screen.getByTitle('Jump to tab'));
-			expect(onNavigateToSession).toHaveBeenCalledWith('session-1', 'tab-1');
+			expect(onNavigateToSession).toHaveBeenCalledWith('session-1', 'tab-1', 'ai');
 			expect(onClose).toHaveBeenCalled();
 		});
 

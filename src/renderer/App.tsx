@@ -729,10 +729,24 @@ function MaestroConsoleInner() {
 
 	// ProcessMonitor navigation handlers
 	const handleProcessMonitorNavigateToSession = useCallback(
-		(sessionId: string, tabId?: string) => {
+		(sessionId: string, tabId?: string, processType?: string) => {
 			setActiveSessionId(sessionId);
-			if (tabId) {
-				// Switch to the specific tab within the session
+			if (processType === 'terminal') {
+				// Switch to the terminal tab and set terminal mode
+				setSessions((prev) =>
+					prev.map((s) =>
+						s.id === sessionId
+							? {
+									...s,
+									inputMode: 'terminal' as const,
+									activeFileTabId: null,
+									...(tabId && { activeTerminalTabId: tabId }),
+								}
+							: s
+					)
+				);
+			} else if (tabId) {
+				// Switch to the specific AI tab within the session
 				setSessions((prev) =>
 					prev.map((s) => (s.id === sessionId ? { ...s, activeTabId: tabId } : s))
 				);

@@ -68,7 +68,7 @@ export interface AppModalsProps {
 	// leaderboardRegistration is provided via AppAgentModals props below
 	onCloseUpdateCheckModal: () => void;
 	onCloseProcessMonitor: () => void;
-	onNavigateToSession: (sessionId: string, tabId?: string) => void;
+	onNavigateToSession: (sessionId: string, tabId?: string, processType?: string) => void;
 	onNavigateToGroupChat: (groupChatId: string) => void;
 	onCloseUsageDashboard: () => void;
 	/** Default time range for the Usage Dashboard from settings */

@@ -27,7 +27,7 @@ interface ProcessMonitorProps {
 	groups: Group[];
 	groupChats?: GroupChat[];
 	onClose: () => void;
-	onNavigateToSession?: (sessionId: string, tabId?: string) => void;
+	onNavigateToSession?: (sessionId: string, tabId?: string, processType?: string) => void;
 	onNavigateToGroupChat?: (groupChatId: string) => void;
 }
 
@@ -360,10 +360,13 @@ export function ProcessMonitor(props: ProcessMonitorProps) {
 		return 'ai';
 	};
 
-	// Extract tab ID from process session ID (format: {sessionId}-ai-{tabId})
+	// Extract tab ID from process session ID (format: {sessionId}-ai-{tabId} or {sessionId}-terminal-{tabId})
 	const parseTabId = (processSessionId: string): string | null => {
-		const match = processSessionId.match(/-ai-(.+)$/);
-		return match ? match[1] : null;
+		const aiMatch = processSessionId.match(/-ai-(.+)$/);
+		if (aiMatch) return aiMatch[1];
+		const terminalMatch = processSessionId.match(/-terminal-(.+)$/);
+		if (terminalMatch) return terminalMatch[1];
+		return null;
 	};
 
 	// Build the process tree using real active processes
@@ -436,11 +439,13 @@ export function ProcessMonitor(props: ProcessMonitorProps) {
 				// Get session name for process label
 				const sessionName = session.name;
 
-				// Look up Claude session ID and tab name from the tab if this is an AI process
+				// Look up Claude session ID and tab name from the tab if this is an AI or terminal process
 				let agentSessionId: string | undefined;
 				let tabId: string | undefined;
 				let tabName: string | undefined;
-				if (processType === 'ai' || processType === 'batch' || processType === 'synopsis') {
+				if (processType === 'terminal') {
+					tabId = parseTabId(proc.sessionId) || undefined;
+				} else if (processType === 'ai' || processType === 'batch' || processType === 'synopsis') {
 					tabId = parseTabId(proc.sessionId) || undefined;
 					if (session.aiTabs) {
 						// First try to find by tab ID
@@ -1184,7 +1189,7 @@ export function ProcessMonitor(props: ProcessMonitorProps) {
 										style={{ color: theme.colors.accent }}
 										onClick={(e) => {
 											e.stopPropagation();
-											onNavigateToSession(node.sessionId!, node.tabId);
+											onNavigateToSession(node.sessionId!, node.tabId, node.processType);
 											onClose();
 										}}
 										onMouseEnter={(e) =>
@@ -1244,7 +1249,7 @@ export function ProcessMonitor(props: ProcessMonitorProps) {
 								style={{ color: theme.colors.accent }}
 								onClick={(e) => {
 									e.stopPropagation();
-									onNavigateToSession(node.sessionId!, node.tabId);
+									onNavigateToSession(node.sessionId!, node.tabId, node.processType);
 									onClose();
 								}}
 								title="Click to navigate to this session"

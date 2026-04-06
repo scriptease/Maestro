@@ -520,6 +520,9 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 																...tab,
 																state: 'idle' as const,
 																thinkingStartTime: undefined,
+																// Clear stale agentSessionId so the next spawn
+																// starts a fresh session instead of trying --resume
+																agentSessionId: null,
 															}
 														: tab;
 												} else {
@@ -528,6 +531,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 																...tab,
 																state: 'idle' as const,
 																thinkingStartTime: undefined,
+																agentSessionId: null,
 															}
 														: tab;
 												}
@@ -573,6 +577,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 										return {
 											...tab,
 											state: 'idle' as const,
+											agentSessionId: null,
 										};
 									}
 									return tab;
@@ -617,6 +622,9 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 															...tab,
 															state: 'idle' as const,
 															thinkingStartTime: undefined,
+															// Clear stale agentSessionId so the next spawn
+															// starts a fresh session instead of trying --resume
+															agentSessionId: null,
 														}
 													: tab;
 											} else {
@@ -625,6 +633,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 															...tab,
 															state: 'idle' as const,
 															thinkingStartTime: undefined,
+															agentSessionId: null,
 														}
 													: tab;
 											}
