@@ -1,7 +1,8 @@
-import React, { memo } from 'react';
+import React, { memo, useState, useCallback, useRef } from 'react';
 import { Activity, GitBranch, Bot, Bookmark, AlertCircle, Server, Zap } from 'lucide-react';
-import type { Session, Group, Theme } from '../types';
+import type { Session, Group, Theme, BatchRunState } from '../types';
 import { getStatusColor } from '../utils/theme';
+import { AutoRunFlyout } from './AutoRunFlyout';
 
 // ============================================================================
 // SessionItem - Unified session item component for all list contexts
@@ -34,6 +35,7 @@ export interface SessionItemProps {
 	groupId?: string; // The group ID context for generating editing key
 	gitFileCount?: number;
 	isInBatch?: boolean;
+	batchRunState?: BatchRunState; // Auto Run state for flyout display
 	jumpNumber?: string | null; // Session jump shortcut number (1-9, 0)
 	cueSubscriptionCount?: number; // Number of active Cue subscriptions (0 or undefined = no indicator)
 	cueActiveRun?: boolean; // Whether a Cue pipeline is currently running for this agent
@@ -76,6 +78,7 @@ export const SessionItem = memo(function SessionItem({
 	groupId,
 	gitFileCount,
 	isInBatch = false,
+	batchRunState,
 	jumpNumber,
 	cueSubscriptionCount,
 	cueActiveRun,
@@ -88,6 +91,14 @@ export const SessionItem = memo(function SessionItem({
 	onStartRename,
 	onToggleBookmark,
 }: SessionItemProps) {
+	const [flyoutOpen, setFlyoutOpen] = useState(false);
+	const autoBadgeRef = useRef<HTMLDivElement>(null);
+
+	const handleAutoBadgeClick = useCallback((e: React.MouseEvent) => {
+		e.stopPropagation();
+		setFlyoutOpen((prev) => !prev);
+	}, []);
+
 	// Determine if we show the GIT/LOCAL badge (not shown in bookmark variant, terminal sessions, or worktree variant)
 	const showGitLocalBadge =
 		variant !== 'bookmark' && variant !== 'worktree' && session.toolType !== 'terminal';
@@ -264,15 +275,17 @@ export const SessionItem = memo(function SessionItem({
 						</div>
 					))}
 
-				{/* AUTO Mode Indicator */}
+				{/* AUTO Mode Indicator — clickable to show flyout */}
 				{isInBatch && (
 					<div
-						className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase animate-pulse"
+						ref={autoBadgeRef}
+						className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase animate-pulse cursor-pointer hover:opacity-80 transition-opacity"
 						style={{
 							backgroundColor: theme.colors.warning + '30',
 							color: theme.colors.warning,
 						}}
-						title="Auto Run active"
+						title="Auto Run active — click for details"
+						onClick={handleAutoBadgeClick}
 					>
 						<Bot className="w-2.5 h-2.5" />
 						AUTO
@@ -364,6 +377,16 @@ export const SessionItem = memo(function SessionItem({
 					)}
 				</div>
 			</div>
+
+			{/* Auto Run Flyout — rendered as a portal-like fixed overlay */}
+			{flyoutOpen && isInBatch && batchRunState && autoBadgeRef.current && (
+				<AutoRunFlyout
+					batchState={batchRunState}
+					theme={theme}
+					anchorRect={autoBadgeRef.current.getBoundingClientRect()}
+					onClose={() => setFlyoutOpen(false)}
+				/>
+			)}
 		</div>
 	);
 });

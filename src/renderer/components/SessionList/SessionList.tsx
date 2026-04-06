@@ -132,6 +132,7 @@ function SessionListInner(props: SessionListProps) {
 	);
 	const maestroCueEnabled = useSettingsStore((s) => s.encoreFeatures.maestroCue);
 	const activeBatchSessionIds = useBatchStore(useShallow(selectActiveBatchSessionIds));
+	const batchRunStates = useBatchStore((s) => s.batchRunStates);
 
 	// Cue session status map: sessionId → { count, active } (only active when Encore Feature enabled)
 	const [cueSessionMap, setCueSessionMap] = useState<
@@ -529,6 +530,7 @@ function SessionListInner(props: SessionListProps) {
 					groupId={options.groupId}
 					gitFileCount={getFileCount(session.id)}
 					isInBatch={activeBatchSessionIds.includes(session.id)}
+					batchRunState={batchRunStates[session.id]}
 					jumpNumber={getSessionJumpNumber(session.id)}
 					cueSubscriptionCount={cueSessionMap.get(session.id)?.count}
 					cueActiveRun={cueSessionMap.get(session.id)?.active}
@@ -596,6 +598,7 @@ function SessionListInner(props: SessionListProps) {
 										leftSidebarOpen={leftSidebarOpen}
 										gitFileCount={getFileCount(child.id)}
 										isInBatch={activeBatchSessionIds.includes(child.id)}
+										batchRunState={batchRunStates[child.id]}
 										jumpNumber={getSessionJumpNumber(child.id)}
 										cueSubscriptionCount={cueSessionMap.get(child.id)?.count}
 										cueActiveRun={cueSessionMap.get(child.id)?.active}
