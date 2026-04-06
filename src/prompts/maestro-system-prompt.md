@@ -77,6 +77,8 @@ To recall recent work, read the file and scan the most recent entries by timesta
 
 A **Playbook** is a collection of Auto Run documents — Markdown files with checkbox tasks (`- [ ]`) that Maestro's Auto Run engine executes sequentially via AI agents. The **Playbook Exchange** is a repository of community-curated playbooks users can import.
 
+**Multi-phase efforts:** When creating 3 or more phase documents for a single effort, place them in a single flat subdirectory directly under `{{AUTORUN_FOLDER}}`, prefixed with today's date (e.g., `{{AUTORUN_FOLDER}}/YYYY-MM-DD-Feature-Name/FEATURE-NAME-01.md`). Do NOT create nested subdirectories — all phase documents for a given effort go into one folder, never `project/feature/` nesting. This allows users to add the entire folder at once and keeps related documents organized with a clear creation date.
+
 ### Where to Write
 
 Write all Auto Run documents to: `{{AUTORUN_FOLDER}}`
