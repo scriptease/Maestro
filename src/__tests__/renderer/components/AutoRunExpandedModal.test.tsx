@@ -272,7 +272,7 @@ describe('AutoRunExpandedModal', () => {
 
 			// Find the Edit button by its title (not the image button)
 			const editButton = screen.getByTitle('Edit document');
-			expect(editButton).toHaveClass('font-semibold');
+			expect(editButton).toHaveClass('font-medium');
 		});
 
 		it('should show Preview button as selected when mode is preview', () => {
@@ -280,7 +280,7 @@ describe('AutoRunExpandedModal', () => {
 			renderWithProvider(<AutoRunExpandedModal {...props} />);
 
 			const previewButton = screen.getByRole('button', { name: /preview/i });
-			expect(previewButton).toHaveClass('font-semibold');
+			expect(previewButton).toHaveClass('font-medium');
 		});
 
 		it('should call AutoRun switchMode when Edit button is clicked', () => {
@@ -438,7 +438,7 @@ describe('AutoRunExpandedModal', () => {
 			renderWithProvider(<AutoRunExpandedModal {...props} />);
 
 			const previewButton = screen.getByRole('button', { name: /preview/i });
-			expect(previewButton).toHaveClass('font-semibold');
+			expect(previewButton).toHaveClass('font-medium');
 		});
 	});
 
@@ -688,7 +688,7 @@ describe('AutoRunExpandedModal', () => {
 
 			const runButton = screen.getByRole('button', { name: /run/i });
 			expect(runButton).toHaveStyle({
-				backgroundColor: props.theme.colors.accent,
+				color: props.theme.colors.accent,
 			});
 		});
 

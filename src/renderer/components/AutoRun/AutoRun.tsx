@@ -687,7 +687,7 @@ const AutoRunInner = forwardRef<AutoRunHandle, AutoRunProps>(function AutoRunInn
 			{folderPath && documentList.length > 0 && (
 				<div className="flex mx-2 mt-1 mb-1 gap-1 shrink-0">
 					{/* Expand button */}
-					{onExpand && (
+					{onExpand && !hideTopControls && (
 						<button
 							onClick={onExpand}
 							className="flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs font-medium transition-colors hover:bg-white/10"
