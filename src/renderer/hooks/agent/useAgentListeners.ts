@@ -414,8 +414,14 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 						const sessionSizeBytes = logs.reduce((sum, log) => sum + (log.text?.length || 0), 0);
 						const sessionSizeKB = (sessionSizeBytes / 1024).toFixed(1);
 
-						const sessionGroup = currentSession.groupId
-							? getGroups().find((g) => g.id === currentSession.groupId)
+						// Resolve group: worktree children may inherit group from parent
+						const effectiveGroupId =
+							currentSession.groupId ||
+							(currentSession.parentSessionId
+								? getSessions().find((s) => s.id === currentSession.parentSessionId)?.groupId
+								: undefined);
+						const sessionGroup = effectiveGroupId
+							? getGroups().find((g) => g.id === effectiveGroupId)
 							: null;
 						const groupName = sessionGroup?.name || 'Ungrouped';
 						const projectName =

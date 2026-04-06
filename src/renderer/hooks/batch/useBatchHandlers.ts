@@ -213,10 +213,15 @@ export function useBatchHandlers(deps: UseBatchHandlersDeps): UseBatchHandlersRe
 			} = settingsState;
 			const isLbRegistered = selectIsLeaderboardRegistered(settingsState);
 
-			// Find group name for the session
+			// Find group name for the session (worktree children inherit parent's group)
 			const session = currentSessions.find((s) => s.id === info.sessionId);
-			const sessionGroup = session?.groupId
-				? currentGroups.find((g) => g.id === session.groupId)
+			const effectiveGroupId =
+				session?.groupId ||
+				(session?.parentSessionId
+					? currentSessions.find((s) => s.id === session.parentSessionId)?.groupId
+					: undefined);
+			const sessionGroup = effectiveGroupId
+				? currentGroups.find((g) => g.id === effectiveGroupId)
 				: null;
 			const groupName = sessionGroup?.name || 'Ungrouped';
 
@@ -509,8 +514,13 @@ export function useBatchHandlers(deps: UseBatchHandlersDeps): UseBatchHandlersRe
 			const currentGroups = useSessionStore.getState().groups;
 
 			const session = currentSessions.find((s) => s.id === info.sessionId);
-			const sessionGroup = session?.groupId
-				? currentGroups.find((g) => g.id === session.groupId)
+			const effectiveGroupId =
+				session?.groupId ||
+				(session?.parentSessionId
+					? currentSessions.find((s) => s.id === session.parentSessionId)?.groupId
+					: undefined);
+			const sessionGroup = effectiveGroupId
+				? currentGroups.find((g) => g.id === effectiveGroupId)
 				: null;
 			const groupName = sessionGroup?.name || 'Ungrouped';
 

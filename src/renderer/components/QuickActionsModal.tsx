@@ -311,7 +311,12 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 	};
 
 	const handleMoveToGroup = (groupId: string) => {
-		const updatedSessions = sessions.map((s) => (s.id === activeSessionId ? { ...s, groupId } : s));
+		const updatedSessions = sessions.map((s) => {
+			if (s.id === activeSessionId) return { ...s, groupId };
+			// Also update worktree children to keep groupId in sync
+			if (s.parentSessionId === activeSessionId) return { ...s, groupId };
+			return s;
+		});
 		setSessions(updatedSessions);
 		setQuickActionOpen(false);
 	};
