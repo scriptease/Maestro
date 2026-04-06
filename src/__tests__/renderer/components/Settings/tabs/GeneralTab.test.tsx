@@ -45,7 +45,6 @@ const mockSetLogLevel = vi.fn();
 const mockSetEnterToSendAI = vi.fn();
 const mockSetDefaultSaveToHistory = vi.fn();
 const mockSetDefaultShowThinking = vi.fn();
-const mockSetAutoScrollAiMode = vi.fn();
 const mockSetAutomaticTabNamingEnabled = vi.fn();
 const mockSetPreventSleepEnabled = vi.fn();
 const mockSetDisableGpuAcceleration = vi.fn();
@@ -82,8 +81,6 @@ vi.mock('../../../../../renderer/hooks/settings/useSettings', () => ({
 		setDefaultSaveToHistory: mockSetDefaultSaveToHistory,
 		defaultShowThinking: 'off',
 		setDefaultShowThinking: mockSetDefaultShowThinking,
-		autoScrollAiMode: true,
-		setAutoScrollAiMode: mockSetAutoScrollAiMode,
 		// Tab naming
 		automaticTabNamingEnabled: true,
 		setAutomaticTabNamingEnabled: mockSetAutomaticTabNamingEnabled,
@@ -171,7 +168,6 @@ describe('GeneralTab', () => {
 			expect(screen.getByText('Default History Toggle')).toBeInTheDocument();
 			expect(screen.getByText('Default Thinking Mode')).toBeInTheDocument();
 			expect(screen.getByText('Automatic Tab Naming')).toBeInTheDocument();
-			expect(screen.getByText('Auto-scroll AI Output')).toBeInTheDocument();
 			expect(screen.getByText('Power')).toBeInTheDocument();
 			expect(screen.getByText('Rendering Options')).toBeInTheDocument();
 			expect(screen.getByText('Updates')).toBeInTheDocument();
@@ -925,34 +921,6 @@ describe('GeneralTab', () => {
 
 	// =========================================================================
 	// 12. Auto-scroll
-	// =========================================================================
-	describe('Auto-scroll', () => {
-		it('should render auto-scroll toggle', async () => {
-			render(<GeneralTab theme={mockTheme} isOpen={true} />);
-
-			await act(async () => {
-				await vi.advanceTimersByTimeAsync(100);
-			});
-
-			expect(screen.getByText('Auto-scroll AI output')).toBeInTheDocument();
-		});
-
-		it('should call setAutoScrollAiMode when toggle is clicked', async () => {
-			render(<GeneralTab theme={mockTheme} isOpen={true} />);
-
-			await act(async () => {
-				await vi.advanceTimersByTimeAsync(100);
-			});
-
-			const titleElement = screen.getByText('Auto-scroll AI output');
-			const toggleContainer = titleElement.closest('[role="button"]');
-			const toggleSwitch = toggleContainer?.querySelector('button[role="switch"]');
-
-			fireEvent.click(toggleSwitch!);
-			expect(mockSetAutoScrollAiMode).toHaveBeenCalledWith(false);
-		});
-	});
-
 	// =========================================================================
 	// 13. Tab Naming
 	// =========================================================================

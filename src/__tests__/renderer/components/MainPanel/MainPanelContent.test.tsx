@@ -14,7 +14,6 @@ vi.mock('../../../../renderer/stores/settingsStore', () => ({
 				fontSize: 14,
 				enterToSendAI: true,
 				chatRawTextMode: false,
-				autoScrollAiMode: true,
 				userMessageAlignment: 'right',
 				shortcuts: {},
 				maxOutputLines: 5000,

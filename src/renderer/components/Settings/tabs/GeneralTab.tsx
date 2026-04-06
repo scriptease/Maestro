@@ -26,7 +26,6 @@ import {
 	PartyPopper,
 	Tag,
 	User,
-	ArrowDownToLine,
 	ExternalLink,
 	Keyboard,
 	AlertTriangle,
@@ -73,8 +72,6 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 		setDefaultSaveToHistory,
 		defaultShowThinking,
 		setDefaultShowThinking,
-		autoScrollAiMode,
-		setAutoScrollAiMode,
 		// Tab naming
 		automaticTabNamingEnabled,
 		setAutomaticTabNamingEnabled,
@@ -221,7 +218,7 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 						className="absolute bottom-2 right-2 text-xs px-1 rounded"
 						style={{
 							color: conductorProfile.length > 900 ? theme.colors.warning : theme.colors.textDim,
-							backgroundColor: theme.colors.backgroundSecondary,
+							backgroundColor: theme.colors.bgSidebar,
 						}}
 					>
 						{conductorProfile.length}/1000
@@ -675,19 +672,6 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 					description="When you send your first message to a new tab, an AI will analyze it and generate a descriptive tab name. The naming request runs in parallel and leaves no history."
 					checked={automaticTabNamingEnabled}
 					onChange={setAutomaticTabNamingEnabled}
-					theme={theme}
-				/>
-			</div>
-
-			{/* Auto-scroll AI Output */}
-			<div data-setting-id="general-auto-scroll">
-				<SettingCheckbox
-					icon={ArrowDownToLine}
-					sectionLabel="Auto-scroll AI Output"
-					title="Auto-scroll AI output"
-					description="Automatically scroll to the bottom when new AI output arrives. When disabled, a floating button appears for new messages."
-					checked={autoScrollAiMode}
-					onChange={setAutoScrollAiMode}
 					theme={theme}
 				/>
 			</div>

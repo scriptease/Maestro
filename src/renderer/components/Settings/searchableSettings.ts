@@ -107,14 +107,6 @@ export const GENERAL_SETTINGS: SearchableSetting[] = [
 		keywords: ['tab', 'name', 'auto', 'rename', 'title'],
 	},
 	{
-		id: 'general-auto-scroll',
-		tab: 'general',
-		tabLabel: 'General',
-		label: 'Auto-scroll AI Output',
-		description: 'Automatically scroll to the bottom when new AI output arrives',
-		keywords: ['scroll', 'auto scroll', 'output', 'follow'],
-	},
-	{
 		id: 'general-power',
 		tab: 'general',
 		tabLabel: 'General',

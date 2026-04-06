@@ -574,7 +574,6 @@ export function SettingsPanel({ onClose, settingsHook }: SettingsPanelProps) {
 						{(
 							[
 								{ key: 'enterToSendAI', label: 'Enter to send (AI mode)', field: 'enterToSendAI' },
-								{ key: 'autoScroll', label: 'Auto-scroll', field: 'autoScroll' },
 								{
 									key: 'defaultSaveToHistory',
 									label: 'Save to history by default',

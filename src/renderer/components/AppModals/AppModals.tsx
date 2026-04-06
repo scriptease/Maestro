@@ -278,9 +278,6 @@ export interface AppModalsProps {
 	// Maestro Cue
 	onOpenMaestroCue?: () => void;
 	onConfigureCue?: (session: Session) => void;
-	// Auto-scroll
-	autoScrollAiMode?: boolean;
-	setAutoScrollAiMode?: (value: boolean) => void;
 	onCloseTabSwitcher: () => void;
 	onTabSelect: (tabId: string) => void;
 	onFileTabSelect?: (tabId: string) => void;
@@ -657,9 +654,6 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 		// Maestro Cue
 		onOpenMaestroCue,
 		onConfigureCue,
-		// Auto-scroll
-		autoScrollAiMode,
-		setAutoScrollAiMode,
 		onCloseTabSwitcher,
 		onTabSelect,
 		onFileTabSelect,
@@ -955,8 +949,6 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 				onOpenDirectorNotes={onOpenDirectorNotes}
 				onOpenMaestroCue={onOpenMaestroCue}
 				onConfigureCue={onConfigureCue}
-				autoScrollAiMode={autoScrollAiMode}
-				setAutoScrollAiMode={setAutoScrollAiMode}
 				lightboxImage={lightboxImage}
 				lightboxImages={lightboxImages}
 				stagedImages={stagedImages}

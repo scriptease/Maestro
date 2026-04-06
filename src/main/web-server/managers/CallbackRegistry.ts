@@ -325,7 +325,7 @@ export class CallbackRegistry {
 			enterToSendAI: false,
 			defaultSaveToHistory: true,
 			defaultShowThinking: 'off',
-			autoScroll: false,
+			autoScroll: true,
 			notificationsEnabled: true,
 			audioFeedbackEnabled: false,
 			colorBlindMode: 'false',

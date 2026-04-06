@@ -282,10 +282,6 @@ export interface UseSettingsReturn {
 	suppressWindowsWarning: boolean;
 	setSuppressWindowsWarning: (value: boolean) => void;
 
-	// Auto-scroll in AI mode
-	autoScrollAiMode: boolean;
-	setAutoScrollAiMode: (value: boolean) => void;
-
 	// Message alignment
 	userMessageAlignment: 'left' | 'right';
 	setUserMessageAlignment: (value: 'left' | 'right') => void;

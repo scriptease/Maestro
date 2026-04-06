@@ -137,7 +137,6 @@ export const MainPanel = React.memo(
 		const contextWarningRedThreshold = useSettingsStore(
 			(s) => s.contextManagementSettings.contextWarningRedThreshold ?? 80
 		);
-		const activeFocus = useUIStore((s) => s.activeFocus);
 		const showUnreadOnly = useUIStore((s) => s.showUnreadOnly);
 
 		// isCurrentSessionAutoMode: THIS session has active batch run (for all UI indicators)
@@ -457,14 +456,11 @@ export const MainPanel = React.memo(
 			<>
 				<ErrorBoundary>
 					<div
-						className={`flex-1 flex flex-col relative ${activeFocus === 'main' ? 'ring-1 ring-inset' : ''}`}
-						style={
-							{
-								minWidth: '400px',
-								backgroundColor: theme.colors.bgMain,
-								'--tw-ring-color': theme.colors.accent,
-							} as React.CSSProperties
-						}
+						className="flex-1 flex flex-col relative"
+						style={{
+							minWidth: '400px',
+							backgroundColor: theme.colors.bgMain,
+						}}
 						onClick={() => useUIStore.getState().setActiveFocus('main')}
 					>
 						{/* Top Bar (hidden in mobile landscape for focused reading) */}

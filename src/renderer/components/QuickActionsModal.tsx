@@ -128,9 +128,6 @@ interface QuickActionsModalProps {
 	// Maestro Cue
 	onOpenMaestroCue?: () => void;
 	onConfigureCue?: (session: Session) => void;
-	// Auto-scroll
-	autoScrollAiMode?: boolean;
-	setAutoScrollAiMode?: (value: boolean) => void;
 }
 
 export const QuickActionsModal = memo(function QuickActionsModal(props: QuickActionsModalProps) {
@@ -220,8 +217,6 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 		onOpenDirectorNotes,
 		onOpenMaestroCue,
 		onConfigureCue,
-		autoScrollAiMode,
-		setAutoScrollAiMode,
 	} = props;
 
 	// UI store actions for search commands (avoid threading more props through 3-layer chain)
@@ -1132,22 +1127,6 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 						subtext: 'Open YAML editor for event-driven automation',
 						action: () => {
 							onConfigureCue(activeSession);
-							setQuickActionOpen(false);
-						},
-					},
-				]
-			: []),
-		// Auto-scroll toggle
-		...(setAutoScrollAiMode
-			? [
-					{
-						id: 'toggleAutoScroll',
-						label: autoScrollAiMode
-							? 'Disable Auto-Scroll AI Output'
-							: 'Enable Auto-Scroll AI Output',
-						shortcut: shortcuts.toggleAutoScroll,
-						action: () => {
-							setAutoScrollAiMode(!autoScrollAiMode);
 							setQuickActionOpen(false);
 						},
 					},

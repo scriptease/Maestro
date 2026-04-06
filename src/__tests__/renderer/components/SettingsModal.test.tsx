@@ -94,7 +94,6 @@ const mockSetGhPath = vi.fn();
 const mockSetEnterToSendAI = vi.fn();
 const mockSetDefaultSaveToHistory = vi.fn();
 const mockSetDefaultShowThinking = vi.fn();
-const mockSetAutoScrollAiMode = vi.fn();
 const mockSetUserMessageAlignment = vi.fn();
 const mockSetOsNotificationsEnabled = vi.fn();
 const mockSetAudioFeedbackEnabled = vi.fn();
@@ -177,8 +176,6 @@ vi.mock('../../../renderer/hooks/settings/useSettings', () => ({
 		setDefaultSaveToHistory: mockSetDefaultSaveToHistory,
 		defaultShowThinking: 'off',
 		setDefaultShowThinking: mockSetDefaultShowThinking,
-		autoScrollAiMode: true,
-		setAutoScrollAiMode: mockSetAutoScrollAiMode,
 		userMessageAlignment: 'left',
 		setUserMessageAlignment: mockSetUserMessageAlignment,
 		// Notification settings

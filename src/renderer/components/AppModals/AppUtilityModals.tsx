@@ -147,10 +147,6 @@ export interface AppUtilityModalsProps {
 	onOpenMaestroCue?: () => void;
 	onConfigureCue?: (session: Session) => void;
 
-	// Auto-scroll
-	autoScrollAiMode?: boolean;
-	setAutoScrollAiMode?: (value: boolean) => void;
-
 	// LightboxModal
 	lightboxImage: string | null;
 	lightboxImages: string[];
@@ -356,9 +352,6 @@ export const AppUtilityModals = memo(function AppUtilityModals({
 	// Maestro Cue
 	onOpenMaestroCue,
 	onConfigureCue,
-	// Auto-scroll
-	autoScrollAiMode,
-	setAutoScrollAiMode,
 	// LightboxModal
 	lightboxImage,
 	lightboxImages,
@@ -521,8 +514,6 @@ export const AppUtilityModals = memo(function AppUtilityModals({
 					onOpenDirectorNotes={onOpenDirectorNotes}
 					onOpenMaestroCue={onOpenMaestroCue}
 					onConfigureCue={onConfigureCue}
-					autoScrollAiMode={autoScrollAiMode}
-					setAutoScrollAiMode={setAutoScrollAiMode}
 				/>
 			)}
 

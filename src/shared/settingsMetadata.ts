@@ -208,12 +208,6 @@ export const SETTINGS_METADATA: Record<string, SettingMetadata> = {
 		default: 100,
 		category: 'editor',
 	},
-	autoScrollAiMode: {
-		description: 'Automatically scroll to the bottom when new AI output arrives.',
-		type: 'boolean',
-		default: false,
-		category: 'editor',
-	},
 	automaticTabNamingEnabled: {
 		description: 'Automatically name tabs based on the first message or task.',
 		type: 'boolean',

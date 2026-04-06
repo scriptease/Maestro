@@ -457,7 +457,6 @@ describe('MainPanel', () => {
 			fontFamily: 'monospace',
 			enterToSendAI: true,
 			chatRawTextMode: false,
-			autoScrollAiMode: false,
 			userMessageAlignment: 'right',
 			maxOutputLines: 1000,
 			logLevel: 'info',

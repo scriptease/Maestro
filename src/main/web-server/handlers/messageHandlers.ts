@@ -1542,7 +1542,6 @@ export class WebSocketMessageHandler {
 		'enterToSendAI',
 		'defaultSaveToHistory',
 		'defaultShowThinking',
-		'autoScroll',
 		'notificationsEnabled',
 		'audioFeedbackEnabled',
 		'colorBlindMode',

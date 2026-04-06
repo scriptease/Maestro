@@ -253,7 +253,6 @@ export interface SettingsStoreState {
 	automaticTabNamingEnabled: boolean;
 	fileTabAutoRefreshEnabled: boolean;
 	suppressWindowsWarning: boolean;
-	autoScrollAiMode: boolean;
 	userMessageAlignment: 'left' | 'right';
 	encoreFeatures: EncoreFeatureFlags;
 	symphonyRegistryUrls: string[];
@@ -331,7 +330,6 @@ export interface SettingsStoreActions {
 	setAutomaticTabNamingEnabled: (value: boolean) => void;
 	setFileTabAutoRefreshEnabled: (value: boolean) => void;
 	setSuppressWindowsWarning: (value: boolean) => void;
-	setAutoScrollAiMode: (value: boolean) => void;
 	setUserMessageAlignment: (value: 'left' | 'right') => void;
 	setEncoreFeatures: (value: EncoreFeatureFlags) => void;
 	setSymphonyRegistryUrls: (value: string[]) => void;
@@ -489,7 +487,6 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 		automaticTabNamingEnabled: true,
 		fileTabAutoRefreshEnabled: false,
 		suppressWindowsWarning: false,
-		autoScrollAiMode: false,
 		userMessageAlignment: 'right',
 		encoreFeatures: DEFAULT_ENCORE_FEATURES,
 		symphonyRegistryUrls: [],
@@ -885,11 +882,6 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 		setSuppressWindowsWarning: (value) => {
 			set({ suppressWindowsWarning: value });
 			window.maestro.settings.set('suppressWindowsWarning', value);
-		},
-
-		setAutoScrollAiMode: (value) => {
-			set({ autoScrollAiMode: value });
-			window.maestro.settings.set('autoScrollAiMode', value);
 		},
 
 		setUserMessageAlignment: (value) => {
@@ -1832,9 +1824,6 @@ export async function loadAllSettings(): Promise<void> {
 		if (allSettings['suppressWindowsWarning'] !== undefined)
 			patch.suppressWindowsWarning = allSettings['suppressWindowsWarning'] as boolean;
 
-		if (allSettings['autoScrollAiMode'] !== undefined)
-			patch.autoScrollAiMode = allSettings['autoScrollAiMode'] as boolean;
-
 		if (allSettings['userMessageAlignment'] !== undefined)
 			patch.userMessageAlignment = allSettings['userMessageAlignment'] as 'left' | 'right';
 
@@ -1990,7 +1979,6 @@ export function getSettingsActions() {
 		setAutomaticTabNamingEnabled: state.setAutomaticTabNamingEnabled,
 		setFileTabAutoRefreshEnabled: state.setFileTabAutoRefreshEnabled,
 		setSuppressWindowsWarning: state.setSuppressWindowsWarning,
-		setAutoScrollAiMode: state.setAutoScrollAiMode,
 		setEncoreFeatures: state.setEncoreFeatures,
 		setSymphonyRegistryUrls: state.setSymphonyRegistryUrls,
 		setDirectorNotesSettings: state.setDirectorNotesSettings,

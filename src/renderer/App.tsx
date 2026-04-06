@@ -149,15 +149,7 @@ import { ToastContainer } from './components/Toast';
 
 // Import types and constants
 // Note: GroupChat, GroupChatState are imported from types (re-exported from shared)
-import type {
-	RightPanelTab,
-	Session,
-	QueuedItem,
-	CustomAICommand,
-	ThinkingItem,
-	AITab,
-	ToolType,
-} from './types';
+import type { RightPanelTab, Session, QueuedItem, CustomAICommand, ThinkingItem } from './types';
 import { THEMES } from './constants/themes';
 import { generateId } from './utils/ids';
 import { getContextColor } from './utils/theme';
@@ -240,7 +232,6 @@ function MaestroConsoleInner() {
 		// Debug Package Modal — debugPackageModalOpen now self-sourced in AppStandaloneModals
 		setDebugPackageModalOpen,
 		// Windows Warning Modal — windowsWarningModalOpen now self-sourced in AppStandaloneModals
-		setWindowsWarningModalOpen,
 		// Confirmation Modal
 		confirmModalOpen,
 		setConfirmModalOpen,
@@ -312,7 +303,6 @@ function MaestroConsoleInner() {
 		gitLogOpen,
 		setGitLogOpen,
 		// Tour Overlay — tourOpen, tourFromWizard now self-sourced in AppStandaloneModals
-		setTourOpen,
 		// setTourFromWizard now used in useWizardHandlers via getModalActions()
 		// Symphony Modal — symphonyModalOpen now self-sourced in AppStandaloneModals
 		setSymphonyModalOpen,
@@ -432,8 +422,6 @@ function MaestroConsoleInner() {
 		// File tab refresh settings
 		fileTabAutoRefreshEnabled,
 		useNativeTitleBar,
-		autoScrollAiMode,
-		setAutoScrollAiMode,
 		setSuppressWindowsWarning,
 		encoreFeatures,
 	} = settings;
@@ -857,6 +845,7 @@ function MaestroConsoleInner() {
 		handleGroupChatDraftChange,
 		handleRemoveGroupChatQueueItem,
 		handleReorderGroupChatQueueItems,
+		handleStopAll: handleGroupChatStopAll,
 		handleNewGroupChat,
 		handleEditGroupChat,
 		handleOpenRenameGroupChatModal,
@@ -976,6 +965,7 @@ function MaestroConsoleInner() {
 	} = useAppHandlers({
 		activeSession,
 		activeSessionId,
+		setSessions,
 		setActiveFocus,
 		setConfirmModalMessage,
 		setConfirmModalOnConfirm,
@@ -1035,6 +1025,7 @@ function MaestroConsoleInner() {
 		isLiveMode,
 		sessionsRef,
 		activeSessionIdRef,
+		setSessions,
 		setActiveSessionId,
 		defaultSaveToHistory,
 		defaultShowThinking,
@@ -1046,7 +1037,7 @@ function MaestroConsoleInner() {
 	});
 
 	// CLI activity monitoring hook - tracks CLI playbook runs and updates session states
-	useCliActivityMonitoring({});
+	useCliActivityMonitoring({ setSessions });
 
 	// Note: Quit confirmation effect moved into useBatchHandlers hook
 
@@ -1193,6 +1184,7 @@ function MaestroConsoleInner() {
 		navigateBack,
 		navigateForward,
 		setActiveSessionId, // Uses the wrapper that also dismisses active group chat
+		setSessions,
 		cyclePositionRef,
 		onNavigateToGroupChat: handleOpenGroupChat,
 	});
@@ -1235,6 +1227,7 @@ function MaestroConsoleInner() {
 	} = useAgentExecution({
 		activeSession,
 		sessionsRef,
+		setSessions,
 		processQueuedItemRef,
 		setFlashNotification,
 		setSuccessFlashNotification,
@@ -1245,6 +1238,7 @@ function MaestroConsoleInner() {
 	const { addHistoryEntry, addHistoryEntryRef, handleJumpToAgentSession, handleResumeSession } =
 		useAgentSessionManagement({
 			activeSession,
+			setSessions,
 			setActiveAgentSessionId,
 			setAgentSessionsOpen,
 			rightPanelRef,
@@ -1451,7 +1445,7 @@ function MaestroConsoleInner() {
 	}, [activeSession?.id, activeSession?.activeTabId]);
 
 	// Initialize activity tracker for per-session time tracking
-	useActivityTracker(activeSessionId);
+	useActivityTracker(activeSessionId, setSessions);
 
 	// Initialize global hands-on time tracker (persists to settings)
 	// Tracks total time user spends actively using Maestro (5-minute idle timeout)
@@ -1488,6 +1482,7 @@ function MaestroConsoleInner() {
 		handleAutoRunOpenSetup,
 		handleAutoRunCreateDocument,
 	} = useAutoRunHandlers(activeSession, {
+		setSessions,
 		setAutoRunDocumentList,
 		setAutoRunDocumentTree,
 		setAutoRunIsLoadingDocuments,
@@ -1582,6 +1577,7 @@ function MaestroConsoleInner() {
 	const {
 		handleSaveEditAgent,
 		handleRenameTab,
+		handleAutoNameTab,
 		performDeleteSession,
 		showConfirmation,
 		toggleTabStar,
@@ -1672,6 +1668,7 @@ function MaestroConsoleInner() {
 	const { refreshFileTree, refreshGitFileState, filteredFileTree } = useFileTreeManagement({
 		sessions,
 		sessionsRef,
+		setSessions,
 		activeSessionId,
 		activeSession,
 		rightPanelRef,
@@ -1721,6 +1718,7 @@ function MaestroConsoleInner() {
 	} = useGroupManagement({
 		groups,
 		setGroups,
+		setSessions,
 		draggingSessionId,
 		setDraggingSessionId,
 		editingGroupId,
@@ -2024,10 +2022,6 @@ function MaestroConsoleInner() {
 
 		// Session bookmark toggle
 		toggleBookmark,
-
-		// Auto-scroll AI mode toggle
-		autoScrollAiMode,
-		setAutoScrollAiMode,
 
 		// Unread agents filter toggle
 		toggleShowUnreadAgentsOnly: useUIStore.getState().toggleShowUnreadAgentsOnly,
@@ -2540,6 +2534,7 @@ function MaestroConsoleInner() {
 					renameTabInitialName={renameTabInitialName}
 					onCloseRenameTabModal={handleCloseRenameTabModal}
 					onRenameTab={handleRenameTab}
+					onAutoNameTab={handleAutoNameTab}
 					// AppGroupModals props
 					createGroupModalOpen={createGroupModalOpen}
 					onCloseCreateGroupModal={handleCloseCreateGroupModal}
@@ -2670,8 +2665,6 @@ function MaestroConsoleInner() {
 					}
 					onOpenMaestroCue={encoreFeatures.maestroCue ? () => setCueModalOpen(true) : undefined}
 					onConfigureCue={encoreFeatures.maestroCue ? handleConfigureCue : undefined}
-					autoScrollAiMode={autoScrollAiMode}
-					setAutoScrollAiMode={setAutoScrollAiMode}
 					onCloseTabSwitcher={handleCloseTabSwitcher}
 					onTabSelect={handleUtilityTabSelect}
 					onFileTabSelect={handleUtilityFileTabSelect}
@@ -2895,6 +2888,7 @@ function MaestroConsoleInner() {
 									messages={groupChatMessages}
 									state={groupChatState}
 									groups={groups}
+									onStopAll={handleGroupChatStopAll}
 									totalCost={(() => {
 										const chat = groupChats.find((c) => c.id === activeGroupChatId);
 										const participantsCost = (chat?.participants || []).reduce(

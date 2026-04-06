@@ -365,8 +365,6 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 	const fontSize = useSettingsStore((s) => s.fontSize);
 	const enterToSendAI = useSettingsStore((s) => s.enterToSendAI);
 	const chatRawTextMode = useSettingsStore((s) => s.chatRawTextMode);
-	const autoScrollAiMode = useSettingsStore((s) => s.autoScrollAiMode);
-	const setAutoScrollAiMode = useSettingsStore((s) => s.setAutoScrollAiMode);
 	const userMessageAlignment = useSettingsStore((s) => s.userMessageAlignment);
 	const shortcuts = useSettingsStore((s) => s.shortcuts);
 	const maxOutputLines = useSettingsStore((s) => s.maxOutputLines);
@@ -545,8 +543,6 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 								onFileSaved={
 									refreshFileTree ? () => refreshFileTree?.(activeSession.id) : undefined
 								}
-								autoScrollAiMode={autoScrollAiMode}
-								setAutoScrollAiMode={setAutoScrollAiMode}
 								userMessageAlignment={userMessageAlignment}
 								onOpenInTab={onOpenSavedFileInTab}
 								ghCliAvailable={ghCliAvailable}
@@ -680,6 +676,7 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 						style={{
 							visibility: isTerminalVisible ? 'visible' : 'hidden',
 							pointerEvents: isTerminalVisible ? 'auto' : 'none',
+							zIndex: isTerminalVisible ? 1 : -1,
 						}}
 					>
 						<TerminalView

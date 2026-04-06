@@ -14,10 +14,8 @@ import {
 	Trophy,
 	Trash2,
 	Bot,
-	Search,
 } from 'lucide-react';
 import type { Session, Group, Theme } from '../../types';
-import { formatShortcutKeys } from '../../utils/shortcutFormatter';
 import { getBadgeForTime } from '../../constants/conductorBadges';
 import { SessionItem } from '../SessionItem';
 import { GroupChatList } from '../GroupChatList';
@@ -690,13 +688,16 @@ function SessionListInner(props: SessionListProps) {
 		<div
 			ref={sidebarContainerRef}
 			tabIndex={0}
-			className={`border-r flex flex-col shrink-0 ${sidebarTransitionClass} outline-none relative z-20 ${activeFocus === 'sidebar' && !activeGroupChatId ? 'ring-1 ring-inset' : ''}`}
+			className={`border-r flex flex-col shrink-0 ${sidebarTransitionClass} outline-none relative z-20`}
 			style={
 				{
 					width: leftSidebarOpen ? `${leftSidebarWidthState}px` : '64px',
 					backgroundColor: theme.colors.bgSidebar,
 					borderColor: theme.colors.border,
-					'--tw-ring-color': theme.colors.accent,
+					boxShadow:
+						activeFocus === 'sidebar' && !activeGroupChatId
+							? `inset -1px 0 0 ${theme.colors.accent}, inset 1px 0 0 ${theme.colors.accent}, inset 0 -1px 0 ${theme.colors.accent}`
+							: undefined,
 				} as React.CSSProperties
 			}
 			onClick={() => setActiveFocus('sidebar')}
@@ -813,15 +814,6 @@ function SessionListInner(props: SessionListProps) {
 							</div>
 						</div>
 						<div className="flex items-center">
-							{/* Search Agents */}
-							<button
-								onClick={() => setSessionFilterOpen(!sessionFilterOpen)}
-								className="p-2 rounded hover:bg-white/10 transition-colors"
-								style={{ color: theme.colors.textDim }}
-								title={`Search Agents (${formatShortcutKeys(shortcuts.filterSessions?.keys ?? ['Meta', 'f'])})`}
-							>
-								<Search className="w-4 h-4" />
-							</button>
 							{/* Hamburger Menu */}
 							<div className="relative z-10" ref={menuRef} data-tour="hamburger-menu">
 								<button

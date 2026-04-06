@@ -408,13 +408,16 @@ export const RightPanel = memo(
 			<div
 				ref={panelRef}
 				tabIndex={0}
-				className={`border-l flex flex-col ${rightPanelTransitionClass} outline-none relative ${rightPanelOpen ? '' : 'w-0 overflow-hidden opacity-0'} ${activeFocus === 'right' ? 'ring-1 ring-inset' : ''}`}
+				className={`border-l flex flex-col ${rightPanelTransitionClass} outline-none relative ${rightPanelOpen ? '' : 'w-0 overflow-hidden opacity-0'}`}
 				style={
 					{
 						width: rightPanelOpen ? `${rightPanelWidth}px` : '0',
 						backgroundColor: theme.colors.bgSidebar,
 						borderColor: theme.colors.border,
-						'--tw-ring-color': theme.colors.accent,
+						boxShadow:
+							activeFocus === 'right'
+								? `inset 1px 0 0 ${theme.colors.accent}, inset -1px 0 0 ${theme.colors.accent}, inset 0 -1px 0 ${theme.colors.accent}`
+								: undefined,
 					} as React.CSSProperties
 				}
 				onClick={() => setActiveFocus('right')}
