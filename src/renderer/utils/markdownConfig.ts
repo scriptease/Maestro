@@ -353,13 +353,19 @@ export function createMarkdownComponents(options: MarkdownComponentsOptions): Pa
 		// Override paragraph to apply search highlighting
 		p: ({ children }: any) => React.createElement('p', null, withHighlight(children)),
 
-		// Override headings to apply search highlighting
-		h1: ({ children }: any) => React.createElement('h1', null, withHighlight(children)),
-		h2: ({ children }: any) => React.createElement('h2', null, withHighlight(children)),
-		h3: ({ children }: any) => React.createElement('h3', null, withHighlight(children)),
-		h4: ({ children }: any) => React.createElement('h4', null, withHighlight(children)),
-		h5: ({ children }: any) => React.createElement('h5', null, withHighlight(children)),
-		h6: ({ children }: any) => React.createElement('h6', null, withHighlight(children)),
+		// Override headings to apply search highlighting (forward id/props for rehype-slug anchors)
+		h1: ({ children, node: _node, ...props }: any) =>
+			React.createElement('h1', props, withHighlight(children)),
+		h2: ({ children, node: _node, ...props }: any) =>
+			React.createElement('h2', props, withHighlight(children)),
+		h3: ({ children, node: _node, ...props }: any) =>
+			React.createElement('h3', props, withHighlight(children)),
+		h4: ({ children, node: _node, ...props }: any) =>
+			React.createElement('h4', props, withHighlight(children)),
+		h5: ({ children, node: _node, ...props }: any) =>
+			React.createElement('h5', props, withHighlight(children)),
+		h6: ({ children, node: _node, ...props }: any) =>
+			React.createElement('h6', props, withHighlight(children)),
 
 		// Override list items to apply search highlighting
 		li: ({ children }: any) => React.createElement('li', null, withHighlight(children)),

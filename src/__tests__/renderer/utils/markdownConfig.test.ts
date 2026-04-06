@@ -786,6 +786,21 @@ describe('createMarkdownComponents link handling', () => {
 		}
 	});
 
+	it('should forward id and other props through heading components (rehype-slug support)', () => {
+		const components = createMarkdownComponents({
+			theme: mockTheme,
+			searchHighlight: { query: '', currentMatchIndex: 0 },
+		});
+
+		// rehype-slug adds an id prop to headings; the component overrides must forward it
+		for (const tag of ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const) {
+			const Component = components[tag] as any;
+			expect(Component).toBeDefined();
+			const element = Component({ node: null, id: 'my-heading', children: 'Title' });
+			expect(element.props.id).toBe('my-heading');
+		}
+	});
+
 	it('should route relative paths to onFileClick when available', () => {
 		const onExternalLinkClick = vi.fn();
 		const onFileClick = vi.fn();
