@@ -817,6 +817,10 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 				shellEnvVars?: Record<string, string>;
 				cols?: number;
 				rows?: number;
+				// Agent type (e.g. 'claude-code') — used to resolve agent-level customEnvVars
+				toolType?: string;
+				// Session-level custom env vars (override agent-level)
+				sessionCustomEnvVars?: Record<string, string>;
 				// Per-session SSH remote config
 				sessionSshRemoteConfig?: {
 					enabled: boolean;
@@ -834,8 +838,24 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 					shellToUse = (customShellPath as string).trim();
 				}
 
-				// Merge global env vars with any per-invocation env vars (per-invocation takes precedence)
-				const mergedEnvVars = { ...globalShellEnvVars, ...(config.shellEnvVars || {}) };
+				// Resolve agent-level custom env vars from agent config store
+				let agentCustomEnvVars: Record<string, string> = {};
+				if (config.toolType) {
+					const allConfigs = agentConfigsStore.get('configs', {});
+					const agentConfig = allConfigs[config.toolType];
+					if (agentConfig?.customEnvVars) {
+						agentCustomEnvVars = agentConfig.customEnvVars;
+					}
+				}
+
+				// Merge env vars: global → agent-level → session-level → per-invocation
+				// Each layer takes precedence over the previous
+				const mergedEnvVars = {
+					...globalShellEnvVars,
+					...agentCustomEnvVars,
+					...(config.sessionCustomEnvVars || {}),
+					...(config.shellEnvVars || {}),
+				};
 
 				logger.info(`Spawning terminal tab: ${config.sessionId}`, LOG_CONTEXT, {
 					sessionId: config.sessionId,

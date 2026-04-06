@@ -173,6 +173,8 @@ export const TerminalView = memo(
 						shell: defaultShell || undefined,
 						shellArgs,
 						shellEnvVars,
+						toolType: session.toolType,
+						sessionCustomEnvVars: session.customEnvVars,
 						sessionSshRemoteConfig: effectiveSshConfig,
 					})
 					.then((result) => {

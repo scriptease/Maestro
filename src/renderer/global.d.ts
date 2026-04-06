@@ -272,6 +272,8 @@ interface MaestroAPI {
 			shell?: string;
 			shellArgs?: string;
 			shellEnvVars?: Record<string, string>;
+			toolType?: string;
+			sessionCustomEnvVars?: Record<string, string>;
 			cols?: number;
 			rows?: number;
 			sessionSshRemoteConfig?: {
