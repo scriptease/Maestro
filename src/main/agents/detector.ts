@@ -13,6 +13,8 @@
  * - Cache can be manually cleared or bypassed with forceRefresh flag
  */
 
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { execFileNoThrow } from '../utils/execFile';
 import { logger } from '../utils/logger';
@@ -274,6 +276,62 @@ export class AgentDetector {
 						models,
 					});
 					return models;
+				}
+
+				case 'copilot-cli': {
+					// Fetch available models from models.dev API (open-source model database)
+					try {
+						const response = await fetch('https://models.dev/api.json');
+						if (response.ok) {
+							const data = (await response.json()) as Record<string, unknown>;
+							const copilotProvider = data?.['github-copilot'] as
+								| { models?: Record<string, unknown> }
+								| undefined;
+							if (copilotProvider?.models && typeof copilotProvider.models === 'object') {
+								const models = Object.keys(copilotProvider.models).sort();
+
+								// Prepend the user's configured model if not already in the list
+								try {
+									const configPath = path.join(os.homedir(), '.copilot', 'config.json');
+									const configContent = fs.readFileSync(configPath, 'utf8');
+									const config = JSON.parse(configContent);
+									if (
+										config.model &&
+										typeof config.model === 'string' &&
+										!models.includes(config.model)
+									) {
+										models.unshift(config.model);
+									}
+								} catch {
+									// Ignore - config may not exist
+								}
+
+								logger.info(
+									`Discovered ${models.length} models for ${agentId} from models.dev`,
+									LOG_CONTEXT
+								);
+								return models;
+							}
+						}
+					} catch (err) {
+						logger.warn('Failed to fetch models from models.dev for copilot-cli', LOG_CONTEXT, {
+							error: String(err),
+						});
+					}
+
+					// Fallback: return user's configured model if available
+					const fallback: string[] = [];
+					try {
+						const configPath = path.join(os.homedir(), '.copilot', 'config.json');
+						const configContent = fs.readFileSync(configPath, 'utf8');
+						const config = JSON.parse(configContent);
+						if (config.model && typeof config.model === 'string') {
+							fallback.push(config.model);
+						}
+					} catch {
+						// Ignore
+					}
+					return fallback;
 				}
 
 				default:
