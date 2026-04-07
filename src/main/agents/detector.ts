@@ -340,6 +340,63 @@ export class AgentDetector {
 					return models;
 				}
 
+				case 'copilot': {
+					// Fetch available models from models.dev API (open-source model database)
+					try {
+						const response = await fetch('https://models.dev/api.json');
+						if (response.ok) {
+							const data = (await response.json()) as Record<string, unknown>;
+							const copilotProvider = data?.['github-copilot'] as
+								| { models?: Record<string, unknown> }
+								| undefined;
+							if (copilotProvider?.models && typeof copilotProvider.models === 'object') {
+								const models = Object.keys(copilotProvider.models);
+								logger.info(
+									`Discovered ${models.length} models for ${agentId} from models.dev`,
+									LOG_CONTEXT,
+									{ models }
+								);
+
+								// Prepend the user's configured model if not already in the list
+								try {
+									const configPath = path.join(os.homedir(), '.copilot', 'config.json');
+									const configContent = fs.readFileSync(configPath, 'utf8');
+									const config = JSON.parse(configContent);
+									if (
+										config.model &&
+										typeof config.model === 'string' &&
+										!models.includes(config.model)
+									) {
+										models.unshift(config.model);
+									}
+								} catch {
+									// Ignore - config may not exist
+								}
+
+								return models;
+							}
+						}
+					} catch (err) {
+						logger.warn('Failed to fetch models from models.dev for copilot', LOG_CONTEXT, {
+							error: String(err),
+						});
+					}
+
+					// Fallback: return user's configured model if available
+					const fallback: string[] = [];
+					try {
+						const configPath = path.join(os.homedir(), '.copilot', 'config.json');
+						const configContent = fs.readFileSync(configPath, 'utf8');
+						const config = JSON.parse(configContent);
+						if (config.model && typeof config.model === 'string') {
+							fallback.push(config.model);
+						}
+					} catch {
+						// Ignore
+					}
+					return fallback;
+				}
+
 				default:
 					// For agents without model discovery implemented, return empty array
 					logger.debug(`No model discovery implemented for ${agentId}`, LOG_CONTEXT);
