@@ -7,6 +7,7 @@ import { notifyToast } from '../stores/notificationStore';
 import { MODAL_PRIORITIES } from '../constants/modalPriorities';
 import { gitService } from '../services/git';
 import { formatShortcutKeys } from '../utils/shortcutFormatter';
+import { findNextUnreadSession } from '../utils/tabHelpers';
 import { safeClipboardWrite } from '../utils/clipboard';
 import { getOpenInLabel } from '../utils/platformUtils';
 import type { WizardStep } from './Wizard/WizardContext';
@@ -468,6 +469,47 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 			label: 'Toggle Right Panel',
 			shortcut: shortcuts.toggleRightPanel,
 			action: () => setRightPanelOpen((p) => !p),
+		},
+		{
+			id: 'nextUnreadTab',
+			label: 'Next Unread Tab',
+			shortcut: shortcuts.nextUnreadTab,
+			action: () => {
+				const result = findNextUnreadSession(sessions, activeSessionId);
+
+				if (result.clearedCurrent) {
+					setSessions((prev) =>
+						prev.map((s) => {
+							if (s.id !== activeSessionId) return s;
+							return {
+								...s,
+								aiTabs: s.aiTabs.map((t) => (t.hasUnread ? { ...t, hasUnread: false } : t)),
+							};
+						})
+					);
+				}
+
+				if (result.jumped && result.targetSessionId) {
+					setActiveSessionId(result.targetSessionId);
+					const targetTabId = result.targetTabId;
+					if (targetTabId) {
+						setSessions((prev) =>
+							prev.map((s) => {
+								if (s.id !== result.targetSessionId) return s;
+								return { ...s, activeTabId: targetTabId };
+							})
+						);
+					}
+				} else {
+					notifyToast({
+						type: 'info',
+						title: 'No unread tabs',
+						message: 'All tabs have been read',
+						duration: 2,
+					});
+				}
+				setQuickActionOpen(false);
+			},
 		},
 		...(activeSession
 			? [

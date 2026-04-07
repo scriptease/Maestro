@@ -134,9 +134,11 @@ export function useMainKeyboardHandler(): UseMainKeyboardHandlerReturn {
 					(e.metaKey || e.ctrlKey) &&
 					e.shiftKey &&
 					(e.key === '[' || e.key === ']' || e.key === '{' || e.key === '}');
-				// Allow sidebar toggle shortcuts (Alt+Cmd+Arrow) even when modals are open
+				// Allow sidebar toggle shortcuts (Alt+Cmd+Arrow) and next-unread (Alt+Cmd+ArrowDown) even when modals are open
 				const isLayoutShortcut =
-					e.altKey && (e.metaKey || e.ctrlKey) && (e.key === 'ArrowLeft' || e.key === 'ArrowRight');
+					e.altKey &&
+					(e.metaKey || e.ctrlKey) &&
+					(e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowDown');
 				// Allow right panel tab shortcuts (Cmd+Shift+F/H/S) even when overlays are open
 				const keyLower = e.key.toLowerCase();
 				const isRightPanelShortcut =
@@ -502,6 +504,10 @@ export function useMainKeyboardHandler(): UseMainKeyboardHandlerReturn {
 				e.preventDefault();
 				ctx.setCueModalOpen?.(true);
 				trackShortcut('openCue');
+			} else if (ctx.isShortcut(e, 'nextUnreadTab')) {
+				e.preventDefault();
+				ctx.goToNextUnreadTab();
+				trackShortcut('nextUnreadTab');
 			} else if (ctx.isShortcut(e, 'filterUnreadAgents')) {
 				e.preventDefault();
 				ctx.toggleShowUnreadAgentsOnly();

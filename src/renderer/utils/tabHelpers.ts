@@ -1999,3 +1999,52 @@ export function createMergedSession(
 
 	return { session, tabId };
 }
+
+/**
+ * Result of goToNextUnreadTab navigation.
+ * - `jumped`: true if we switched to a different session
+ * - `clearedCurrent`: true if we cleared the current session's unread tabs
+ * - `targetSessionId`: the session ID we jumped to (if jumped)
+ * - `targetTabId`: the tab ID to activate in the target session (if jumped)
+ */
+export interface GoToNextUnreadResult {
+	jumped: boolean;
+	clearedCurrent: boolean;
+	targetSessionId?: string;
+	targetTabId?: string;
+}
+
+/**
+ * Compute the next unread session to jump to (relative to the current session
+ * in the ordered session list), and return instructions for the caller to apply.
+ *
+ * Does NOT mutate state — the caller applies the result via setSessions/setActiveSessionId.
+ */
+export function findNextUnreadSession(
+	orderedSessions: Session[],
+	activeSessionId: string
+): GoToNextUnreadResult {
+	const currentIndex = orderedSessions.findIndex((s) => s.id === activeSessionId);
+	const currentSession = orderedSessions.find((s) => s.id === activeSessionId);
+	const currentHasUnread = currentSession?.aiTabs?.some((tab) => tab.hasUnread) ?? false;
+
+	// Search forward from current position, wrapping around
+	for (let i = 1; i <= orderedSessions.length; i++) {
+		const candidate = orderedSessions[(currentIndex + i) % orderedSessions.length];
+		if (candidate.id !== activeSessionId && candidate.aiTabs?.some((tab) => tab.hasUnread)) {
+			const firstUnreadTab = candidate.aiTabs.find((tab) => tab.hasUnread);
+			return {
+				jumped: true,
+				clearedCurrent: currentHasUnread,
+				targetSessionId: candidate.id,
+				targetTabId: firstUnreadTab?.id !== candidate.activeTabId ? firstUnreadTab?.id : undefined,
+			};
+		}
+	}
+
+	// No other session has unread tabs
+	return {
+		jumped: false,
+		clearedCurrent: currentHasUnread,
+	};
+}

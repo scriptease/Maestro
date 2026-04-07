@@ -55,6 +55,7 @@ import {
 	buildUnifiedTabs,
 	ensureInUnifiedTabOrder,
 	getRepairedUnifiedTabOrder,
+	findNextUnreadSession,
 } from '../../../renderer/utils/tabHelpers';
 import type { LogEntry } from '../../../renderer/types';
 import type {
@@ -3237,6 +3238,135 @@ describe('tabHelpers', () => {
 		it('returns null for empty session', () => {
 			const session = createMockSession({ unifiedTabOrder: [] });
 			expect(navigateToClosestTerminalTab(session)).toBeNull();
+		});
+	});
+
+	describe('findNextUnreadSession', () => {
+		it('returns jumped=true when another session has unread tabs', () => {
+			const sessions = [
+				createMockSession({
+					id: 'a',
+					aiTabs: [createMockTab({ id: 'tab-a', hasUnread: false })],
+					activeTabId: 'tab-a',
+				}),
+				createMockSession({
+					id: 'b',
+					aiTabs: [createMockTab({ id: 'tab-b', hasUnread: true })],
+					activeTabId: 'tab-b',
+				}),
+			];
+			const result = findNextUnreadSession(sessions, 'a');
+			expect(result.jumped).toBe(true);
+			expect(result.targetSessionId).toBe('b');
+		});
+
+		it('returns the first unread tab that differs from activeTabId', () => {
+			const sessions = [
+				createMockSession({ id: 'a', aiTabs: [], activeTabId: '' }),
+				createMockSession({
+					id: 'b',
+					aiTabs: [
+						createMockTab({ id: 'tab-b1', hasUnread: false }),
+						createMockTab({ id: 'tab-b2', hasUnread: true }),
+					],
+					activeTabId: 'tab-b1',
+				}),
+			];
+			const result = findNextUnreadSession(sessions, 'a');
+			expect(result.jumped).toBe(true);
+			expect(result.targetSessionId).toBe('b');
+			expect(result.targetTabId).toBe('tab-b2');
+		});
+
+		it('does not set targetTabId when the first unread tab is already active', () => {
+			const sessions = [
+				createMockSession({ id: 'a', aiTabs: [], activeTabId: '' }),
+				createMockSession({
+					id: 'b',
+					aiTabs: [createMockTab({ id: 'tab-b1', hasUnread: true })],
+					activeTabId: 'tab-b1',
+				}),
+			];
+			const result = findNextUnreadSession(sessions, 'a');
+			expect(result.jumped).toBe(true);
+			expect(result.targetTabId).toBeUndefined();
+		});
+
+		it('wraps around to find unread sessions before current', () => {
+			const sessions = [
+				createMockSession({
+					id: 'a',
+					aiTabs: [createMockTab({ id: 'tab-a', hasUnread: true })],
+					activeTabId: 'tab-a',
+				}),
+				createMockSession({
+					id: 'b',
+					aiTabs: [createMockTab({ id: 'tab-b', hasUnread: false })],
+					activeTabId: 'tab-b',
+				}),
+				createMockSession({
+					id: 'c',
+					aiTabs: [createMockTab({ id: 'tab-c', hasUnread: false })],
+					activeTabId: 'tab-c',
+				}),
+			];
+			const result = findNextUnreadSession(sessions, 'c');
+			expect(result.jumped).toBe(true);
+			expect(result.targetSessionId).toBe('a');
+		});
+
+		it('returns jumped=false when no other session has unread tabs', () => {
+			const sessions = [
+				createMockSession({
+					id: 'a',
+					aiTabs: [createMockTab({ id: 'tab-a', hasUnread: true })],
+					activeTabId: 'tab-a',
+				}),
+				createMockSession({
+					id: 'b',
+					aiTabs: [createMockTab({ id: 'tab-b', hasUnread: false })],
+					activeTabId: 'tab-b',
+				}),
+			];
+			const result = findNextUnreadSession(sessions, 'a');
+			expect(result.jumped).toBe(false);
+			expect(result.clearedCurrent).toBe(true);
+		});
+
+		it('reports clearedCurrent=false when current session has no unread tabs', () => {
+			const sessions = [
+				createMockSession({
+					id: 'a',
+					aiTabs: [createMockTab({ id: 'tab-a', hasUnread: false })],
+					activeTabId: 'tab-a',
+				}),
+			];
+			const result = findNextUnreadSession(sessions, 'a');
+			expect(result.jumped).toBe(false);
+			expect(result.clearedCurrent).toBe(false);
+		});
+
+		it('prefers the next session in order over earlier ones', () => {
+			const sessions = [
+				createMockSession({
+					id: 'a',
+					aiTabs: [createMockTab({ id: 'tab-a', hasUnread: true })],
+					activeTabId: 'tab-a',
+				}),
+				createMockSession({
+					id: 'b',
+					aiTabs: [createMockTab({ id: 'tab-b', hasUnread: false })],
+					activeTabId: 'tab-b',
+				}),
+				createMockSession({
+					id: 'c',
+					aiTabs: [createMockTab({ id: 'tab-c', hasUnread: true })],
+					activeTabId: 'tab-c',
+				}),
+			];
+			const result = findNextUnreadSession(sessions, 'b');
+			expect(result.jumped).toBe(true);
+			expect(result.targetSessionId).toBe('c');
 		});
 	});
 });

@@ -84,6 +84,11 @@ export const DEFAULT_SHORTCUTS: Record<string, Shortcut> = {
 		label: 'Filter Unread Agents',
 		keys: ['Meta', 'Shift', 'u'],
 	},
+	nextUnreadTab: {
+		id: 'nextUnreadTab',
+		label: 'Next Unread Tab',
+		keys: ['Alt', 'Meta', 'ArrowDown'],
+	},
 	jumpToTerminal: {
 		id: 'jumpToTerminal',
 		label: 'Jump to Nearest Terminal',
