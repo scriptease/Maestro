@@ -405,6 +405,10 @@ export const InputArea = React.memo(function InputArea(props: InputAreaProps) {
 	// Track previous inputValue to detect programmatic bulk inserts vs normal typing.
 	const prevInputValueRef = useRef(inputValue);
 
+	// Suppress onMouseEnter selection during keyboard-driven scroll.
+	// Set true on ArrowUp/Down, cleared on real mouse movement.
+	const isKeyboardNavRef = useRef(false);
+
 	// Auto-resize textarea to match content height.
 	// Fires on tab switch AND inputValue changes (handles external updates like session restore,
 	// paste-from-history, programmatic sets). The onChange handler also resizes via rAF for
@@ -581,7 +585,14 @@ export const InputArea = React.memo(function InputArea(props: InputAreaProps) {
 									setSlashCommandOpen(false);
 									inputRef.current?.focus();
 								}}
-								onMouseEnter={() => setSelectedSlashCommandIndex(idx)}
+								onMouseMove={() => {
+									isKeyboardNavRef.current = false;
+								}}
+								onMouseEnter={() => {
+									if (!isKeyboardNavRef.current) {
+										setSelectedSlashCommandIndex(idx);
+									}
+								}}
 							>
 								<div className="font-mono text-sm">
 									{highlightSlashCommand(cmd.command, inputValueLower.replace(/^\//, ''))}
@@ -989,7 +1000,12 @@ export const InputArea = React.memo(function InputArea(props: InputAreaProps) {
 										textarea.style.height = `${Math.min(textarea.scrollHeight, 176)}px`;
 									});
 								}}
-								onKeyDown={handleInputKeyDown}
+								onKeyDown={(e) => {
+									if (slashCommandOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+										isKeyboardNavRef.current = true;
+									}
+									handleInputKeyDown(e);
+								}}
 								onPaste={handlePaste}
 								onDrop={(e) => {
 									e.stopPropagation();
