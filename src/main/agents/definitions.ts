@@ -183,12 +183,20 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
 		// Batch mode: codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check [--sandbox read-only] [-C dir] [resume <id>] -- "prompt"
 		// Sandbox modes:
 		//   - Default (YOLO): --dangerously-bypass-approvals-and-sandbox (full system access, required by Maestro)
-		//   - Read-only: --sandbox read-only (can only read files, overrides YOLO)
+		//   - Read-only: --sandbox read-only (can only read files, overrides YOLO permissions)
+		// NOTE: --dangerously-bypass-approvals-and-sandbox is needed for ALL non-interactive exec
+		// invocations (including read-only) to bypass the interactive approval UI. The --sandbox
+		// flag independently controls what permissions the agent has.
 		batchModePrefix: ['exec'], // Codex uses 'exec' subcommand for batch mode
 		batchModeArgs: ['--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check'], // Args only valid on 'exec' subcommand
 		jsonOutputArgs: ['--json'], // JSON output format (must come before resume subcommand)
 		resumeArgs: (sessionId: string) => ['resume', sessionId], // Resume with session/thread ID
-		readOnlyArgs: ['--sandbox', 'read-only'], // Read-only/plan mode
+		readOnlyArgs: [
+			'--sandbox',
+			'read-only',
+			'--dangerously-bypass-approvals-and-sandbox',
+			'--skip-git-repo-check',
+		], // Read-only/plan mode — includes bypass flags for non-interactive execution (sandbox read-only overrides YOLO permissions)
 		readOnlyCliEnforced: true, // CLI enforces read-only via --sandbox read-only
 		yoloModeArgs: ['--dangerously-bypass-approvals-and-sandbox'], // Full access mode
 		workingDirArgs: (dir: string) => ['-C', dir], // Set working directory
@@ -233,9 +241,10 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
 		jsonOutputArgs: ['--output-format', 'stream-json'],
 		resumeArgs: (sessionId: string) => ['--resume', sessionId],
 		// Note: --approval-mode plan requires experimental.plan to be enabled in Gemini CLI config.
-		// Until that feature is generally available, readOnlyArgs is empty and read-only
-		// behavior is enforced via system prompt instructions instead.
-		readOnlyArgs: [],
+		// Until that feature is generally available, read-only behavior is enforced via system
+		// prompt instructions instead. The -y flag is still needed for non-interactive execution
+		// (tab naming, context grooming) to prevent approval prompts from hanging batch mode.
+		readOnlyArgs: ['-y'],
 		readOnlyCliEnforced: false, // No CLI-level read-only enforcement; prompt-only
 		yoloModeArgs: ['-y'],
 		workingDirArgs: (dir: string) => ['--include-directories', dir],
