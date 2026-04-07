@@ -34,11 +34,14 @@ interface GraphSessionInput {
 		watch?: string;
 		source_session?: string | string[];
 		fan_out?: string[];
+		fan_out_prompts?: string[];
 		filter?: Record<string, string | number | boolean>;
 		repo?: string;
 		poll_minutes?: number;
 		agent_id?: string;
 		label?: string;
+		fan_in_timeout_minutes?: number;
+		fan_in_timeout_on_fail?: 'break' | 'continue';
 	}>;
 }
 
@@ -152,17 +155,24 @@ function triggerLabel(eventType: CueEventType): string {
 
 /**
  * Finds or creates an agent node, deduplicating by session name.
+ *
+ * When `forceNew` is true, always creates a fresh node even if one already
+ * exists for this session — needed for chains where the same agent appears
+ * at multiple positions (e.g. A → B → A).
  */
 function getOrCreateAgentNode(
 	sessionName: string,
 	sessions: PipelineSessionInfo[],
 	nodeMap: Map<string, PipelineNode>,
-	position: { x: number; y: number }
+	position: { x: number; y: number },
+	forceNew?: boolean
 ): PipelineNode {
 	// Check if we already have a node for this session
-	for (const [, node] of nodeMap) {
-		if (node.type === 'agent' && (node.data as AgentNodeData).sessionName === sessionName) {
-			return node;
+	if (!forceNew) {
+		for (const [, node] of nodeMap) {
+			if (node.type === 'agent' && (node.data as AgentNodeData).sessionName === sessionName) {
+				return node;
+			}
 		}
 	}
 
@@ -255,19 +265,27 @@ export function subscriptionsToPipelines(
 						sessionColumn.set(sessionName, 1);
 						sessionRow.set(sessionName, i);
 
-						// Set prompts on first fan-out target if present
-						if (i === 0 && sub.prompt) {
-							(agentNode.data as AgentNodeData).inputPrompt = sub.prompt;
+						// Apply per-agent prompt from fan_out_prompts, fallback to shared prompt
+						const perAgentPrompt = sub.fan_out_prompts?.[i];
+						const agentPrompt = perAgentPrompt ?? sub.prompt;
+						if (agentPrompt) {
+							(agentNode.data as AgentNodeData).inputPrompt = agentPrompt;
 						}
 						if (i === 0 && sub.output_prompt) {
 							(agentNode.data as AgentNodeData).outputPrompt = sub.output_prompt;
 						}
 
+						// Store per-edge prompt when fan_out_prompts differ from shared prompt
+						const edgePrompt =
+							perAgentPrompt !== undefined && perAgentPrompt !== sub.prompt
+								? perAgentPrompt
+								: undefined;
 						edges.push({
 							id: `edge-${edgeCount++}`,
 							source: triggerId,
 							target: agentNode.id,
 							mode: 'pass' as EdgeMode,
+							...(edgePrompt ? { prompt: edgePrompt } : {}),
 						});
 					}
 				} else {
@@ -342,7 +360,27 @@ export function subscriptionsToPipelines(
 					y: LAYOUT.baseY + existingRows * LAYOUT.verticalSpacing,
 				};
 
-				const targetNode = getOrCreateAgentNode(targetSessionName, sessions, nodeMap, pos);
+				// Resolve source nodes BEFORE creating the target node and updating
+				// sessionToNode — if the source and target share a session name
+				// (e.g. Claude → Claude), the overwrite would make the lookup
+				// return the new target instead of the earlier source node.
+				const resolvedSources: PipelineNode[] = [];
+				for (const sourceSessionName of sourceSessions) {
+					const sourceNode = sessionToNode.get(sourceSessionName);
+					if (sourceNode) resolvedSources.push(sourceNode);
+				}
+
+				// Force a new node when this session already appeared earlier in the chain
+				// (e.g. A → B → A). Reusing the earlier node would create a back-edge
+				// instead of rendering the second occurrence as a distinct node.
+				const alreadyInChain = sessionToNode.has(targetSessionName);
+				const targetNode = getOrCreateAgentNode(
+					targetSessionName,
+					sessions,
+					nodeMap,
+					pos,
+					alreadyInChain
+				);
 				sessionToNode.set(targetSessionName, targetNode);
 				sessionColumn.set(targetSessionName, targetCol);
 				sessionRow.set(targetSessionName, existingRows);
@@ -362,20 +400,22 @@ export function subscriptionsToPipelines(
 				if (sub.output_prompt) {
 					(targetNode.data as AgentNodeData).outputPrompt = sub.output_prompt;
 				}
+				// Fan-in timeout settings
+				if (typeof sub.fan_in_timeout_minutes === 'number') {
+					(targetNode.data as AgentNodeData).fanInTimeoutMinutes = sub.fan_in_timeout_minutes;
+				}
+				if (sub.fan_in_timeout_on_fail === 'break' || sub.fan_in_timeout_on_fail === 'continue') {
+					(targetNode.data as AgentNodeData).fanInTimeoutOnFail = sub.fan_in_timeout_on_fail;
+				}
 
-				// Create edges from source(s) to target
-				if (sourceSessions.length > 0) {
-					for (const sourceSessionName of sourceSessions) {
-						const sourceNode = sessionToNode.get(sourceSessionName);
-						if (sourceNode) {
-							edges.push({
-								id: `edge-${edgeCount++}`,
-								source: sourceNode.id,
-								target: targetNode.id,
-								mode: 'pass' as EdgeMode,
-							});
-						}
-					}
+				// Create edges from pre-resolved source(s) to target
+				for (const sourceNode of resolvedSources) {
+					edges.push({
+						id: `edge-${edgeCount++}`,
+						source: sourceNode.id,
+						target: targetNode.id,
+						mode: 'pass' as EdgeMode,
+					});
 				}
 			}
 		}

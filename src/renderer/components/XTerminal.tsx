@@ -1,13 +1,14 @@
-import { useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
+import { useEffect, useRef, useImperativeHandle, forwardRef, useCallback, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import type { ISearchOptions } from '@xterm/addon-search';
+import type { ILink } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import type { Theme } from '../../shared/theme-types';
 import type { ITheme } from '@xterm/xterm';
+import { LinkContextMenu, type LinkContextMenuState } from './LinkContextMenu';
 
 // ============================================================================
 // Custom key event handler logic
@@ -19,13 +20,44 @@ import type { ITheme } from '@xterm/xterm';
  * Returns:
  * - 'passthrough': xterm should NOT handle this key (return false to xterm) —
  *   the event bubbles to Maestro's window-level shortcut handler instead.
- * - 'escape': the Escape key was pressed on keydown — caller must send \x1b
- *   to the PTY directly, then return false to xterm to avoid double-send.
  * - 'handle': xterm should handle this key normally (return true to xterm).
  */
-export type XtermKeyAction = 'passthrough' | 'escape' | 'handle';
+export type XtermKeyAction = 'passthrough' | 'handle' | { action: 'write'; data: string };
+
+/**
+ * Return the escape sequence for a terminal-navigation key combo, or null
+ * if the event is not a navigation shortcut.
+ *
+ * macOS conventions:
+ *   Option+Left/Right  → word backward/forward  (ESC b / ESC f)
+ *   Cmd+Left/Right     → beginning/end of line   (Ctrl-A / Ctrl-E)
+ *   Option+Backspace   → delete word backward     (ESC DEL)
+ */
+function getTerminalNavSequence(e: KeyboardEvent): string | null {
+	if (e.type !== 'keydown') return null;
+
+	// Option (Alt) + Arrow → word navigation
+	if (e.altKey && !e.metaKey && !e.ctrlKey) {
+		if (e.key === 'ArrowLeft') return '\x1bb'; // ESC b — backward word
+		if (e.key === 'ArrowRight') return '\x1bf'; // ESC f — forward word
+		if (e.key === 'Backspace') return '\x1b\x7f'; // ESC DEL — backward kill word
+	}
+
+	// Cmd (Meta) + Arrow → line navigation
+	if (e.metaKey && !e.altKey && !e.ctrlKey) {
+		if (e.key === 'ArrowLeft') return '\x01'; // Ctrl-A — beginning of line
+		if (e.key === 'ArrowRight') return '\x05'; // Ctrl-E — end of line
+	}
+
+	return null;
+}
 
 export function evaluateCustomKeyEvent(e: KeyboardEvent): XtermKeyAction {
+	// Terminal navigation shortcuts (word jump, line jump, word delete)
+	// must be checked before the blanket Alt/Meta passthrough rules.
+	const navSeq = getTerminalNavSequence(e);
+	if (navSeq) return { action: 'write', data: navSeq };
+
 	// Let Ctrl+Shift+` through for new-terminal-tab shortcut
 	if (e.ctrlKey && e.shiftKey && e.code === 'Backquote') return 'passthrough';
 	// Let all Meta (Cmd) key combos through so app shortcuts work
@@ -38,12 +70,11 @@ export function evaluateCustomKeyEvent(e: KeyboardEvent): XtermKeyAction {
 	// by default — these events would just produce dead/special characters
 	// that aren't useful in the terminal context.
 	if (e.altKey) return 'passthrough';
-	// Explicitly send ESC byte (\x1b) to the PTY for vi/vim/nano compatibility.
-	// xterm.js v6 may not reliably generate the escape byte through its internal
-	// key processing pipeline (CompositionHelper interactions, dead key state).
-	// We write directly to the PTY on keydown and return false so xterm doesn't
-	// also attempt to process it (preventing double-send).
-	if (e.key === 'Escape' && e.type === 'keydown') return 'escape';
+	// Let xterm.js handle Escape normally — it sends \x1b through the standard
+	// onData pipeline which writes to the PTY. Previous manual handling (writing
+	// \x1b directly and returning false on keydown) caused xterm's internal key
+	// processing state to become inconsistent (keydown blocked but keyup allowed),
+	// breaking interactive apps like vim/vi/nano that depend on Escape.
 	return 'handle';
 }
 
@@ -127,6 +158,13 @@ export function mapThemeToXterm(theme: Theme): ITheme {
 }
 
 // ============================================================================
+// Link detection
+// ============================================================================
+
+/** URL regex matching HTTP/HTTPS URLs, trimming trailing punctuation */
+const URL_PATTERN = /https?:\/\/[^\s<>[\]"'{}|\\^`\x00-\x1f]+[^\s<>[\]"'{}|\\^`.,;:!?)\x00-\x1f]/g;
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -154,6 +192,10 @@ export interface XTerminalProps {
 	onData?: (data: string) => void;
 	onResize?: (cols: number, rows: number) => void;
 	onTitleChange?: (title: string) => void;
+	/** Whether this terminal tab is the active/visible one. When false, the WebGL
+	 *  renderer is disposed to free GPU resources; it is re-initialised when the
+	 *  tab becomes active again. Defaults to true. */
+	isActive?: boolean;
 }
 
 // ============================================================================
@@ -161,7 +203,7 @@ export interface XTerminalProps {
 // ============================================================================
 
 export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XTerminal(
-	{ sessionId, theme, fontFamily, fontSize = 12, onData, onResize, onTitleChange },
+	{ sessionId, theme, fontFamily, fontSize = 12, onData, onResize, onTitleChange, isActive = true },
 	ref
 ) {
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -174,6 +216,14 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 	// Deferred WebGL load: resolved when the async import completes but the container was hidden.
 	// Applied on the next visible resize or explicit refresh() call.
 	const pendingWebglLoadRef = useRef<(() => void) | null>(null);
+	// WebGL addon instance — stored in a ref so the isActive effect can dispose/re-init it.
+	const webglAddonRef = useRef<import('@xterm/addon-webgl').WebglAddon | null>(null);
+	// WebGL constructor class — cached after first dynamic import so re-init doesn't re-import.
+	const webglCtorRef = useRef<typeof import('@xterm/addon-webgl').WebglAddon | null>(null);
+
+	// Link context menu state
+	const [linkMenu, setLinkMenu] = useState<LinkContextMenuState | null>(null);
+	const hoveredLinkRef = useRef<string | null>(null);
 
 	// Expose handle to parent
 	useImperativeHandle(
@@ -282,15 +332,49 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 		});
 
 		const fitAddon = new FitAddon();
-		const webLinksAddon = new WebLinksAddon();
 		const searchAddon = new SearchAddon();
 		const unicode11Addon = new Unicode11Addon();
 
 		term.loadAddon(fitAddon);
-		term.loadAddon(webLinksAddon);
 		term.loadAddon(searchAddon);
 		term.loadAddon(unicode11Addon);
 		term.unicode.activeVersion = '11';
+
+		// Custom link provider: detects URLs, tracks hover for right-click context menu
+		const linkProviderDisposable = term.registerLinkProvider({
+			provideLinks(lineNumber, callback) {
+				const line = term.buffer.active.getLine(lineNumber - 1);
+				if (!line) {
+					callback(undefined);
+					return;
+				}
+				const text = line.translateToString();
+				const links: ILink[] = [];
+				let match: RegExpExecArray | null;
+				const re = new RegExp(URL_PATTERN.source, 'g');
+				while ((match = re.exec(text)) !== null) {
+					const url = match[0];
+					const startCol = match.index + 1; // 1-based
+					links.push({
+						range: {
+							start: { x: startCol, y: lineNumber },
+							end: { x: startCol + url.length - 1, y: lineNumber },
+						},
+						text: url,
+						activate(_event, linkText) {
+							window.maestro.shell.openExternal(linkText);
+						},
+						hover(_event, linkText) {
+							hoveredLinkRef.current = linkText;
+						},
+						leave() {
+							hoveredLinkRef.current = null;
+						},
+					});
+				}
+				callback(links.length > 0 ? links : undefined);
+			},
+		});
 
 		// Attempt WebGL renderer with canvas fallback.
 		// The WebGL addon must be loaded AFTER term.open() because xterm's internal link layer
@@ -299,8 +383,6 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 		// Additionally, loading on a hidden (0×0) container causes WebGL context creation to
 		// fail, so we defer until the container is visible; pendingWebglLoadRef is applied on
 		// the next visible resize or explicit refresh() call.
-		let webglAddon: import('@xterm/addon-webgl').WebglAddon | null = null;
-
 		const tryLoadWebgl = (WebglAddon: typeof import('@xterm/addon-webgl').WebglAddon) => {
 			const container = containerRef.current;
 			if (!container || container.offsetWidth === 0 || container.offsetHeight === 0) {
@@ -310,15 +392,17 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 			}
 			pendingWebglLoadRef.current = null;
 			try {
-				webglAddon = new WebglAddon();
-				webglAddon.onContextLoss(() => {
+				const addon = new WebglAddon();
+				addon.onContextLoss(() => {
 					console.warn('[XTerminal] WebGL context lost — falling back to canvas renderer');
-					webglAddon?.dispose();
-					webglAddon = null;
+					addon.dispose();
+					webglAddonRef.current = null;
 					// Force a full repaint so the fallback canvas renderer draws from the internal buffer.
 					term.refresh(0, term.rows - 1);
 				});
-				term.loadAddon(webglAddon);
+				term.loadAddon(addon);
+				webglAddonRef.current = addon;
+				webglCtorRef.current = WebglAddon;
 			} catch (err) {
 				console.warn('[XTerminal] WebGL addon failed to load, using canvas renderer:', err);
 			}
@@ -337,8 +421,8 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 		// at the NSMenu level before it reaches the renderer.
 		term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
 			const action = evaluateCustomKeyEvent(e);
-			if (action === 'escape') {
-				window.maestro.process.write(sessionId, '\x1b');
+			if (typeof action === 'object' && action.action === 'write') {
+				window.maestro.process.write(sessionId, action.data);
 				return false;
 			}
 			return action === 'handle';
@@ -352,6 +436,18 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 		if (containerRef.current.offsetWidth > 0 && containerRef.current.offsetHeight > 0) {
 			fitAddon.fit();
 		}
+
+		// Right-click context menu for links
+		const termElement = containerRef.current;
+		const handleContextMenu = (e: MouseEvent) => {
+			const url = hoveredLinkRef.current;
+			if (url) {
+				e.preventDefault();
+				e.stopPropagation();
+				setLinkMenu({ x: e.clientX, y: e.clientY, url });
+			}
+		};
+		termElement.addEventListener('contextmenu', handleContextMenu);
 
 		// Load WebGL addon after open() so xterm's internal link layer is initialised.
 		import('@xterm/addon-webgl')
@@ -376,9 +472,12 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 		resizeObserverRef.current = resizeObserver;
 
 		return () => {
+			termElement.removeEventListener('contextmenu', handleContextMenu);
+			linkProviderDisposable.dispose();
 			resizeObserver.disconnect();
 			if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current);
-			webglAddon?.dispose();
+			webglAddonRef.current?.dispose();
+			webglAddonRef.current = null;
 			term.dispose();
 			terminalRef.current = null;
 			fitAddonRef.current = null;
@@ -433,6 +532,46 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 		}
 	}, [fontFamily, fontSize]);
 
+	// Dispose the WebGL renderer when this terminal tab becomes inactive to free GPU resources.
+	// Re-initialise it when the tab becomes active again. Each live WebGL context holds GPU
+	// memory and a compositing layer — with multiple terminal tabs this adds up fast.
+	useEffect(() => {
+		const term = terminalRef.current;
+		if (!term) return;
+
+		if (!isActive) {
+			// Going inactive — dispose WebGL, fall back to the built-in canvas renderer
+			if (webglAddonRef.current) {
+				webglAddonRef.current.dispose();
+				webglAddonRef.current = null;
+			}
+		} else {
+			// Becoming active — re-init WebGL if we have the constructor cached
+			if (!webglAddonRef.current && webglCtorRef.current) {
+				const container = containerRef.current;
+				if (container && container.offsetWidth > 0 && container.offsetHeight > 0) {
+					try {
+						const addon = new webglCtorRef.current();
+						addon.onContextLoss(() => {
+							console.warn('[XTerminal] WebGL context lost — falling back to canvas renderer');
+							addon.dispose();
+							webglAddonRef.current = null;
+							term.refresh(0, term.rows - 1);
+						});
+						term.loadAddon(addon);
+						webglAddonRef.current = addon;
+					} catch {
+						// WebGL re-init failed — canvas renderer remains active
+					}
+				}
+				// Full repaint to sync the freshly-attached WebGL renderer with the terminal buffer
+				term.refresh(0, term.rows - 1);
+			}
+		}
+	}, [isActive]);
+
+	const dismissLinkMenu = useCallback(() => setLinkMenu(null), []);
+
 	return (
 		<div
 			style={{
@@ -444,6 +583,7 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 			}}
 		>
 			<div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden' }} />
+			{linkMenu && <LinkContextMenu menu={linkMenu} theme={theme} onDismiss={dismissLinkMenu} />}
 		</div>
 	);
 });

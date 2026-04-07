@@ -10,6 +10,7 @@ import type {
 import { getActiveTab } from '../../utils/tabHelpers';
 import { getStdinFlags } from '../../utils/spawnHelpers';
 import { generateId } from '../../utils/ids';
+import { estimateContextUsage } from '../../utils/contextUsage';
 
 /**
  * Result from agent spawn operations.
@@ -19,6 +20,8 @@ export interface AgentSpawnResult {
 	response?: string;
 	agentSessionId?: string;
 	usageStats?: UsageStats;
+	/** Context usage percentage estimated from the last usage event (not accumulated) */
+	contextUsage?: number;
 }
 
 /**
@@ -197,6 +200,7 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 					let agentSessionId: string | undefined;
 					let responseText = '';
 					let taskUsageStats: UsageStats | undefined;
+					let lastUsageEvent: UsageStats | undefined; // Last (non-accumulated) event for context estimation
 					const queryStartTime = Date.now(); // Track start time for stats
 
 					// Array to collect cleanup functions as listeners are registered
@@ -229,6 +233,8 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 							if (sid === targetSessionId) {
 								// Accumulate usage stats for this task (there may be multiple usage events per task)
 								taskUsageStats = accumulateUsageStats(taskUsageStats, usageStats);
+								// Keep the last event for context estimation (accumulated totals can exceed context window)
+								lastUsageEvent = usageStats;
 							}
 						})
 					);
@@ -257,6 +263,11 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 										// Don't fail the batch flow if stats recording fails
 										console.warn('[spawnAgentForSession] Failed to record query stats:', err);
 									});
+
+								// Estimate context usage from the last single-turn event (not accumulated totals)
+								const taskContextUsage = lastUsageEvent
+									? (estimateContextUsage(lastUsageEvent, session.toolType) ?? undefined)
+									: undefined;
 
 								// Check for queued items BEFORE updating state (using sessionsRef for latest state)
 								const currentSession = sessionsRef.current.find((s) => s.id === sessionId);
@@ -376,6 +387,7 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 												response: responseText,
 												agentSessionId,
 												usageStats: taskUsageStats,
+												contextUsage: taskContextUsage,
 											});
 										} else {
 											// Queue still processing - check again
@@ -391,6 +403,7 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 										response: responseText,
 										agentSessionId,
 										usageStats: taskUsageStats,
+										contextUsage: taskContextUsage,
 									});
 								}
 							}
@@ -403,6 +416,7 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 					const { sendPromptViaStdin, sendPromptViaStdinRaw } = getStdinFlags({
 						isSshSession: !!session.sshRemoteId || !!session.sessionSshRemoteConfig?.enabled,
 						supportsStreamJsonInput: agent.capabilities?.supportsStreamJsonInput ?? false,
+						hasImages: false, // Batch/Auto Run does not send images
 					});
 					// Batch processing (Auto Run) should NOT use read-only mode - it needs to make changes
 					window.maestro.process
@@ -500,6 +514,7 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 					let agentSessionId: string | undefined;
 					let responseText = '';
 					let synopsisUsageStats: UsageStats | undefined;
+					let lastSynopsisUsageEvent: UsageStats | undefined;
 
 					// Array to collect cleanup functions as listeners are registered
 					const cleanupFns: (() => void)[] = [];
@@ -532,6 +547,8 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 							if (sid === targetSessionId) {
 								// Accumulate usage stats (there may be multiple events)
 								synopsisUsageStats = accumulateUsageStats(synopsisUsageStats, usageStats);
+								// Keep the last event for context estimation
+								lastSynopsisUsageEvent = usageStats;
 							}
 						})
 					);
@@ -540,11 +557,15 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 						window.maestro.process.onExit((sid: string) => {
 							if (sid === targetSessionId) {
 								cleanup();
+								const ctx = lastSynopsisUsageEvent
+									? (estimateContextUsage(lastSynopsisUsageEvent, toolType) ?? undefined)
+									: undefined;
 								resolve({
 									success: true,
 									response: responseText,
 									agentSessionId,
 									usageStats: synopsisUsageStats,
+									contextUsage: ctx,
 								});
 							}
 						})
@@ -564,6 +585,7 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 					const { sendPromptViaStdin, sendPromptViaStdinRaw } = getStdinFlags({
 						isSshSession: !!effectiveSessionSshRemoteConfig?.enabled,
 						supportsStreamJsonInput: agent.capabilities?.supportsStreamJsonInput ?? false,
+						hasImages: false, // Resume path does not send images
 					});
 					window.maestro.process
 						.spawn({

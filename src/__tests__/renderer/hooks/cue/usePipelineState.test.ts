@@ -35,6 +35,16 @@ vi.mock('../../../../renderer/components/CuePipelineEditor/pipelineColors', () =
 	getNextPipelineColor: vi.fn(() => '#06b6d4'),
 }));
 
+const mockShowConfirmation = vi.fn((message: string, onConfirm: () => void) => {
+	// By default, immediately invoke onConfirm (simulates user clicking "Confirm")
+	onConfirm();
+});
+vi.mock('../../../../renderer/stores/modalStore', () => ({
+	getModalActions: () => ({
+		showConfirmation: mockShowConfirmation,
+	}),
+}));
+
 const mockGetSettings = vi.fn().mockResolvedValue({
 	timeout_minutes: 30,
 	timeout_on_fail: 'break',
@@ -93,7 +103,7 @@ function makeTriggerNode(id: string, eventType = 'file.changed' as const): Pipel
 function makeAgentNode(
 	id: string,
 	sessionName: string,
-	opts?: { inputPrompt?: string; outputPrompt?: string }
+	opts?: { inputPrompt?: string; outputPrompt?: string; includeUpstreamOutput?: boolean }
 ): PipelineNode {
 	return {
 		id,
@@ -105,6 +115,7 @@ function makeAgentNode(
 			toolType: 'claude-code',
 			inputPrompt: opts?.inputPrompt,
 			outputPrompt: opts?.outputPrompt,
+			includeUpstreamOutput: opts?.includeUpstreamOutput,
 		},
 	};
 }
@@ -133,9 +144,10 @@ function makePipeline(overrides?: Partial<CuePipeline>): CuePipeline {
 // ─── DEFAULT_TRIGGER_LABELS ──────────────────────────────────────────────────
 
 describe('DEFAULT_TRIGGER_LABELS', () => {
-	it('has entries for all seven event types', () => {
+	it('has entries for all eight event types', () => {
 		const keys = Object.keys(DEFAULT_TRIGGER_LABELS);
-		expect(keys).toHaveLength(7);
+		expect(keys).toHaveLength(8);
+		expect(keys).toContain('app.startup');
 		expect(keys).toContain('time.heartbeat');
 		expect(keys).toContain('time.scheduled');
 		expect(keys).toContain('file.changed');
@@ -234,12 +246,12 @@ describe('validatePipelines', () => {
 		expect(errors).toContainEqual(expect.stringContaining('contains a cycle'));
 	});
 
-	it('errors on chain agent without prompt', () => {
+	it('allows chain agent without prompt when includeUpstreamOutput is not disabled', () => {
 		const pipeline = makePipeline({
 			nodes: [
 				makeTriggerNode('t1'),
 				makeAgentNode('a1', 'Agent 1', { inputPrompt: 'first' }),
-				makeAgentNode('a2', 'Agent 2'), // chain agent, no prompt
+				makeAgentNode('a2', 'Agent 2'), // chain agent, no prompt, includeUpstreamOutput defaults to undefined (=true)
 			],
 			edges: [
 				makeEdge('e1', 't1', 'a1'),
@@ -247,7 +259,85 @@ describe('validatePipelines', () => {
 			],
 		});
 		const errors = validatePipelines([pipeline]);
+		expect(errors).toEqual([]);
+	});
+
+	it('allows chain agent without prompt when includeUpstreamOutput is true', () => {
+		const pipeline = makePipeline({
+			nodes: [
+				makeTriggerNode('t1'),
+				makeAgentNode('a1', 'Agent 1', { inputPrompt: 'first' }),
+				makeAgentNode('a2', 'Agent 2', { includeUpstreamOutput: true }),
+			],
+			edges: [makeEdge('e1', 't1', 'a1'), makeEdge('e2', 'a1', 'a2')],
+		});
+		const errors = validatePipelines([pipeline]);
+		expect(errors).toEqual([]);
+	});
+
+	it('errors on chain agent without prompt when includeUpstreamOutput is false', () => {
+		const pipeline = makePipeline({
+			nodes: [
+				makeTriggerNode('t1'),
+				makeAgentNode('a1', 'Agent 1', { inputPrompt: 'first' }),
+				makeAgentNode('a2', 'Agent 2', { includeUpstreamOutput: false }),
+			],
+			edges: [makeEdge('e1', 't1', 'a1'), makeEdge('e2', 'a1', 'a2')],
+		});
+		const errors = validatePipelines([pipeline]);
 		expect(errors).toContainEqual(expect.stringContaining('Agent 2'));
+		expect(errors).toContainEqual(expect.stringContaining('missing a prompt'));
+	});
+
+	it('passes for chain agent with prompt regardless of includeUpstreamOutput', () => {
+		const pipeline = makePipeline({
+			nodes: [
+				makeTriggerNode('t1'),
+				makeAgentNode('a1', 'Agent 1', { inputPrompt: 'first' }),
+				makeAgentNode('a2', 'Agent 2', { inputPrompt: 'analyze', includeUpstreamOutput: false }),
+			],
+			edges: [makeEdge('e1', 't1', 'a1'), makeEdge('e2', 'a1', 'a2')],
+		});
+		const errors = validatePipelines([pipeline]);
+		expect(errors).toEqual([]);
+	});
+
+	it('allows fan-in agent without prompt when includeUpstreamOutput is not disabled', () => {
+		const pipeline = makePipeline({
+			nodes: [
+				makeTriggerNode('t1'),
+				makeAgentNode('a1', 'Agent 1', { inputPrompt: 'work 1' }),
+				makeAgentNode('a2', 'Agent 2', { inputPrompt: 'work 2' }),
+				makeAgentNode('a3', 'Agent 3'), // fan-in target, no prompt
+			],
+			edges: [
+				makeEdge('e1', 't1', 'a1'),
+				makeEdge('e2', 't1', 'a2'),
+				makeEdge('e3', 'a1', 'a3'),
+				makeEdge('e4', 'a2', 'a3'),
+			],
+		});
+		const errors = validatePipelines([pipeline]);
+		expect(errors).toEqual([]);
+	});
+
+	it('errors on fan-in agent without prompt when includeUpstreamOutput is false', () => {
+		const pipeline = makePipeline({
+			nodes: [
+				makeTriggerNode('t1'),
+				makeAgentNode('a1', 'Agent 1', { inputPrompt: 'work 1' }),
+				makeAgentNode('a2', 'Agent 2', { inputPrompt: 'work 2' }),
+				makeAgentNode('a3', 'Agent 3', { includeUpstreamOutput: false }),
+			],
+			edges: [
+				makeEdge('e1', 't1', 'a1'),
+				makeEdge('e2', 't1', 'a2'),
+				makeEdge('e3', 'a1', 'a3'),
+				makeEdge('e4', 'a2', 'a3'),
+			],
+		});
+		const errors = validatePipelines([pipeline]);
+		expect(errors).toContainEqual(expect.stringContaining('Agent 3'));
 		expect(errors).toContainEqual(expect.stringContaining('missing a prompt'));
 	});
 
@@ -318,6 +408,35 @@ describe('usePipelineState', () => {
 		expect(result.current.pipelineState.pipelines[1].name).toBe('Pipeline 2');
 	});
 
+	it('createPipeline avoids duplicate names after deletion', () => {
+		vi.useFakeTimers();
+		const { result } = renderHook(() => usePipelineState(createDefaultParams()));
+
+		// Create Pipeline 1, Pipeline 2, and Pipeline 3 with distinct timestamps
+		act(() => result.current.createPipeline());
+		vi.advanceTimersByTime(1);
+		act(() => result.current.createPipeline());
+		vi.advanceTimersByTime(1);
+		act(() => result.current.createPipeline());
+		expect(result.current.pipelineState.pipelines).toHaveLength(3);
+
+		// Delete Pipeline 2 (middle one, no nodes → no confirm dialog)
+		const secondId = result.current.pipelineState.pipelines[1].id;
+		act(() => result.current.deletePipeline(secondId));
+		expect(result.current.pipelineState.pipelines).toHaveLength(2);
+
+		// Remaining: Pipeline 1 and Pipeline 3. maxNum=3, so next should be Pipeline 4 (not Pipeline 3 again)
+		vi.advanceTimersByTime(1);
+		act(() => result.current.createPipeline());
+
+		expect(result.current.pipelineState.pipelines).toHaveLength(3);
+		expect(result.current.pipelineState.pipelines[0].name).toBe('Pipeline 1');
+		expect(result.current.pipelineState.pipelines[1].name).toBe('Pipeline 3');
+		expect(result.current.pipelineState.pipelines[2].name).toBe('Pipeline 4');
+
+		vi.useRealTimers();
+	});
+
 	it('deletePipeline removes the pipeline when confirm returns true', () => {
 		const { result } = renderHook(() => usePipelineState(createDefaultParams()));
 
@@ -343,8 +462,9 @@ describe('usePipelineState', () => {
 		expect(result.current.pipelineState.pipelines).toHaveLength(0);
 	});
 
-	it('deletePipeline does not remove when confirm returns false', () => {
-		vi.spyOn(window, 'confirm').mockReturnValue(false);
+	it('deletePipeline does not remove when confirm is not accepted', () => {
+		// Don't invoke onConfirm — simulates user clicking "Cancel"
+		mockShowConfirmation.mockImplementationOnce(() => {});
 		const { result } = renderHook(() => usePipelineState(createDefaultParams()));
 
 		act(() => {
@@ -381,7 +501,7 @@ describe('usePipelineState', () => {
 			result.current.deletePipeline(pipelineId);
 		});
 
-		expect(window.confirm).not.toHaveBeenCalled();
+		expect(mockShowConfirmation).not.toHaveBeenCalled();
 		expect(result.current.pipelineState.pipelines).toHaveLength(0);
 	});
 

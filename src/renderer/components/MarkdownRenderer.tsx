@@ -1,4 +1,4 @@
-import React, { memo, useMemo, useState, useEffect } from 'react';
+import React, { memo, useMemo, useState, useCallback, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import DOMPurify from 'dompurify';
@@ -11,6 +11,9 @@ import { remarkFileLinks, buildFileTreeIndices } from '../utils/remarkFileLinks'
 import remarkFrontmatter from 'remark-frontmatter';
 import { remarkFrontmatterTable } from '../utils/remarkFrontmatterTable';
 import { REMARK_GFM_PLUGINS } from '../utils/markdownConfig';
+import { LinkContextMenu, type LinkContextMenuState } from './LinkContextMenu';
+import { FileContextMenu, type FileContextMenuState } from './FileContextMenu';
+import { getHomeDir, getHomeDirAsync } from '../utils/homeDir';
 
 // ============================================================================
 // LocalImage - Loads local images via IPC
@@ -256,6 +259,14 @@ export const MarkdownRenderer = memo(
 		allowRawHtml = false,
 		sshRemoteId,
 	}: MarkdownRendererProps) => {
+		// Resolve homeDir for tilde path expansion (module-level cache, fetched once)
+		const [homeDir, setHomeDir] = useState<string | undefined>(getHomeDir);
+		useEffect(() => {
+			if (!homeDir) {
+				getHomeDirAsync()?.then(setHomeDir);
+			}
+		}, [homeDir]);
+
 		// Memoize file tree indices to avoid O(n) traversal on every render
 		// Only rebuild when fileTree reference changes
 		const fileTreeIndices = useMemo(() => {
@@ -270,14 +281,15 @@ export const MarkdownRenderer = memo(
 			const plugins: any[] = [...REMARK_GFM_PLUGINS, remarkFrontmatter, remarkFrontmatterTable];
 			// Add remarkFileLinks if we have file tree for relative paths,
 			// OR if we have projectRoot for absolute paths (even with empty file tree)
-			if ((fileTree && fileTree.length > 0 && cwd !== undefined) || projectRoot) {
+			// OR if we have homeDir for tilde paths (even without file tree or projectRoot)
+			if ((fileTree && fileTree.length > 0 && cwd !== undefined) || projectRoot || homeDir) {
 				plugins.push([
 					remarkFileLinks,
-					{ indices: fileTreeIndices || undefined, cwd: cwd || '', projectRoot },
+					{ indices: fileTreeIndices || undefined, cwd: cwd || '', projectRoot, homeDir },
 				]);
 			}
 			return plugins;
-		}, [fileTree, fileTreeIndices, cwd, projectRoot]);
+		}, [fileTree, fileTreeIndices, cwd, projectRoot, homeDir]);
 
 		// Defense-in-depth: sanitize raw HTML with DOMPurify before markdown parsing
 		// to strip script tags, event handlers, and other XSS vectors
@@ -287,6 +299,12 @@ export const MarkdownRenderer = memo(
 			}
 			return content;
 		}, [content, allowRawHtml]);
+
+		// Right-click context menus for links and file references
+		const [linkMenu, setLinkMenu] = useState<LinkContextMenuState | null>(null);
+		const dismissLinkMenu = useCallback(() => setLinkMenu(null), []);
+		const [fileMenu, setFileMenu] = useState<FileContextMenuState | null>(null);
+		const dismissFileMenu = useCallback(() => setFileMenu(null), []);
 
 		return (
 			<div
@@ -336,6 +354,24 @@ export const MarkdownRenderer = memo(
 													// Silently ignore unparseable URLs
 												}
 											}
+										}
+									}}
+									onContextMenu={(e) => {
+										if (isMaestroFile && filePath) {
+											e.preventDefault();
+											e.stopPropagation();
+											// Resolve to absolute path for file operations
+											const absPath = filePath.startsWith('/')
+												? filePath
+												: projectRoot
+													? `${projectRoot}/${filePath}`
+													: filePath;
+											const fileName = filePath.split('/').pop() || filePath;
+											setFileMenu({ x: e.clientX, y: e.clientY, filePath: absPath, fileName });
+										} else if (href) {
+											e.preventDefault();
+											e.stopPropagation();
+											setLinkMenu({ x: e.clientX, y: e.clientY, url: href });
 										}
 									}}
 									style={{
@@ -446,6 +482,17 @@ export const MarkdownRenderer = memo(
 				>
 					{sanitizedContent}
 				</ReactMarkdown>
+				{linkMenu && <LinkContextMenu menu={linkMenu} theme={theme} onDismiss={dismissLinkMenu} />}
+				{fileMenu && (
+					<FileContextMenu
+						menu={fileMenu}
+						theme={theme}
+						onDismiss={dismissFileMenu}
+						onPreview={onFileClick}
+						projectRoot={projectRoot}
+						sshRemote={!!sshRemoteId}
+					/>
+				)}
 			</div>
 		);
 	}

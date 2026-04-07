@@ -1,55 +1,26 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
-// SettingsModal is lazy-loaded for performance (large component, only loaded when settings opened)
-const SettingsModal = lazy(() =>
-	import('./components/Settings/SettingsModal').then((m) => ({ default: m.SettingsModal }))
-);
+import { useFocusAfterRender } from './hooks/utils/useFocusAfterRender';
+// SettingsModal is now lazy-loaded inside AppStandaloneModals
 import { SessionList } from './components/SessionList';
 import { RightPanel, RightPanelHandle } from './components/RightPanel';
 import { slashCommands } from './slashCommands';
 import { AppModals, type PRDetails, type FlatFileItem } from './components/AppModals';
+import { AppStandaloneModals } from './components/AppStandaloneModals';
 // DEFAULT_BATCH_PROMPT moved to useSymphonyContribution hook
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { MainPanel, type MainPanelHandle } from './components/MainPanel';
-import { AppOverlays } from './components/AppOverlays';
-import { PlaygroundPanel } from './components/PlaygroundPanel';
-import { DebugWizardModal } from './components/DebugWizardModal';
-import { DebugPackageModal } from './components/DebugPackageModal';
-import { WindowsWarningModal } from './components/WindowsWarningModal';
-import { GistPublishModal } from './components/GistPublishModal';
-import {
-	MaestroWizard,
-	useWizard,
-	WizardResumeModal,
-	type SerializableWizardState,
-	type WizardStep,
-} from './components/Wizard';
-import { TourOverlay } from './components/Wizard/tour';
+// AppOverlays, PlaygroundPanel, DebugWizardModal, DebugPackageModal, WindowsWarningModal,
+// GistPublishModal, MaestroWizard, WizardResumeModal, TourOverlay are now rendered
+// inside AppStandaloneModals
+import { useWizard, type SerializableWizardState, type WizardStep } from './components/Wizard';
 // CONDUCTOR_BADGES moved to useAutoRunAchievements hook
 import { EmptyStateView } from './components/EmptyStateView';
-import { DeleteAgentConfirmModal } from './components/DeleteAgentConfirmModal';
+// DeleteAgentConfirmModal, MarketplaceModal, SymphonyModal, DocumentGraphView,
+// DirectorNotesModal, CueModal, CueYamlEditor are now lazy-loaded inside AppStandaloneModals
 
-// Lazy-loaded components for performance (rarely-used heavy modals)
-// These are loaded on-demand when the user first opens them
+// Lazy-loaded components for performance (rarely-used heavy views)
 const LogViewer = lazy(() =>
 	import('./components/LogViewer').then((m) => ({ default: m.LogViewer }))
-);
-const MarketplaceModal = lazy(() =>
-	import('./components/MarketplaceModal').then((m) => ({ default: m.MarketplaceModal }))
-);
-const SymphonyModal = lazy(() =>
-	import('./components/SymphonyModal').then((m) => ({ default: m.SymphonyModal }))
-);
-const DocumentGraphView = lazy(() =>
-	import('./components/DocumentGraph/DocumentGraphView').then((m) => ({
-		default: m.DocumentGraphView,
-	}))
-);
-const DirectorNotesModal = lazy(() =>
-	import('./components/DirectorNotes').then((m) => ({ default: m.DirectorNotesModal }))
-);
-const CueModal = lazy(() => import('./components/CueModal').then((m) => ({ default: m.CueModal })));
-const CueYamlEditor = lazy(() =>
-	import('./components/CueYamlEditor').then((m) => ({ default: m.CueYamlEditor }))
 );
 
 import { captureException } from './utils/sentry';
@@ -96,6 +67,7 @@ import {
 	useWebBroadcasting,
 	useCliActivityMonitoring,
 	useMobileLandscape,
+	useAppRemoteEventListeners,
 	// UI
 	useThemeStyles,
 	useAppHandlers,
@@ -144,6 +116,8 @@ import {
 	useInputMode,
 	// Live mode management (Tier 3B)
 	useLiveMode,
+	// Session switching callbacks (navigate to session/tab from various UI surfaces)
+	useSessionSwitchCallbacks,
 } from './hooks';
 import { useMainPanelProps, useSessionListProps, useRightPanelProps } from './hooks/props';
 import { useAgentListeners } from './hooks/agent/useAgentListeners';
@@ -159,7 +133,13 @@ import { InputProvider, useInputContext } from './contexts/InputContext';
 import { useGroupChatStore } from './stores/groupChatStore';
 import { useBatchStore } from './stores/batchStore';
 // All session state is read directly from useSessionStore in MaestroConsoleInner.
-import { useSessionStore, selectActiveSession } from './stores/sessionStore';
+import {
+	useSessionStore,
+	selectActiveSession,
+	updateSessionWith,
+	updateAiTab,
+} from './stores/sessionStore';
+import { useActiveSession } from './hooks/session/useActiveSession';
 // useAgentStore moved to useQueueProcessing hook
 import { InlineWizardProvider, useInlineWizardContext } from './contexts/InlineWizardContext';
 import { ToastContainer } from './components/Toast';
@@ -173,7 +153,7 @@ import type { RightPanelTab, Session, QueuedItem, CustomAICommand, ThinkingItem 
 import { THEMES } from './constants/themes';
 import { generateId } from './utils/ids';
 import { getContextColor } from './utils/theme';
-import { safeClipboardWrite } from './utils/clipboard';
+// safeClipboardWrite moved to AppStandaloneModals (GistPublishModal handler)
 import {
 	createTab,
 	closeTab,
@@ -189,6 +169,7 @@ import {
 	navigateToPrevUnifiedTab,
 	navigateToClosestTerminalTab,
 	hasActiveWizard,
+	findNextUnreadSession,
 } from './utils/tabHelpers';
 // validateNewSession moved to useSymphonyContribution, useSessionCrud hooks
 // formatLogsForClipboard moved to useTabExportHandlers hook
@@ -206,7 +187,7 @@ function MaestroConsoleInner() {
 		// Settings Modal
 		settingsModalOpen,
 		setSettingsModalOpen,
-		settingsTab,
+		// settingsTab — now self-sourced in AppStandaloneModals
 		setSettingsTab,
 		// New Instance Modal
 		newInstanceModalOpen,
@@ -215,9 +196,7 @@ function MaestroConsoleInner() {
 		setEditAgentModalOpen,
 		editAgentSession,
 		setEditAgentSession,
-		// Delete Agent Modal
-		deleteAgentModalOpen,
-		deleteAgentSession,
+		// Delete Agent Modal — open state and session now self-sourced in AppStandaloneModals
 		// Shortcuts Help Modal
 		shortcutsHelpOpen,
 		setShortcutsHelpOpen,
@@ -233,6 +212,8 @@ function MaestroConsoleInner() {
 		// About Modal
 		aboutModalOpen,
 		setAboutModalOpen,
+		feedbackModalOpen,
+		setFeedbackModalOpen,
 		// Update Check Modal
 		setUpdateCheckModalOpen,
 		// standingOvationData, firstRunCelebrationData — now self-sourced in AppOverlays (Tier 1A)
@@ -245,18 +226,13 @@ function MaestroConsoleInner() {
 		// Usage Dashboard
 		setUsageDashboardOpen,
 		// pendingKeyboardMasteryLevel — now self-sourced in AppOverlays (Tier 1A)
-		// Playground Panel
-		playgroundOpen,
+		// Playground Panel — playgroundOpen now self-sourced in AppStandaloneModals
 		setPlaygroundOpen,
-		// Debug Wizard Modal
-		debugWizardModalOpen,
+		// Debug Wizard Modal — debugWizardModalOpen now self-sourced in AppStandaloneModals
 		setDebugWizardModalOpen,
-		// Debug Package Modal
-		debugPackageModalOpen,
+		// Debug Package Modal — debugPackageModalOpen now self-sourced in AppStandaloneModals
 		setDebugPackageModalOpen,
-		// Windows Warning Modal
-		windowsWarningModalOpen,
-		setWindowsWarningModalOpen,
+		// Windows Warning Modal — windowsWarningModalOpen now self-sourced in AppStandaloneModals
 		// Confirmation Modal
 		confirmModalOpen,
 		setConfirmModalOpen,
@@ -296,12 +272,9 @@ function MaestroConsoleInner() {
 		setBatchRunnerModalOpen,
 		// Auto Run Setup Modal
 		setAutoRunSetupModalOpen,
-		// Marketplace Modal
-		marketplaceModalOpen,
+		// Marketplace Modal — marketplaceModalOpen now self-sourced in AppStandaloneModals
 		setMarketplaceModalOpen,
-		// Wizard Resume Modal
-		wizardResumeModalOpen,
-		wizardResumeState,
+		// Wizard Resume Modal — open state and resume state now self-sourced in AppStandaloneModals
 		// setWizardResumeModalOpen, setWizardResumeState — now used in useWizardHandlers (Tier 3D)
 		// Agent Error Modal
 		// Worktree Modals
@@ -330,25 +303,15 @@ function MaestroConsoleInner() {
 		// Git Log Viewer
 		gitLogOpen,
 		setGitLogOpen,
-		// Tour Overlay
-		tourOpen,
-		setTourOpen,
-		tourFromWizard,
+		// Tour Overlay — tourOpen, tourFromWizard now self-sourced in AppStandaloneModals
 		// setTourFromWizard now used in useWizardHandlers via getModalActions()
-		// Symphony Modal
-		symphonyModalOpen,
+		// Symphony Modal — symphonyModalOpen now self-sourced in AppStandaloneModals
 		setSymphonyModalOpen,
-		// Director's Notes Modal
-		directorNotesOpen,
+		// Director's Notes Modal — directorNotesOpen now self-sourced in AppStandaloneModals
 		setDirectorNotesOpen,
-		// Maestro Cue Modal
-		cueModalOpen,
+		// Maestro Cue Modal — cueModalOpen now self-sourced in AppStandaloneModals
 		setCueModalOpen,
-		// Maestro Cue YAML Editor (standalone)
-		cueYamlEditorOpen,
-		cueYamlEditorSessionId,
-		cueYamlEditorProjectRoot,
-		closeCueYamlEditor,
+		// Maestro Cue YAML Editor — open state, sessionId, projectRoot, closeCueYamlEditor now self-sourced in AppStandaloneModals
 	} = useModalActions();
 
 	// --- MOBILE LANDSCAPE MODE (reading-only view) ---
@@ -460,8 +423,6 @@ function MaestroConsoleInner() {
 		// File tab refresh settings
 		fileTabAutoRefreshEnabled,
 		useNativeTitleBar,
-		autoScrollAiMode,
-		setAutoScrollAiMode,
 		setSuppressWindowsWarning,
 		encoreFeatures,
 	} = settings;
@@ -487,7 +448,7 @@ function MaestroConsoleInner() {
 	const groups = useSessionStore((s) => s.groups);
 	const activeSessionId = useSessionStore((s) => s.activeSessionId);
 	// sessionsLoaded moved to useQueueProcessing hook
-	const activeSession = useSessionStore(selectActiveSession);
+	const activeSession = useActiveSession();
 
 	// Actions — stable references from store, never trigger re-renders
 	const {
@@ -568,8 +529,7 @@ function MaestroConsoleInner() {
 	const editingGroupId = useUIStore((s) => s.editingGroupId);
 	const editingSessionId = useUIStore((s) => s.editingSessionId);
 	const draggingSessionId = useUIStore((s) => s.draggingSessionId);
-	const flashNotification = useUIStore((s) => s.flashNotification);
-	const successFlashNotification = useUIStore((s) => s.successFlashNotification);
+	// flashNotification, successFlashNotification — now self-sourced in AppStandaloneModals
 	const selectedSidebarIndex = useUIStore((s) => s.selectedSidebarIndex);
 
 	// Actions: stable closures created at store init, no hook overhead needed
@@ -618,8 +578,14 @@ function MaestroConsoleInner() {
 	} = useGroupChatStore.getState();
 
 	// --- APP INITIALIZATION (extracted hook, Phase 2G) ---
-	const { ghCliAvailable, sshRemoteConfigs, speckitCommands, openspecCommands, saveFileGistUrl } =
-		useAppInitialization();
+	const {
+		ghCliAvailable,
+		sshRemoteConfigs,
+		speckitCommands,
+		openspecCommands,
+		bmadCommands,
+		saveFileGistUrl,
+	} = useAppInitialization();
 
 	// Wrapper for setActiveSessionId that also dismisses active group chat
 	const setActiveSessionId = useCallback(
@@ -660,17 +626,14 @@ function MaestroConsoleInner() {
 
 	// File Explorer State (reads from fileExplorerStore)
 	const filePreviewLoading = useFileExplorerStore((s) => s.filePreviewLoading);
-	const isGraphViewOpen = useFileExplorerStore((s) => s.isGraphViewOpen);
-	const graphFocusFilePath = useFileExplorerStore((s) => s.graphFocusFilePath);
+	// isGraphViewOpen, graphFocusFilePath — now self-sourced in AppStandaloneModals
 	const lastGraphFocusFilePath = useFileExplorerStore((s) => s.lastGraphFocusFilePath);
 
 	const [gistPublishModalOpen, setGistPublishModalOpen] = useState(false);
-	// Tab context gist publishing - now backed by tabStore (Zustand)
-	const tabGistContent = useTabStore((s) => s.tabGistContent);
+	// tabGistContent — now self-sourced in AppStandaloneModals
 	const fileGistUrls = useTabStore((s) => s.fileGistUrls);
 
-	// Note: Delete Agent Modal State is now managed by modalStore (Zustand)
-	// See useModalActions() destructuring above for deleteAgentModalOpen / deleteAgentSession
+	// Note: Delete Agent Modal State is now self-sourced in AppStandaloneModals
 
 	// Note: Git Diff State, Tour Overlay State, and Git Log Viewer State are from modalStore
 
@@ -707,22 +670,10 @@ function MaestroConsoleInner() {
 		setIsLoadingDocuments: setAutoRunIsLoadingDocuments,
 	} = useBatchStore.getState();
 
-	// ProcessMonitor navigation handlers
-	const handleProcessMonitorNavigateToSession = useCallback(
-		(sessionId: string, tabId?: string) => {
-			setActiveSessionId(sessionId);
-			if (tabId) {
-				// Switch to the specific tab within the session
-				setSessions((prev) =>
-					prev.map((s) => (s.id === sessionId ? { ...s, activeTabId: tabId } : s))
-				);
-			}
-		},
-		[setActiveSessionId, setSessions]
-	);
+	// handleProcessMonitorNavigateToSession - now in useSessionSwitchCallbacks hook
 
 	// Startup effects (splash, GitHub CLI, Windows warning, gist URLs, beta updates,
-	// update check, leaderboard sync, SpecKit/OpenSpec loading, SSH configs, stats DB check,
+	// update check, leaderboard sync, SpecKit/OpenSpec/BMAD loading, SSH configs, stats DB check,
 	// notification settings sync, playground debug) — provided by useAppInitialization hook
 
 	// Expose debug helpers to window for console access
@@ -753,10 +704,12 @@ function MaestroConsoleInner() {
 	const customAICommandsRef = useRef(customAICommands);
 	const speckitCommandsRef = useRef(speckitCommands);
 	const openspecCommandsRef = useRef(openspecCommands);
+	const bmadCommandsRef = useRef(bmadCommands);
 	const fileTabAutoRefreshEnabledRef = useRef(fileTabAutoRefreshEnabled);
 	customAICommandsRef.current = customAICommands;
 	speckitCommandsRef.current = speckitCommands;
 	openspecCommandsRef.current = openspecCommands;
+	bmadCommandsRef.current = bmadCommands;
 	fileTabAutoRefreshEnabledRef.current = fileTabAutoRefreshEnabled;
 
 	// Note: spawnBackgroundSynopsisRef and spawnAgentWithPromptRef are now provided by useAgentExecution hook
@@ -893,6 +846,7 @@ function MaestroConsoleInner() {
 		handleGroupChatDraftChange,
 		handleRemoveGroupChatQueueItem,
 		handleReorderGroupChatQueueItems,
+		handleStopAll: handleGroupChatStopAll,
 		handleNewGroupChat,
 		handleEditGroupChat,
 		handleOpenRenameGroupChatModal,
@@ -917,6 +871,7 @@ function MaestroConsoleInner() {
 		handleCloseDebugPackage,
 		handleCloseShortcutsHelp,
 		handleCloseAboutModal,
+		handleCloseFeedbackModal,
 		handleCloseUpdateCheckModal,
 		handleCloseProcessMonitor,
 		handleCloseLogViewer,
@@ -946,6 +901,7 @@ function MaestroConsoleInner() {
 		handleOpenFuzzySearch,
 		handleOpenCreatePR,
 		handleOpenAboutModal,
+		handleOpenFeedbackModal,
 		handleOpenBatchRunner,
 		handleOpenMarketplace,
 		handleEditAgent,
@@ -1047,12 +1003,11 @@ function MaestroConsoleInner() {
 
 	// Auto-focus the AI input box when switching from terminal to AI mode
 	const prevInputModeRef = useRef(activeSession?.inputMode);
+	const shouldFocusOnModeSwitch =
+		prevInputModeRef.current === 'terminal' && activeSession?.inputMode === 'ai';
+	useFocusAfterRender(inputRef, shouldFocusOnModeSwitch, 0);
 	useEffect(() => {
-		const currentMode = activeSession?.inputMode;
-		if (prevInputModeRef.current === 'terminal' && currentMode === 'ai') {
-			setTimeout(() => inputRef.current?.focus(), 0);
-		}
-		prevInputModeRef.current = currentMode;
+		prevInputModeRef.current = activeSession?.inputMode;
 	}, [activeSession?.inputMode]);
 
 	// PERF: Memoize sessions for NewInstanceModal validation (only recompute when modal is open)
@@ -1083,9 +1038,7 @@ function MaestroConsoleInner() {
 	});
 
 	// CLI activity monitoring hook - tracks CLI playbook runs and updates session states
-	useCliActivityMonitoring({
-		setSessions,
-	});
+	useCliActivityMonitoring({ setSessions });
 
 	// Note: Quit confirmation effect moved into useBatchHandlers hook
 
@@ -1136,51 +1089,58 @@ function MaestroConsoleInner() {
 		handleSummarizeAndContinue,
 	} = useSummarizeAndContinue(activeSession ?? null);
 
-	// Combine custom AI commands with spec-kit and openspec commands for input processing (slash command execution)
-	// This ensures speckit and openspec commands are processed the same way as custom commands
+	// Combine custom AI commands with bundled methodology commands for input processing.
 	const allCustomCommands = useMemo((): CustomAICommand[] => {
-		// Convert speckit commands to CustomAICommand format
 		const speckitAsCustom: CustomAICommand[] = speckitCommands.map((cmd) => ({
 			id: `speckit-${cmd.id}`,
 			command: cmd.command,
 			description: cmd.description,
 			prompt: cmd.prompt,
-			isBuiltIn: true, // Speckit commands are built-in (bundled)
+			isBuiltIn: true,
 		}));
-		// Convert openspec commands to CustomAICommand format
 		const openspecAsCustom: CustomAICommand[] = openspecCommands.map((cmd) => ({
 			id: `openspec-${cmd.id}`,
 			command: cmd.command,
 			description: cmd.description,
 			prompt: cmd.prompt,
-			isBuiltIn: true, // OpenSpec commands are built-in (bundled)
+			isBuiltIn: true,
 		}));
-		return [...customAICommands, ...speckitAsCustom, ...openspecAsCustom];
-	}, [customAICommands, speckitCommands, openspecCommands]);
+		const bmadAsCustom: CustomAICommand[] = bmadCommands.map((cmd) => ({
+			id: `bmad-${cmd.id}`,
+			command: cmd.command,
+			description: cmd.description,
+			prompt: cmd.prompt,
+			isBuiltIn: true,
+		}));
+		return [...customAICommands, ...speckitAsCustom, ...openspecAsCustom, ...bmadAsCustom];
+	}, [customAICommands, speckitCommands, openspecCommands, bmadCommands]);
 
-	// Combine built-in slash commands with custom AI commands, spec-kit commands, openspec commands, AND agent-specific commands for autocomplete
+	// Combine built-in slash commands with custom AI commands, bundled methodology
+	// commands, and agent-specific commands for autocomplete.
 	const allSlashCommands = useMemo(() => {
 		const customCommandsAsSlash = customAICommands.map((cmd) => ({
 			command: cmd.command,
 			description: cmd.description,
-			aiOnly: true, // Custom AI commands are only available in AI mode
-			prompt: cmd.prompt, // Include prompt for execution
+			aiOnly: true,
+			prompt: cmd.prompt,
 		}));
-		// Spec Kit commands (bundled from github/spec-kit)
 		const speckitCommandsAsSlash = speckitCommands.map((cmd) => ({
 			command: cmd.command,
 			description: cmd.description,
-			aiOnly: true, // Spec-kit commands are only available in AI mode
-			prompt: cmd.prompt, // Include prompt for execution
-			isSpeckit: true, // Mark as spec-kit command for special handling
+			aiOnly: true,
+			prompt: cmd.prompt,
 		}));
-		// OpenSpec commands (bundled from Fission-AI/OpenSpec)
 		const openspecCommandsAsSlash = openspecCommands.map((cmd) => ({
 			command: cmd.command,
 			description: cmd.description,
-			aiOnly: true, // OpenSpec commands are only available in AI mode
-			prompt: cmd.prompt, // Include prompt for execution
-			isOpenspec: true, // Mark as openspec command for special handling
+			aiOnly: true,
+			prompt: cmd.prompt,
+		}));
+		const bmadCommandsAsSlash = bmadCommands.map((cmd) => ({
+			command: cmd.command,
+			description: cmd.description,
+			aiOnly: true,
+			prompt: cmd.prompt,
 		}));
 		// Only include agent-specific commands if the agent supports slash commands
 		// This allows built-in and custom commands to be shown for all agents (Codex, OpenCode, etc.)
@@ -1201,12 +1161,14 @@ function MaestroConsoleInner() {
 			...customCommandsAsSlash,
 			...speckitCommandsAsSlash,
 			...openspecCommandsAsSlash,
+			...bmadCommandsAsSlash,
 			...agentCommands,
 		];
 	}, [
 		customAICommands,
 		speckitCommands,
 		openspecCommands,
+		bmadCommands,
 		activeSession?.agentCommands,
 		activeSession?.toolType,
 		hasActiveSessionCapability,
@@ -1289,9 +1251,23 @@ function MaestroConsoleInner() {
 	// Bridge: keep handleResumeSessionRef in sync for useModalHandlers
 	handleResumeSessionRef.current = handleResumeSession;
 
+	// --- SESSION SWITCH CALLBACKS (navigate to session/tab from various UI surfaces) ---
+	const {
+		handleProcessMonitorNavigateToSession,
+		handleToastSessionClick,
+		handleNamedSessionSelect,
+		handleUtilityTabSelect,
+		handleUtilityFileTabSelect,
+	} = useSessionSwitchCallbacks({
+		setActiveSessionId,
+		handleResumeSession,
+		inputRef,
+	});
+
 	// --- BATCH HANDLERS (Auto Run processing, quit confirmation, error handling) ---
 	const {
 		startBatchRun,
+		stopBatchRun,
 		getBatchState,
 		handleStopBatchRun,
 		handleKillBatchRun,
@@ -1327,15 +1303,10 @@ function MaestroConsoleInner() {
 	});
 
 	const handleRemoveQueuedItem = useCallback((itemId: string) => {
-		setSessions((prev) =>
-			prev.map((s) => {
-				if (s.id !== activeSessionIdRef.current) return s;
-				return {
-					...s,
-					executionQueue: s.executionQueue.filter((item) => item.id !== itemId),
-				};
-			})
-		);
+		updateSessionWith(activeSessionIdRef.current, (s) => ({
+			...s,
+			executionQueue: s.executionQueue.filter((item) => item.id !== itemId),
+		}));
 	}, []);
 
 	// toggleBookmark — provided by useSessionCrud hook
@@ -1455,17 +1426,7 @@ function MaestroConsoleInner() {
 		const targetTabId = activeTab.id;
 
 		// Clear the flag first to prevent multiple sends
-		setSessions((prev) =>
-			prev.map((s) => {
-				if (s.id !== targetSessionId) return s;
-				return {
-					...s,
-					aiTabs: s.aiTabs.map((tab) =>
-						tab.id === targetTabId ? { ...tab, autoSendOnActivate: false } : tab
-					),
-				};
-			})
-		);
+		updateAiTab(targetSessionId, targetTabId, (tab) => ({ ...tab, autoSendOnActivate: false }));
 
 		// Trigger the send after a short delay to ensure state is settled
 		// The inputValue and pendingMergedContext are already set on the tab
@@ -1560,78 +1521,21 @@ function MaestroConsoleInner() {
 	const handleAutoRefreshChange = useCallback(
 		(interval: number) => {
 			if (!activeSession) return;
-			setSessions((prev) =>
-				prev.map((s) =>
-					s.id === activeSession.id ? { ...s, fileTreeAutoRefreshInterval: interval } : s
-				)
-			);
+			updateSessionWith(activeSession.id, (s) => ({ ...s, fileTreeAutoRefreshInterval: interval }));
 		},
 		[activeSession]
 	);
 
-	// Handler for toast navigation - switches to session and optionally to a specific tab
-	const handleToastSessionClick = useCallback(
-		(sessionId: string, tabId?: string) => {
-			// Switch to the session
-			setActiveSessionId(sessionId);
-			// Clear file preview and switch to AI tab (with specific tab if provided)
-			// This ensures clicking a toast always shows the AI terminal, not a file preview
-			setSessions((prev) =>
-				prev.map((s) => {
-					if (s.id !== sessionId) return s;
-					// If a specific tab ID is provided, check if it exists
-					if (tabId && !s.aiTabs?.some((t) => t.id === tabId)) {
-						// Tab doesn't exist, just clear file preview
-						return { ...s, activeFileTabId: null, inputMode: 'ai' };
-					}
-					return {
-						...s,
-						...(tabId && { activeTabId: tabId }),
-						activeFileTabId: null,
-						inputMode: 'ai',
-					};
-				})
-			);
-		},
-		[setActiveSessionId]
-	);
-
-	// Deep link navigation handler — processes maestro:// URLs from OS notifications,
-	// external apps, and CLI commands
-	useEffect(() => {
-		const unsubscribe = window.maestro.app.onDeepLink((deepLink) => {
-			if (deepLink.action === 'focus') {
-				// Window already brought to foreground by main process
-				return;
-			}
-			if (deepLink.action === 'session' && deepLink.sessionId) {
-				const targetExists = sessionsRef.current.some((s) => s.id === deepLink.sessionId);
-				if (!targetExists) return;
-				handleToastSessionClick(deepLink.sessionId, deepLink.tabId);
-				return;
-			}
-			if (deepLink.action === 'group' && deepLink.groupId) {
-				// Find first session in group and navigate to it
-				const groupSession = sessionsRef.current.find((s) => s.groupId === deepLink.groupId);
-				if (groupSession) {
-					handleToastSessionClick(groupSession.id);
-				}
-				// Expand the group if it's collapsed
-				setGroups((prev) =>
-					prev.map((g) => (g.id === deepLink.groupId ? { ...g, collapsed: false } : g))
-				);
-			}
-		});
-		return unsubscribe;
-	}, [handleToastSessionClick, setGroups]);
+	// handleToastSessionClick, deep link navigation - now in useSessionSwitchCallbacks hook
 
 	// --- SESSION SORTING ---
 	// Extracted hook for sorted and visible session lists (ignores leading emojis for alphabetization)
-	const { sortedSessions, visibleSessions } = useSortedSessions({
-		sessions,
-		groups,
-		bookmarksCollapsed,
-	});
+	const { sortedSessions, visibleSessions, navSessions, bookmarkNavSize, navIndexMap } =
+		useSortedSessions({
+			sessions,
+			groups,
+			bookmarksCollapsed,
+		});
 
 	// --- KEYBOARD NAVIGATION ---
 	// Extracted hook for sidebar navigation, panel focus, and related keyboard handlers
@@ -1642,6 +1546,8 @@ function MaestroConsoleInner() {
 		handleEscapeInMain,
 	} = useKeyboardNavigation({
 		sortedSessions,
+		navSessions,
+		bookmarkNavSize,
 		selectedSidebarIndex,
 		setSelectedSidebarIndex,
 		activeSessionId,
@@ -1672,6 +1578,7 @@ function MaestroConsoleInner() {
 	const {
 		handleSaveEditAgent,
 		handleRenameTab,
+		handleAutoNameTab,
 		performDeleteSession,
 		showConfirmation,
 		toggleTabStar,
@@ -1700,6 +1607,40 @@ function MaestroConsoleInner() {
 	// cycleSession — provided by useCycleSession hook
 	const { cycleSession } = useCycleSession({ sortedSessions, handleOpenGroupChat });
 
+	// goToNextUnreadTab — jump to the next agent with unread tabs, clearing current agent's unreads
+	const goToNextUnreadTab = useCallback(() => {
+		const currentActiveId = useSessionStore.getState().activeSessionId;
+		const result = findNextUnreadSession(sortedSessions, currentActiveId);
+
+		// Clear current agent's unread tabs
+		if (result.clearedCurrent) {
+			setSessions((prev) =>
+				prev.map((s) => {
+					if (s.id !== currentActiveId) return s;
+					return {
+						...s,
+						aiTabs: s.aiTabs.map((t) => (t.hasUnread ? { ...t, hasUnread: false } : t)),
+					};
+				})
+			);
+		}
+
+		if (result.jumped && result.targetSessionId) {
+			setActiveSessionId(result.targetSessionId);
+			const targetTabId = result.targetTabId;
+			if (targetTabId) {
+				setSessions((prev) =>
+					prev.map((s) => {
+						if (s.id !== result.targetSessionId) return s;
+						return { ...s, activeTabId: targetTabId };
+					})
+				);
+			}
+		} else {
+			showSuccessFlash('No unread tabs');
+		}
+	}, [sortedSessions, setSessions, setActiveSessionId, showSuccessFlash]);
+
 	// showConfirmation, performDeleteSession — provided by useSessionLifecycle hook (Phase 2H)
 	// deleteSession, deleteWorktreeGroup — provided by useSessionCrud hook
 
@@ -1720,6 +1661,7 @@ function MaestroConsoleInner() {
 		customAICommandsRef,
 		speckitCommandsRef,
 		openspecCommandsRef,
+		bmadCommandsRef,
 		toggleGlobalLive,
 		isLiveMode,
 		sshRemoteConfigs,
@@ -1744,6 +1686,7 @@ function MaestroConsoleInner() {
 		customAICommandsRef,
 		speckitCommandsRef,
 		openspecCommandsRef,
+		bmadCommandsRef,
 	});
 	// Bridge: keep the original processQueuedItemRef in sync
 	processQueuedItemRef.current = processQueuedItem;
@@ -1784,193 +1727,18 @@ function MaestroConsoleInner() {
 		handleOpenFileTab,
 	});
 
-	// --- REMOTE EVENT LISTENERS (from useRemoteIntegration CustomEvents) ---
-
-	// Handle remote open file tab events from CLI/web interface
-	useEffect(() => {
-		const handler = async (e: Event) => {
-			const { sessionId, filePath } = (e as CustomEvent).detail;
-			const session = sessionsRef.current.find((s) => s.id === sessionId);
-			if (!session) {
-				console.error('[Remote] Session not found for openFileTab:', sessionId);
-				return;
-			}
-			const sshRemoteId =
-				session.sshRemoteId || session.sessionSshRemoteConfig?.remoteId || undefined;
-			// Switch to the target session
-			setActiveSessionId(sessionId);
-			try {
-				const [content, stat] = await Promise.all([
-					window.maestro.fs.readFile(filePath, sshRemoteId),
-					window.maestro.fs.stat(filePath, sshRemoteId).catch(() => null),
-				]);
-				if (content !== null) {
-					const filename = filePath.split(/[\\/]/).pop() || filePath;
-					const lastModified = stat?.modifiedAt ? new Date(stat.modifiedAt).getTime() : undefined;
-					handleOpenFileTab(
-						{
-							path: filePath,
-							name: filename,
-							content,
-							lastModified,
-							sshRemoteId,
-						},
-						{ targetSessionId: sessionId }
-					);
-				}
-			} catch (error) {
-				console.error('[Remote] Failed to open file tab:', error);
-			}
-		};
-		window.addEventListener('maestro:openFileTab', handler);
-		return () => window.removeEventListener('maestro:openFileTab', handler);
-	}, [handleOpenFileTab, setActiveSessionId, sessionsRef]);
-
-	// Handle remote refresh file tree events from CLI/web interface
-	useEffect(() => {
-		const handler = (e: Event) => {
-			const { sessionId } = (e as CustomEvent).detail;
-			refreshFileTree(sessionId);
-		};
-		window.addEventListener('maestro:refreshFileTree', handler);
-		return () => window.removeEventListener('maestro:refreshFileTree', handler);
-	}, [refreshFileTree]);
-
-	// Handle remote refresh auto-run docs events from CLI/web interface
-	useEffect(() => {
-		const handler = (e: Event) => {
-			const { sessionId } = (e as CustomEvent).detail;
-			const currentActiveId = useSessionStore.getState().activeSessionId;
-			if (sessionId === currentActiveId) {
-				// Already the active session - refresh immediately
-				handleAutoRunRefresh();
-			} else {
-				// Switch to the target session - the autoRunFolderPath useEffect
-				// will trigger handleAutoRunRefresh for the newly active session
-				setActiveSessionId(sessionId);
-			}
-		};
-		window.addEventListener('maestro:refreshAutoRunDocs', handler);
-		return () => window.removeEventListener('maestro:refreshAutoRunDocs', handler);
-	}, [handleAutoRunRefresh, setActiveSessionId]);
-
-	// Handle remote configure auto-run events from CLI/web interface
-	useEffect(() => {
-		const handler = async (e: Event) => {
-			const { sessionId, config, responseChannel } = (e as CustomEvent).detail;
-
-			try {
-				// Find the target session
-				const session = sessionsRef.current.find((s) => s.id === sessionId);
-				if (!session) {
-					window.maestro.process.sendRemoteConfigureAutoRunResponse(responseChannel, {
-						success: false,
-						error: `Session ${sessionId} not found`,
-					});
-					return;
-				}
-
-				// Case 1: Save as playbook
-				if (config.saveAsPlaybook) {
-					const result = await window.maestro.playbooks.create(sessionId, {
-						name: config.saveAsPlaybook,
-						documents: config.documents || [],
-						loopEnabled: config.loopEnabled || false,
-						maxLoops: config.maxLoops,
-						prompt: config.prompt || '',
-					});
-					window.maestro.process.sendRemoteConfigureAutoRunResponse(responseChannel, {
-						success: result.success,
-						playbookId: result.playbook?.id,
-						error: result.error,
-					});
-					return;
-				}
-
-				// Case 2: Launch auto-run immediately
-				if (config.launch) {
-					const folderPath = session.autoRunFolderPath;
-					if (!folderPath) {
-						window.maestro.process.sendRemoteConfigureAutoRunResponse(responseChannel, {
-							success: false,
-							error: 'No Auto Run folder configured for this session',
-						});
-						return;
-					}
-
-					const documents = (config.documents || []).map(
-						(doc: { filename: string; resetOnCompletion?: boolean }) => {
-							// Compute path relative to the session's autoRunFolderPath.
-							// CLI sends full absolute paths (e.g., "/path/to/Auto Run Docs/subdir/temp.md")
-							// but the batch processor expects the path relative to folderPath without .md
-							// (e.g., "subdir/temp").
-							let name = doc.filename.replace(/\.md$/i, '');
-							// Normalize separators to forward slash for comparison
-							const normalized = name.replace(/\\/g, '/');
-							const normalizedFolder = (folderPath || '').replace(/\\/g, '/');
-							// Case-insensitive prefix check for cross-platform compatibility (Windows drive letters)
-							const normalizedLower = normalized.toLowerCase();
-							const folderLower = normalizedFolder.toLowerCase();
-							if (normalizedFolder && normalizedLower.startsWith(folderLower + '/')) {
-								name = normalized.substring(normalizedFolder.length + 1);
-							} else {
-								// Fallback for paths not under folderPath: use basename only
-								const lastSlash = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));
-								if (lastSlash >= 0) name = name.substring(lastSlash + 1);
-							}
-							return {
-								id: generateId(),
-								filename: name,
-								resetOnCompletion: doc.resetOnCompletion || false,
-								isDuplicate: false,
-							};
-						}
-					);
-
-					if (documents.length === 0) {
-						window.maestro.process.sendRemoteConfigureAutoRunResponse(responseChannel, {
-							success: false,
-							error: 'No documents provided for auto-run',
-						});
-						return;
-					}
-
-					const batchConfig = {
-						documents,
-						prompt: config.prompt || '',
-						loopEnabled: config.loopEnabled || false,
-						maxLoops: config.maxLoops,
-					};
-
-					// Send success response immediately — startBatchRun is long-running
-					// and would exceed the IPC/CLI timeout if awaited.
-					window.maestro.process.sendRemoteConfigureAutoRunResponse(responseChannel, {
-						success: true,
-					});
-					startBatchRun(sessionId, batchConfig, folderPath).catch((err) => {
-						console.error('[Remote] Failed to start auto-run:', err);
-					});
-					return;
-				}
-
-				// Case 3: Just configure (no launch, no save)
-				// Without --launch or --save-as, there is no persistent state to update.
-				// Return an error guiding the user to use one of those flags.
-				window.maestro.process.sendRemoteConfigureAutoRunResponse(responseChannel, {
-					success: false,
-					error: 'Use --launch to start auto-run immediately, or --save-as to save as a playbook',
-				});
-			} catch (error) {
-				console.error('[Remote] Failed to configure auto-run:', error);
-				window.maestro.process.sendRemoteConfigureAutoRunResponse(responseChannel, {
-					success: false,
-					error: String(error),
-				});
-			}
-		};
-		window.addEventListener('maestro:configureAutoRun', handler);
-		return () => window.removeEventListener('maestro:configureAutoRun', handler);
-	}, [sessionsRef, startBatchRun]);
+	// --- REMOTE EVENT LISTENERS (extracted to useAppRemoteEventListeners hook) ---
+	useAppRemoteEventListeners({
+		sessionsRef,
+		setActiveSessionId,
+		setSessions,
+		setGroups,
+		handleOpenFileTab,
+		refreshFileTree,
+		handleAutoRunRefresh,
+		startBatchRun,
+		stopBatchRun,
+	});
 
 	// --- GROUP MANAGEMENT ---
 	// Extracted hook for group CRUD operations (toggle, rename, create, drag-drop)
@@ -2061,66 +1829,16 @@ function MaestroConsoleInner() {
 		(prompt: string) => {
 			if (!activeSession) return;
 			// Save the custom prompt and modification timestamp to the session (persisted across restarts)
-			setSessions((prev) =>
-				prev.map((s) =>
-					s.id === activeSession.id
-						? {
-								...s,
-								batchRunnerPrompt: prompt,
-								batchRunnerPromptModifiedAt: Date.now(),
-							}
-						: s
-				)
-			);
+			updateSessionWith(activeSession.id, (s) => ({
+				...s,
+				batchRunnerPrompt: prompt,
+				batchRunnerPromptModifiedAt: Date.now(),
+			}));
 		},
 		[activeSession]
 	);
-	const handleUtilityTabSelect = useCallback(
-		(tabId: string) => {
-			if (!activeSession) return;
-			// Clear activeFileTabId and activeTerminalTabId when selecting an AI tab.
-			// Also reset inputMode to 'ai' in case we're coming from terminal mode.
-			setSessions((prev) =>
-				prev.map((s) =>
-					s.id === activeSession.id
-						? {
-								...s,
-								activeTabId: tabId,
-								activeFileTabId: null,
-								activeTerminalTabId: null,
-								inputMode: 'ai',
-							}
-						: s
-				)
-			);
-		},
-		[activeSession]
-	);
-	const handleUtilityFileTabSelect = useCallback(
-		(tabId: string) => {
-			if (!activeSession) return;
-			// Set activeFileTabId, keep activeTabId as-is (for when returning to AI tabs).
-			// Also reset inputMode to 'ai' and clear activeTerminalTabId in case we're coming from terminal mode.
-			setSessions((prev) =>
-				prev.map((s) =>
-					s.id === activeSession.id
-						? { ...s, activeFileTabId: tabId, activeTerminalTabId: null, inputMode: 'ai' }
-						: s
-				)
-			);
-		},
-		[activeSession]
-	);
-	const handleNamedSessionSelect = useCallback(
-		(agentSessionId: string, _projectPath: string, sessionName: string, starred?: boolean) => {
-			// Open a closed named session as a new tab - use handleResumeSession to properly load messages
-			handleResumeSession(agentSessionId, [], sessionName, starred);
-			// Focus input so user can start interacting immediately
-			setActiveFocus('main');
-			setTimeout(() => inputRef.current?.focus(), 50);
-		},
-		[handleResumeSession, setActiveFocus]
-	);
+	// handleUtilityTabSelect, handleUtilityFileTabSelect, handleNamedSessionSelect
+	// - now in useSessionSwitchCallbacks hook
 	const handleFileSearchSelect = useCallback(
 		(file: FlatFileItem) => {
 			// Preview the file directly (handleFileClick expects relative path)
@@ -2211,6 +1929,7 @@ function MaestroConsoleInner() {
 		chatRawTextMode,
 		defaultSaveToHistory,
 		defaultShowThinking,
+		setSessions,
 		setLeftSidebarOpen,
 		setRightPanelOpen,
 		addNewSession,
@@ -2240,7 +1959,6 @@ function MaestroConsoleInner() {
 		inputRef,
 		terminalOutputRef,
 		sidebarContainerRef,
-		setSessions,
 		createTab,
 		closeTab,
 		reopenUnifiedClosedTab,
@@ -2341,12 +2059,11 @@ function MaestroConsoleInner() {
 		// Session bookmark toggle
 		toggleBookmark,
 
-		// Auto-scroll AI mode toggle
-		autoScrollAiMode,
-		setAutoScrollAiMode,
-
 		// Unread agents filter toggle
 		toggleShowUnreadAgentsOnly: useUIStore.getState().toggleShowUnreadAgentsOnly,
+
+		// Next unread tab navigation
+		goToNextUnreadTab,
 	};
 
 	// NOTE: File explorer effects (flat file list, pending jump path, scroll, keyboard nav) are
@@ -2378,6 +2095,10 @@ function MaestroConsoleInner() {
 			contextManagementSettings.contextWarningRedThreshold,
 		]
 	);
+
+	const handleOpenOutputSearch = useCallback(() => {
+		useUIStore.getState().setOutputSearchOpen(true);
+	}, []);
 
 	const mainPanelProps = useMainPanelProps({
 		// Core state
@@ -2504,6 +2225,7 @@ function MaestroConsoleInner() {
 		handleToggleTabShowThinking,
 		toggleUnreadFilter,
 		handleOpenTabSearch,
+		handleOpenOutputSearch,
 		handleCloseAllTabs,
 		handleCloseOtherTabs,
 		handleCloseTabsLeft,
@@ -2596,6 +2318,7 @@ function MaestroConsoleInner() {
 		webInterfaceUrl,
 		showSessionJumpNumbers,
 		visibleSessions,
+		navIndexMap,
 
 		// Ref
 		sidebarContainerRef,
@@ -2626,6 +2349,7 @@ function MaestroConsoleInner() {
 		handleToggleWorktreeExpanded,
 		handleConfigureCue,
 		openWizardModal,
+		handleOpenFeedbackModal,
 		handleStartTour,
 
 		// Group Chat handlers
@@ -2808,10 +2532,13 @@ function MaestroConsoleInner() {
 					hasNoAgents={hasNoAgents}
 					keyboardMasteryStats={keyboardMasteryStats}
 					onCloseAboutModal={handleCloseAboutModal}
+					feedbackModalOpen={feedbackModalOpen}
+					onCloseFeedbackModal={handleCloseFeedbackModal}
 					autoRunStats={autoRunStats}
 					usageStats={usageStats}
 					handsOnTimeMs={totalActiveTimeMs}
 					onOpenLeaderboardRegistration={handleOpenLeaderboardRegistrationFromAbout}
+					onSwitchToSession={setActiveSessionId}
 					isLeaderboardRegistered={isLeaderboardRegistered}
 					onCloseUpdateCheckModal={handleCloseUpdateCheckModal}
 					onCloseProcessMonitor={handleCloseProcessMonitor}
@@ -2846,6 +2573,7 @@ function MaestroConsoleInner() {
 					renameTabInitialName={renameTabInitialName}
 					onCloseRenameTabModal={handleCloseRenameTabModal}
 					onRenameTab={handleRenameTab}
+					onAutoNameTab={handleAutoNameTab}
 					// AppGroupModals props
 					createGroupModalOpen={createGroupModalOpen}
 					onCloseCreateGroupModal={handleCloseCreateGroupModal}
@@ -2891,6 +2619,7 @@ function MaestroConsoleInner() {
 					setSettingsTab={setSettingsTab}
 					setShortcutsHelpOpen={setShortcutsHelpOpen}
 					setAboutModalOpen={setAboutModalOpen}
+					setFeedbackModalOpen={setFeedbackModalOpen}
 					setLogViewerOpen={setLogViewerOpen}
 					setProcessMonitorOpen={setProcessMonitorOpen}
 					setUsageDashboardOpen={encoreFeatures.usageStats ? setUsageDashboardOpen : undefined}
@@ -2975,8 +2704,6 @@ function MaestroConsoleInner() {
 					}
 					onOpenMaestroCue={encoreFeatures.maestroCue ? () => setCueModalOpen(true) : undefined}
 					onConfigureCue={encoreFeatures.maestroCue ? handleConfigureCue : undefined}
-					autoScrollAiMode={autoScrollAiMode}
-					setAutoScrollAiMode={setAutoScrollAiMode}
 					onCloseTabSwitcher={handleCloseTabSwitcher}
 					onTabSelect={handleUtilityTabSelect}
 					onFileTabSelect={handleUtilityFileTabSelect}
@@ -3071,269 +2798,74 @@ function MaestroConsoleInner() {
 					onSendToAgent={handleSendToAgent}
 				/>
 
-				{/* --- DEBUG PACKAGE MODAL --- */}
-				<DebugPackageModal
+				{/* --- STANDALONE MODALS (debug, marketplace, wizard, settings, etc.) --- */}
+				{/* Self-sources modal open states from modalStore, sessionStore, fileExplorerStore, tabStore */}
+				<AppStandaloneModals
 					theme={theme}
-					isOpen={debugPackageModalOpen}
-					onClose={handleCloseDebugPackage}
-				/>
-
-				{/* --- WINDOWS WARNING MODAL --- */}
-				<WindowsWarningModal
-					theme={theme}
-					isOpen={windowsWarningModalOpen}
-					onClose={() => setWindowsWarningModalOpen(false)}
-					onSuppressFuture={setSuppressWindowsWarning}
-					onOpenDebugPackage={() => setDebugPackageModalOpen(true)}
-					useBetaChannel={enableBetaUpdates}
-					onSetUseBetaChannel={setEnableBetaUpdates}
-				/>
-
-				{/* --- CELEBRATION OVERLAYS --- */}
-				<AppOverlays
-					theme={theme}
-					cumulativeTimeMs={autoRunStats.cumulativeTimeMs}
-					onCloseStandingOvation={handleStandingOvationClose}
+					// Debug / Playground
+					onCloseDebugPackage={handleCloseDebugPackage}
+					setSuppressWindowsWarning={setSuppressWindowsWarning}
+					enableBetaUpdates={enableBetaUpdates}
+					setEnableBetaUpdates={setEnableBetaUpdates}
+					// AppOverlays
+					autoRunStats={autoRunStats}
+					onStandingOvationClose={handleStandingOvationClose}
 					onOpenLeaderboardRegistration={handleOpenLeaderboardRegistration}
 					isLeaderboardRegistered={isLeaderboardRegistered}
-					onCloseFirstRun={handleFirstRunCelebrationClose}
-					onCloseKeyboardMastery={handleKeyboardMasteryCelebrationClose}
+					onFirstRunCelebrationClose={handleFirstRunCelebrationClose}
+					onKeyboardMasteryCelebrationClose={handleKeyboardMasteryCelebrationClose}
+					// Marketplace
+					onMarketplaceImportComplete={handleMarketplaceImportComplete}
+					// Symphony
+					sessions={sessions}
+					setActiveSessionId={setActiveSessionId}
+					onStartContribution={handleStartContribution}
+					encoreFeatures={encoreFeatures}
+					// Director's Notes
+					onDirectorNotesResumeSession={handleDirectorNotesResumeSession}
+					onFileClick={handleFileClick}
+					// Cue
+					shortcuts={shortcuts}
+					// GistPublish
+					gistPublishModalOpen={gistPublishModalOpen}
+					setGistPublishModalOpen={setGistPublishModalOpen}
+					activeFileTab={activeFileTab}
+					saveFileGistUrl={saveFileGistUrl}
+					fileGistUrls={fileGistUrls}
+					// DocumentGraph
+					onOpenFileTab={handleOpenFileTab}
+					mainPanelRef={mainPanelRef}
+					documentGraphShowExternalLinks={documentGraphShowExternalLinks}
+					onExternalLinksChange={settings.setDocumentGraphShowExternalLinks}
+					documentGraphMaxNodes={documentGraphMaxNodes}
+					documentGraphPreviewCharLimit={documentGraphPreviewCharLimit}
+					onPreviewCharLimitChange={settings.setDocumentGraphPreviewCharLimit}
+					documentGraphLayoutType={documentGraphLayoutType}
+					onLayoutTypeChange={settings.setDocumentGraphLayoutType}
+					// DeleteAgent
+					onPerformDeleteSession={performDeleteSession}
+					onCloseDeleteAgentModal={handleCloseDeleteAgentModal}
+					// Settings
+					onCloseSettings={handleCloseSettings}
+					hasNoAgents={hasNoAgents}
+					setFlashNotification={setFlashNotification}
+					// Wizard
+					wizardIsOpen={wizardState.isOpen}
+					onWizardLaunchSession={handleWizardLaunchSession}
+					recordWizardStart={recordWizardStart}
+					recordWizardResume={recordWizardResume}
+					recordWizardAbandon={recordWizardAbandon}
+					recordWizardComplete={recordWizardComplete}
+					onWizardResume={handleWizardResume}
+					onWizardStartFresh={handleWizardStartFresh}
+					onWizardResumeClose={handleWizardResumeClose}
+					// Tour
+					setTourCompleted={setTourCompleted}
+					tabShortcuts={tabShortcuts}
+					recordTourStart={recordTourStart}
+					recordTourComplete={recordTourComplete}
+					recordTourSkip={recordTourSkip}
 				/>
-
-				{/* --- DEVELOPER PLAYGROUND --- */}
-				{playgroundOpen && (
-					<PlaygroundPanel
-						theme={theme}
-						themeMode={theme.mode}
-						onClose={() => setPlaygroundOpen(false)}
-					/>
-				)}
-
-				{/* --- DEBUG WIZARD MODAL --- */}
-				<DebugWizardModal
-					theme={theme}
-					isOpen={debugWizardModalOpen}
-					onClose={() => setDebugWizardModalOpen(false)}
-				/>
-
-				{/* --- MARKETPLACE MODAL (lazy-loaded) --- */}
-				{activeSession && activeSession.autoRunFolderPath && marketplaceModalOpen && (
-					<Suspense fallback={null}>
-						<MarketplaceModal
-							theme={theme}
-							isOpen={marketplaceModalOpen}
-							onClose={() => setMarketplaceModalOpen(false)}
-							autoRunFolderPath={activeSession.autoRunFolderPath}
-							sessionId={activeSession.id}
-							sshRemoteId={
-								activeSession.sshRemoteId ||
-								activeSession.sessionSshRemoteConfig?.remoteId ||
-								undefined
-							}
-							onImportComplete={handleMarketplaceImportComplete}
-						/>
-					</Suspense>
-				)}
-
-				{/* --- SYMPHONY MODAL (lazy-loaded) --- */}
-				{encoreFeatures.symphony && symphonyModalOpen && (
-					<Suspense fallback={null}>
-						<SymphonyModal
-							theme={theme}
-							isOpen={symphonyModalOpen}
-							onClose={() => setSymphonyModalOpen(false)}
-							sessions={sessions}
-							onSelectSession={(sessionId) => {
-								setActiveSessionId(sessionId);
-								setSymphonyModalOpen(false);
-							}}
-							onStartContribution={handleStartContribution}
-						/>
-					</Suspense>
-				)}
-
-				{/* --- DIRECTOR'S NOTES MODAL (lazy-loaded, Encore Feature) --- */}
-				{encoreFeatures.directorNotes && directorNotesOpen && (
-					<Suspense fallback={null}>
-						<DirectorNotesModal
-							theme={theme}
-							onClose={() => setDirectorNotesOpen(false)}
-							onResumeSession={handleDirectorNotesResumeSession}
-							fileTree={activeSession?.fileTree}
-							onFileClick={(path: string) =>
-								handleFileClick({ name: path.split('/').pop() || path, type: 'file' }, path)
-							}
-						/>
-					</Suspense>
-				)}
-
-				{/* --- MAESTRO CUE MODAL (lazy-loaded, Encore Feature) --- */}
-				{encoreFeatures.maestroCue && cueModalOpen && (
-					<Suspense fallback={null}>
-						<CueModal
-							theme={theme}
-							onClose={() => setCueModalOpen(false)}
-							cueShortcutKeys={shortcuts.maestroCue?.keys}
-						/>
-					</Suspense>
-				)}
-
-				{/* --- MAESTRO CUE YAML EDITOR (standalone, lazy-loaded) --- */}
-				{encoreFeatures.maestroCue &&
-					cueYamlEditorOpen &&
-					cueYamlEditorSessionId &&
-					cueYamlEditorProjectRoot && (
-						<Suspense fallback={null}>
-							<CueYamlEditor
-								key={cueYamlEditorSessionId}
-								isOpen={true}
-								onClose={closeCueYamlEditor}
-								projectRoot={cueYamlEditorProjectRoot}
-								sessionId={cueYamlEditorSessionId}
-								theme={theme}
-							/>
-						</Suspense>
-					)}
-
-				{/* --- GIST PUBLISH MODAL --- */}
-				{/* Supports both file preview tabs and tab context gist publishing */}
-				{gistPublishModalOpen && (activeFileTab || tabGistContent) && (
-					<GistPublishModal
-						theme={theme}
-						filename={
-							tabGistContent?.filename ??
-							(activeFileTab ? activeFileTab.name + activeFileTab.extension : 'conversation.md')
-						}
-						content={tabGistContent?.content ?? activeFileTab?.content ?? ''}
-						onClose={() => {
-							setGistPublishModalOpen(false);
-							useTabStore.getState().setTabGistContent(null);
-						}}
-						onSuccess={(gistUrl, isPublic) => {
-							// Save gist URL for the file if it's from file preview tab (not tab context)
-							if (activeFileTab && !tabGistContent) {
-								saveFileGistUrl(activeFileTab.path, {
-									gistUrl,
-									isPublic,
-									publishedAt: Date.now(),
-								});
-							}
-							// Copy the gist URL to clipboard
-							safeClipboardWrite(gistUrl);
-							// Show a toast notification
-							notifyToast({
-								type: 'success',
-								title: 'Gist Published',
-								message: `${isPublic ? 'Public' : 'Secret'} gist created! URL copied to clipboard.`,
-								duration: 5000,
-								actionUrl: gistUrl,
-								actionLabel: 'Open Gist',
-							});
-							// Clear tab gist content after success
-							useTabStore.getState().setTabGistContent(null);
-						}}
-						existingGist={
-							activeFileTab && !tabGistContent ? fileGistUrls[activeFileTab.path] : undefined
-						}
-					/>
-				)}
-
-				{/* --- DOCUMENT GRAPH VIEW (Mind Map, lazy-loaded) --- */}
-				{/* Only render when a focus file is provided - mind map requires a center document */}
-				{graphFocusFilePath && (
-					<Suspense fallback={null}>
-						<DocumentGraphView
-							isOpen={isGraphViewOpen}
-							onClose={() => {
-								useFileExplorerStore.getState().closeGraphView();
-								// Return focus to file preview if it was open
-								requestAnimationFrame(() => {
-									mainPanelRef.current?.focusFilePreview();
-								});
-							}}
-							theme={theme}
-							rootPath={activeSession?.projectRoot || activeSession?.cwd || ''}
-							onDocumentOpen={async (filePath) => {
-								// Open the document in a file tab (migrated from legacy setPreviewFile overlay)
-								const treeRoot = activeSession?.projectRoot || activeSession?.cwd || '';
-								const fullPath = `${treeRoot}/${filePath}`;
-								const filename = filePath.split('/').pop() || filePath;
-								// Note: sshRemoteId is only set after AI agent spawns. For terminal-only SSH sessions,
-								// use sessionSshRemoteConfig.remoteId as fallback (see CLAUDE.md SSH Remote Sessions)
-								const sshRemoteId =
-									activeSession?.sshRemoteId ||
-									activeSession?.sessionSshRemoteConfig?.remoteId ||
-									undefined;
-								try {
-									// Fetch content and stat in parallel for efficiency
-									const [content, stat] = await Promise.all([
-										window.maestro.fs.readFile(fullPath, sshRemoteId),
-										window.maestro.fs.stat(fullPath, sshRemoteId).catch(() => null), // stat is optional
-									]);
-									if (content !== null) {
-										const lastModified = stat?.modifiedAt
-											? new Date(stat.modifiedAt).getTime()
-											: undefined;
-										handleOpenFileTab({
-											path: fullPath,
-											name: filename,
-											content,
-											sshRemoteId,
-											lastModified,
-										});
-									}
-								} catch (error) {
-									console.error('[DocumentGraph] Failed to open file:', error);
-								}
-								useFileExplorerStore.getState().setIsGraphViewOpen(false);
-							}}
-							onExternalLinkOpen={(url) => {
-								// Open external URL in default browser
-								window.maestro.shell.openExternal(url);
-							}}
-							focusFilePath={graphFocusFilePath}
-							defaultShowExternalLinks={documentGraphShowExternalLinks}
-							onExternalLinksChange={settings.setDocumentGraphShowExternalLinks}
-							defaultMaxNodes={documentGraphMaxNodes}
-							defaultPreviewCharLimit={documentGraphPreviewCharLimit}
-							onPreviewCharLimitChange={settings.setDocumentGraphPreviewCharLimit}
-							defaultLayoutType={activeSession?.documentGraphLayout ?? documentGraphLayoutType}
-							onLayoutTypeChange={(type) => {
-								// Persist to the active session for per-agent recall
-								if (activeSession) {
-									setSessions((prev) =>
-										prev.map((s) =>
-											s.id === activeSession.id ? { ...s, documentGraphLayout: type } : s
-										)
-									);
-								}
-								// Also update the global default for new agents
-								settings.setDocumentGraphLayoutType(type);
-							}}
-							// Note: sshRemoteId is only set after AI agent spawns. For terminal-only SSH sessions,
-							// use sessionSshRemoteConfig.remoteId as fallback (see CLAUDE.md SSH Remote Sessions)
-							sshRemoteId={
-								activeSession?.sshRemoteId ||
-								activeSession?.sessionSshRemoteConfig?.remoteId ||
-								undefined
-							}
-						/>
-					</Suspense>
-				)}
-
-				{/* NOTE: All modals are now rendered via the unified <AppModals /> component above */}
-
-				{/* Delete Agent Confirmation Modal */}
-				{deleteAgentModalOpen && deleteAgentSession && (
-					<DeleteAgentConfirmModal
-						theme={theme}
-						agentName={deleteAgentSession.name}
-						workingDirectory={deleteAgentSession.cwd}
-						onConfirm={() => performDeleteSession(deleteAgentSession, false)}
-						onConfirmAndErase={() => performDeleteSession(deleteAgentSession, true)}
-						onClose={handleCloseDeleteAgentModal}
-					/>
-				)}
 
 				{/* --- EMPTY STATE VIEW (when no sessions) --- */}
 				{sessions.length === 0 && !isMobileLandscape ? (
@@ -3374,6 +2906,10 @@ function MaestroConsoleInner() {
 								savedSelectedLevels={logViewerSelectedLevels}
 								onSelectedLevelsChange={setLogViewerSelectedLevels}
 								onShortcutUsed={handleLogViewerShortcutUsed}
+								onSessionClick={(sessionId, tabId) => {
+									handleCloseLogViewer();
+									handleToastSessionClick(sessionId, tabId);
+								}}
 							/>
 						</Suspense>
 					</div>
@@ -3391,6 +2927,7 @@ function MaestroConsoleInner() {
 									messages={groupChatMessages}
 									state={groupChatState}
 									groups={groups}
+									onStopAll={handleGroupChatStopAll}
 									totalCost={(() => {
 										const chat = groupChats.find((c) => c.id === activeGroupChatId);
 										const participantsCost = (chat?.participants || []).reduce(
@@ -3447,6 +2984,13 @@ function MaestroConsoleInner() {
 									}}
 									participantColors={groupChatParticipantColors}
 									messagesRef={groupChatMessagesRef}
+									ghCliAvailable={ghCliAvailable}
+									onPublishMessageGist={(text: string) => {
+										if (!text.trim()) return;
+										const filename = `group_chat_response_${Date.now()}.md`;
+										useTabStore.getState().setTabGistContent({ filename, content: text });
+										setGistPublishModalOpen(true);
+									}}
 								/>
 							</div>
 							<GroupChatRightPanel
@@ -3505,94 +3049,7 @@ function MaestroConsoleInner() {
 					</ErrorBoundary>
 				)}
 
-				{/* Old settings modal removed - using new SettingsModal component below */}
-				{/* NOTE: NewInstanceModal and EditAgentModal are now rendered via AppSessionModals */}
-
-				{/* --- SETTINGS MODAL (Lazy-loaded for performance) --- */}
-				{settingsModalOpen && (
-					<Suspense fallback={null}>
-						<SettingsModal
-							isOpen={settingsModalOpen}
-							onClose={handleCloseSettings}
-							theme={theme}
-							themes={THEMES}
-							initialTab={settingsTab}
-							hasNoAgents={hasNoAgents}
-							onThemeImportError={(msg) => setFlashNotification(msg)}
-							onThemeImportSuccess={(msg) => setFlashNotification(msg)}
-						/>
-					</Suspense>
-				)}
-
-				{/* --- WIZARD RESUME MODAL (asks if user wants to resume incomplete wizard) --- */}
-				{wizardResumeModalOpen && wizardResumeState && (
-					<WizardResumeModal
-						theme={theme}
-						resumeState={wizardResumeState}
-						onResume={handleWizardResume}
-						onStartFresh={handleWizardStartFresh}
-						onClose={handleWizardResumeClose}
-					/>
-				)}
-
-				{/* --- MAESTRO WIZARD (onboarding wizard for new users) --- */}
-				{/* PERF: Only mount wizard component when open to avoid running hooks/effects */}
-				{wizardState.isOpen && (
-					<MaestroWizard
-						theme={theme}
-						onLaunchSession={handleWizardLaunchSession}
-						onWizardStart={recordWizardStart}
-						onWizardResume={recordWizardResume}
-						onWizardAbandon={recordWizardAbandon}
-						onWizardComplete={recordWizardComplete}
-					/>
-				)}
-
-				{/* --- TOUR OVERLAY (onboarding tour for interface guidance) --- */}
-				{/* PERF: Only mount tour component when open to avoid running hooks/effects */}
-				{tourOpen && (
-					<TourOverlay
-						theme={theme}
-						isOpen={tourOpen}
-						fromWizard={tourFromWizard}
-						shortcuts={{ ...shortcuts, ...tabShortcuts }}
-						onClose={() => {
-							setTourOpen(false);
-							setTourCompleted(true);
-						}}
-						onTourStart={recordTourStart}
-						onTourComplete={recordTourComplete}
-						onTourSkip={recordTourSkip}
-					/>
-				)}
-
-				{/* --- FLASH NOTIFICATION (centered, auto-dismiss) --- */}
-				{flashNotification && (
-					<div
-						className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 px-6 py-4 rounded-lg shadow-2xl text-base font-bold animate-in fade-in zoom-in-95 duration-200 z-[9999]"
-						style={{
-							backgroundColor: theme.colors.warning,
-							color: '#000000',
-							textShadow: '0 1px 2px rgba(255, 255, 255, 0.3)',
-						}}
-					>
-						{flashNotification}
-					</div>
-				)}
-
-				{/* --- SUCCESS FLASH NOTIFICATION (centered, auto-dismiss) --- */}
-				{successFlashNotification && (
-					<div
-						className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 px-6 py-4 rounded-lg shadow-2xl text-base font-bold animate-in fade-in zoom-in-95 duration-200 z-[9999]"
-						style={{
-							backgroundColor: theme.colors.accent,
-							color: theme.colors.accentForeground,
-							textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
-						}}
-					>
-						{successFlashNotification}
-					</div>
-				)}
+				{/* NOTE: Settings, Wizard, Tour, and flash notifications are now rendered via AppStandaloneModals */}
 
 				{/* --- TOAST NOTIFICATIONS --- */}
 				<ToastContainer theme={theme} onSessionClick={handleToastSessionClick} />

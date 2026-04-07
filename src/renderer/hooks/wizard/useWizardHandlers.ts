@@ -597,6 +597,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 					projectPath: currentSession.cwd,
 					sessionName: activeTab.name || undefined,
 					usageStats: result.usageStats,
+					contextUsage: result.contextUsage,
 					elapsedTimeMs,
 				});
 

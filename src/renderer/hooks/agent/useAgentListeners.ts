@@ -284,6 +284,7 @@ export interface UseAgentListenersDeps {
 				response?: string;
 				agentSessionId?: string;
 				usageStats?: UsageStats;
+				contextUsage?: number;
 		  }>)
 		| null
 	>;
@@ -757,6 +758,9 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 																logs: removeHiddenProgressLog(tab.logs, tab.id),
 																state: 'idle' as const,
 																thinkingStartTime: undefined,
+																// Clear stale agentSessionId so the next spawn
+																// starts a fresh session instead of trying --resume
+																agentSessionId: null,
 															}
 														: tab;
 												} else {
@@ -766,6 +770,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 																logs: removeHiddenProgressLog(tab.logs, tab.id),
 																state: 'idle' as const,
 																thinkingStartTime: undefined,
+																agentSessionId: null,
 															}
 														: tab;
 												}
@@ -812,6 +817,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 											...tab,
 											logs: removeHiddenProgressLog(tab.logs, tab.id),
 											state: 'idle' as const,
+											agentSessionId: null,
 										};
 									}
 									return tab;
@@ -857,6 +863,9 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 															logs: removeHiddenProgressLog(tab.logs, tab.id),
 															state: 'idle' as const,
 															thinkingStartTime: undefined,
+															// Preserve agentSessionId for session resume —
+															// stale IDs are cleared by onAgentError when
+															// session_not_found is detected
 														}
 													: tab;
 											} else {
@@ -1092,6 +1101,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 									fullResponse: parsed.fullSynopsis,
 									agentSessionId: synopsisData!.agentSessionId,
 									usageStats: result.usageStats,
+									contextUsage: result.contextUsage,
 									sessionId: synopsisData!.sessionId,
 									projectPath: synopsisData!.cwd,
 									sessionName: synopsisData!.tabName,
@@ -1191,7 +1201,11 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 							return { ...s, agentSessionId };
 						}
 
-						if (targetTab.agentSessionId && targetTab.agentSessionId !== agentSessionId) {
+						if (
+							targetTab.agentSessionId &&
+							targetTab.agentSessionId !== agentSessionId &&
+							!targetTab.awaitingSessionId
+						) {
 							return s;
 						}
 
@@ -1465,6 +1479,9 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 												...tab,
 												logs: [...removeHiddenProgressLog(tab.logs, tab.id), errorLogEntry],
 												agentError: isSessionNotFound ? undefined : agentError,
+												// Clear stale agentSessionId on session_not_found so the next
+												// spawn starts a fresh session instead of retrying --resume
+												...(isSessionNotFound ? { agentSessionId: null } : {}),
 											}
 										: tab
 								)

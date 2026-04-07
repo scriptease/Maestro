@@ -27,7 +27,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useBatchStore, selectActiveBatchSessionIds } from '../../stores/batchStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useGroupChatStore } from '../../stores/groupChatStore';
-import { getModalActions } from '../../stores/modalStore';
+import { getModalActions, useModalStore } from '../../stores/modalStore';
 import { SessionContextMenu } from './SessionContextMenu';
 import { HamburgerMenuContent } from './HamburgerMenuContent';
 import { CollapsedSessionPill } from './CollapsedSessionPill';
@@ -45,6 +45,7 @@ interface SessionListProps {
 	// Computed values (not in stores — remain as props)
 	theme: Theme;
 	sortedSessions: Session[];
+	navIndexMap?: Map<string, number>;
 	isLiveMode: boolean;
 	webInterfaceUrl: string | null;
 	showSessionJumpNumbers?: boolean;
@@ -87,6 +88,7 @@ interface SessionListProps {
 
 	// Wizard props
 	openWizard?: () => void;
+	openFeedback?: () => void;
 
 	// Tour props
 	startTour?: () => void;
@@ -208,12 +210,12 @@ function SessionListInner(props: SessionListProps) {
 		setRenameInstanceModalOpen,
 		setRenameInstanceValue,
 		setRenameInstanceSessionId,
-		setDuplicatingSessionId,
 	} = getModalActions();
 
 	const {
 		theme,
 		sortedSessions,
+		navIndexMap,
 		isLiveMode,
 		webInterfaceUrl,
 		toggleGlobalLive,
@@ -264,7 +266,7 @@ function SessionListInner(props: SessionListProps) {
 	const { onResizeStart: onSidebarResizeStart, transitionClass: sidebarTransitionClass } =
 		useResizablePanel({
 			width: leftSidebarWidthState,
-			minWidth: 256,
+			minWidth: 280,
 			maxWidth: 600,
 			settingsKey: 'leftSidebarWidth',
 			setWidth: setLeftSidebarWidthState,
@@ -275,6 +277,10 @@ function SessionListInner(props: SessionListProps) {
 	const setSessionFilterOpen = useUIStore((s) => s.setSessionFilterOpen);
 	const showUnreadAgentsOnly = useUIStore((s) => s.showUnreadAgentsOnly);
 	const toggleShowUnreadAgentsOnly = useUIStore((s) => s.toggleShowUnreadAgentsOnly);
+	const hasUnreadAgents = useMemo(
+		() => sessions.some((s) => s.aiTabs?.some((tab) => tab.hasUnread) || s.state === 'busy'),
+		[sessions]
+	);
 	const [menuOpen, setMenuOpen] = useState(false);
 
 	// Live overlay state (extracted hook)
@@ -292,6 +298,7 @@ function SessionListInner(props: SessionListProps) {
 		copyFlash,
 		setCopyFlash,
 		handleTunnelToggle,
+		restartTunnel,
 	} = useLiveOverlay(isLiveMode);
 
 	// Context menu state
@@ -474,6 +481,20 @@ function SessionListInner(props: SessionListProps) {
 		return map;
 	}, [sessions, toggleBookmark]);
 
+	// Helper: compute navIndexMap key for a session based on render context
+	const getNavKey = (variant: string, session: Session, groupId?: string): string => {
+		if (variant === 'bookmark') return `bookmark:${session.id}`;
+		if (variant === 'group' && groupId) return `group:${groupId}:${session.id}`;
+		return `ungrouped:${session.id}`;
+	};
+
+	// Helper: compute navIndexMap key for a worktree child based on render context
+	const getChildNavKey = (variant: string, childId: string, groupId?: string): string => {
+		if (variant === 'bookmark') return `bookmark:wt:${childId}`;
+		if (variant === 'group' && groupId) return `group:${groupId}:wt:${childId}`;
+		return `ungrouped:wt:${childId}`;
+	};
+
 	// Helper component: Renders a session item with its worktree children (if any)
 	const renderSessionWithWorktrees = (
 		session: Session,
@@ -498,7 +519,9 @@ function SessionListInner(props: SessionListProps) {
 		const hasWorktrees = worktreeChildren.length > 0;
 		// Force expand worktrees when filtering by unread
 		const worktreesExpanded = showUnreadAgentsOnly ? true : (session.worktreesExpanded ?? true);
-		const globalIdx = sortedSessionIndexById.get(session.id) ?? -1;
+		// Use navIndexMap for keyboard selection (context-aware: distinguishes bookmark vs group instances)
+		const navKey = getNavKey(variant, session, options.groupId);
+		const globalIdx = navIndexMap?.get(navKey) ?? sortedSessionIndexById.get(session.id) ?? -1;
 		const isKeyboardSelected = activeFocus === 'sidebar' && globalIdx === selectedSidebarIndex;
 
 		// In flat/ungrouped view, wrap sessions with worktrees in a left-bordered container
@@ -575,7 +598,9 @@ function SessionListInner(props: SessionListProps) {
 								? worktreeChildren
 								: sortedWorktreeChildrenByParentId.get(session.id) || []
 							).map((child) => {
-								const childGlobalIdx = sortedSessionIndexById.get(child.id) ?? -1;
+								const childNavKey = getChildNavKey(variant, child.id, options.groupId);
+								const childGlobalIdx =
+									navIndexMap?.get(childNavKey) ?? sortedSessionIndexById.get(child.id) ?? -1;
 								const isChildKeyboardSelected =
 									activeFocus === 'sidebar' && childGlobalIdx === selectedSidebarIndex;
 								return (
@@ -663,13 +688,16 @@ function SessionListInner(props: SessionListProps) {
 		<div
 			ref={sidebarContainerRef}
 			tabIndex={0}
-			className={`border-r flex flex-col shrink-0 ${sidebarTransitionClass} outline-none relative z-20 ${activeFocus === 'sidebar' && !activeGroupChatId ? 'ring-1 ring-inset' : ''}`}
+			className={`border-r flex flex-col shrink-0 ${sidebarTransitionClass} outline-none relative z-20`}
 			style={
 				{
 					width: leftSidebarOpen ? `${leftSidebarWidthState}px` : '64px',
 					backgroundColor: theme.colors.bgSidebar,
 					borderColor: theme.colors.border,
-					'--tw-ring-color': theme.colors.accent,
+					boxShadow:
+						activeFocus === 'sidebar' && !activeGroupChatId
+							? `inset -1px 0 0 ${theme.colors.accent}, inset 1px 0 0 ${theme.colors.accent}, inset 0 -1px 0 ${theme.colors.accent}`
+							: undefined,
 				} as React.CSSProperties
 			}
 			onClick={() => setActiveFocus('sidebar')}
@@ -780,40 +808,43 @@ function SessionListInner(props: SessionListProps) {
 										toggleGlobalLive={toggleGlobalLive}
 										setLiveOverlayOpen={setLiveOverlayOpen}
 										restartWebServer={restartWebServer}
+										restartTunnel={restartTunnel}
 									/>
 								)}
 							</div>
 						</div>
-						{/* Hamburger Menu */}
-						<div className="relative z-10" ref={menuRef} data-tour="hamburger-menu">
-							<button
-								onClick={() => setMenuOpen(!menuOpen)}
-								className="p-2 rounded hover:bg-white/10 transition-colors"
-								style={{ color: theme.colors.textDim }}
-								title="Menu"
-							>
-								<Menu className="w-4 h-4" />
-							</button>
-							{/* Menu Overlay */}
-							{menuOpen && (
-								<div
-									className="absolute top-full left-0 mt-2 w-72 rounded-lg shadow-2xl z-50 overflow-y-auto scrollbar-thin"
-									data-tour="hamburger-menu-contents"
-									style={{
-										backgroundColor: theme.colors.bgSidebar,
-										border: `1px solid ${theme.colors.border}`,
-										maxHeight: 'calc(100vh - 120px)',
-									}}
+						<div className="flex items-center">
+							{/* Hamburger Menu */}
+							<div className="relative z-10" ref={menuRef} data-tour="hamburger-menu">
+								<button
+									onClick={() => setMenuOpen(!menuOpen)}
+									className="p-2 rounded hover:bg-white/10 transition-colors"
+									style={{ color: theme.colors.textDim }}
+									title="Menu"
 								>
-									<HamburgerMenuContent
-										theme={theme}
-										onNewAgentSession={onNewAgentSession}
-										openWizard={openWizard}
-										startTour={startTour}
-										setMenuOpen={setMenuOpen}
-									/>
-								</div>
-							)}
+									<Menu className="w-4 h-4" />
+								</button>
+								{/* Menu Overlay */}
+								{menuOpen && (
+									<div
+										className="absolute top-full left-0 mt-2 w-72 rounded-lg shadow-2xl z-50 overflow-y-auto scrollbar-thin"
+										data-tour="hamburger-menu-contents"
+										style={{
+											backgroundColor: theme.colors.bgSidebar,
+											border: `1px solid ${theme.colors.border}`,
+											maxHeight: 'calc(100vh - 120px)',
+										}}
+									>
+										<HamburgerMenuContent
+											theme={theme}
+											onNewAgentSession={onNewAgentSession}
+											openWizard={openWizard}
+											startTour={startTour}
+											setMenuOpen={setMenuOpen}
+										/>
+									</div>
+								)}
+							</div>
 						</div>
 					</>
 				) : (
@@ -854,7 +885,7 @@ function SessionListInner(props: SessionListProps) {
 			{/* SIDEBAR CONTENT: EXPANDED */}
 			{leftSidebarOpen ? (
 				<div
-					className="flex-1 overflow-y-auto py-2 select-none scrollbar-thin flex flex-col"
+					className="flex-1 min-h-0 flex flex-col overflow-y-auto py-2 select-none scrollbar-thin"
 					data-tour="session-list"
 				>
 					{/* Session Filter */}
@@ -956,6 +987,7 @@ function SessionListInner(props: SessionListProps) {
 						const groupSessions = sortedGroupSessionsById.get(group.id) || [];
 						// Hide empty groups when filtering by unread agents
 						if (showUnreadAgentsOnly && groupSessions.length === 0) return null;
+						const groupCollapsedPills = groupSessions.filter((session) => !session.parentSessionId);
 						return (
 							<div key={group.id} className="mb-1">
 								<div
@@ -1056,31 +1088,29 @@ function SessionListInner(props: SessionListProps) {
 											})
 										)}
 									</div>
-								) : (
+								) : groupCollapsedPills.length > 0 ? (
 									/* Collapsed Group Palette - uses subdivided pills for worktrees */
 									<div
 										className="ml-8 mr-3 mt-1 mb-2 flex gap-1 h-1.5 cursor-pointer"
 										onClick={() => toggleGroup(group.id)}
 									>
-										{groupSessions
-											.filter((s) => !s.parentSessionId)
-											.map((s) => (
-												<CollapsedSessionPill
-													key={`group-collapsed-${group.id}-${s.id}`}
-													session={s}
-													keyPrefix={`group-collapsed-${group.id}`}
-													theme={theme}
-													activeBatchSessionIds={activeBatchSessionIds}
-													leftSidebarWidth={leftSidebarWidthState}
-													contextWarningYellowThreshold={contextWarningYellowThreshold}
-													contextWarningRedThreshold={contextWarningRedThreshold}
-													getFileCount={getFileCount}
-													getWorktreeChildren={getWorktreeChildren}
-													setActiveSessionId={setActiveSessionId}
-												/>
-											))}
+										{groupCollapsedPills.map((s) => (
+											<CollapsedSessionPill
+												key={`group-collapsed-${group.id}-${s.id}`}
+												session={s}
+												keyPrefix={`group-collapsed-${group.id}`}
+												theme={theme}
+												activeBatchSessionIds={activeBatchSessionIds}
+												leftSidebarWidth={leftSidebarWidthState}
+												contextWarningYellowThreshold={contextWarningYellowThreshold}
+												contextWarningRedThreshold={contextWarningRedThreshold}
+												getFileCount={getFileCount}
+												getWorktreeChildren={getWorktreeChildren}
+												setActiveSessionId={setActiveSessionId}
+											/>
+										))}
 									</div>
-								)}
+								) : null}
 							</div>
 						);
 					})}
@@ -1270,8 +1300,9 @@ function SessionListInner(props: SessionListProps) {
 				hasNoSessions={sessions.length === 0}
 				shortcuts={shortcuts}
 				showUnreadAgentsOnly={showUnreadAgentsOnly}
+				hasUnreadAgents={hasUnreadAgents}
 				addNewSession={addNewSession}
-				openWizard={openWizard}
+				openFeedback={props.openFeedback}
 				setLeftSidebarOpen={setLeftSidebarOpen}
 				toggleShowUnreadAgentsOnly={toggleShowUnreadAgentsOnly}
 			/>
@@ -1292,8 +1323,9 @@ function SessionListInner(props: SessionListProps) {
 					}}
 					onEdit={() => onEditAgent(contextMenuSession)}
 					onDuplicate={() => {
-						onNewAgentSession();
-						setDuplicatingSessionId(contextMenuSession.id);
+						useModalStore
+							.getState()
+							.openModal('newInstance', { duplicatingSessionId: contextMenuSession.id });
 						setContextMenu(null);
 					}}
 					onToggleBookmark={() => toggleBookmark(contextMenuSession.id)}

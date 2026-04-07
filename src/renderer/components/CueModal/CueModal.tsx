@@ -24,13 +24,15 @@ import type { CueSessionStatus } from '../../hooks/useCue';
 import { CueHelpContent } from '../CueHelpModal';
 import { CuePipelineEditor } from '../CuePipelineEditor';
 import { useSessionStore } from '../../stores/sessionStore';
-import { getModalActions } from '../../stores/modalStore';
+import { getModalActions, useModalStore, selectModalData } from '../../stores/modalStore';
 import { CUE_COLOR, type CueGraphSession } from '../../../shared/cue-pipeline-types';
 import { graphSessionsToPipelines } from '../CuePipelineEditor/utils/yamlToPipeline';
 import { SessionsTable } from './SessionsTable';
 import { ActiveRunsList } from './ActiveRunsList';
 import { ActivityLog } from './ActivityLog';
 import { buildSubscriptionPipelineMap } from './cueModalUtils';
+import { notifyToast } from '../../stores/notificationStore';
+import { captureException } from '../../utils/sentry';
 
 type CueModalTab = 'dashboard' | 'pipeline';
 
@@ -99,6 +101,17 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 			} else {
 				await enable();
 			}
+		} catch (err) {
+			notifyToast({
+				type: 'error',
+				title: 'Cue',
+				message:
+					err instanceof Error
+						? err.message
+						: isEnabled
+							? 'Failed to disable Cue engine'
+							: 'Failed to enable Cue engine',
+			});
 		} finally {
 			setToggling(false);
 		}
@@ -118,10 +131,11 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 					return;
 				}
 				if (pipelineDirtyRef.current) {
-					const confirmed = window.confirm(
-						'You have unsaved changes in the pipeline editor. Discard and close?'
+					getModalActions().showConfirmation(
+						'You have unsaved changes in the pipeline editor. Discard and close?',
+						() => onCloseRef.current()
 					);
-					if (!confirmed) return;
+					return;
 				}
 				onCloseRef.current();
 			},
@@ -135,8 +149,9 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 		};
 	}, [registerLayer, unregisterLayer]);
 
-	// Tab state
-	const [activeTab, setActiveTab] = useState<CueModalTab>('pipeline');
+	// Read initial tab from modal data (e.g., when navigating from YAML editor)
+	const cueModalData = useModalStore(selectModalData('cueModal'));
+	const [activeTab, setActiveTab] = useState<CueModalTab>(cueModalData?.initialTab ?? 'pipeline');
 
 	// Graph data fetch error state
 	const [graphError, setGraphError] = useState<string | null>(null);
@@ -191,13 +206,37 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 	}, []);
 
 	const handleRemoveCue = useCallback(
-		async (session: CueSessionStatus) => {
-			const confirmed = window.confirm(
-				`Remove Cue configuration for "${session.sessionName}"?\n\nThis will delete the cue.yaml file from this project. This cannot be undone.`
+		(session: CueSessionStatus) => {
+			getModalActions().showConfirmation(
+				`Remove Cue configuration for "${session.sessionName}"?\n\nThis will delete the cue.yaml file from this project. This cannot be undone.`,
+				async () => {
+					try {
+						await window.maestro.cue.deleteYaml(session.projectRoot);
+					} catch (err) {
+						captureException(err, {
+							extra: { context: 'handleRemoveCue', projectRoot: session.projectRoot },
+						});
+						notifyToast({
+							title: 'Failed to remove Cue configuration',
+							message: 'Could not delete cue.yaml. Check file permissions.',
+							type: 'error',
+						});
+						return;
+					}
+					try {
+						await refresh();
+					} catch (err) {
+						captureException(err, {
+							extra: { context: 'handleRemoveCue', projectRoot: session.projectRoot },
+						});
+						notifyToast({
+							title: 'Failed to refresh project',
+							message: 'Cue configuration was removed but the view could not be refreshed.',
+							type: 'error',
+						});
+					}
+				}
 			);
-			if (!confirmed) return;
-			await window.maestro.cue.deleteYaml(session.projectRoot);
-			await refresh();
 		},
 		[refresh]
 	);
@@ -205,10 +244,11 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 	// Close with unsaved changes confirmation
 	const handleCloseWithConfirm = useCallback(() => {
 		if (pipelineDirtyRef.current) {
-			const confirmed = window.confirm(
-				'You have unsaved changes in the pipeline editor. Discard and close?'
+			getModalActions().showConfirmation(
+				'You have unsaved changes in the pipeline editor. Discard and close?',
+				() => onClose()
 			);
-			if (!confirmed) return;
+			return;
 		}
 		onClose();
 	}, [onClose]);
@@ -380,9 +420,9 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 											<div
 												className="flex items-center gap-2 px-3 py-2 rounded-md text-xs"
 												style={{
-													backgroundColor: '#ef444415',
-													border: '1px solid #ef444440',
-													color: '#ef4444',
+													backgroundColor: `${theme.colors.error}15`,
+													border: `1px solid ${theme.colors.error}40`,
+													color: theme.colors.error,
 												}}
 											>
 												<AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />

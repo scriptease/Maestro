@@ -5,11 +5,14 @@ import {
 	Trash2,
 	Copy,
 	Check,
+	ArrowDown,
 	Eye,
 	FileText,
 	RotateCcw,
 	AlertCircle,
 	Save,
+	Share2,
+	Zap,
 } from 'lucide-react';
 import type { Session, Theme, LogEntry, FocusArea, AgentError } from '../types';
 import type { FileNode } from '../types/fileTree';
@@ -56,28 +59,41 @@ const summarizeTodos = (v: unknown): string | null => {
 	return `${label} (${completed}/${todos.length})`;
 };
 
-/** Max length for tool detail summary */
-const TOOL_DETAIL_MAX = 120;
+/** Structured result from summarizeToolInput for richer rendering */
+interface ToolSummary {
+	/** Human-readable description (e.g. Bash description field) */
+	description?: string;
+	/** Primary content — command text or generic summary */
+	detail: string;
+}
 
 /**
  * Summarize tool input generically — no per-tool extractors needed.
- * Walks all values in the input object and picks the most informative string-like
- * value to display. Special-cases arrays (todos, commands) and falls back to
- * joining short key=value pairs.
+ * Returns structured data so the renderer can display description and command
+ * with proper visual hierarchy.
+ *
+ * Tool logs are only emitted when thinking is enabled, so we show the full
+ * command text without truncation to give complete visibility into agent actions.
  */
-const summarizeToolInput = (input: Record<string, unknown>): string | null => {
+const summarizeToolInput = (input: Record<string, unknown>): ToolSummary | null => {
 	// Special case: TodoWrite todos array
 	const todosResult = summarizeTodos(input.todos);
-	if (todosResult) return todosResult;
+	if (todosResult) return { detail: todosResult };
 
-	// Collect displayable string values (skip huge blobs)
+	// Extract description field separately for structured display
+	const description =
+		typeof input.description === 'string' && input.description ? input.description : undefined;
+
+	// Collect displayable values (skip huge blobs)
 	const parts: string[] = [];
 	for (const [key, val] of Object.entries(input)) {
 		if (val === undefined || val === null || val === '') continue;
+		// Skip description — rendered separately
+		if (key === 'description') continue;
 		// Command arrays (Codex)
 		const cmd = safeCommand(val);
 		if (cmd) {
-			parts.push(cmd.length > TOOL_DETAIL_MAX ? cmd.substring(0, TOOL_DETAIL_MAX) + '\u2026' : cmd);
+			parts.push(cmd);
 			continue;
 		}
 		// Arrays: show count
@@ -93,9 +109,9 @@ const summarizeToolInput = (input: Record<string, unknown>): string | null => {
 			continue;
 		}
 	}
-	if (parts.length === 0) return null;
-	const joined = parts.join('  ');
-	return joined.length > TOOL_DETAIL_MAX ? joined.substring(0, TOOL_DETAIL_MAX) + '\u2026' : joined;
+	const detail = parts.length > 0 ? parts.join('  ') : undefined;
+	if (!detail && !description) return null;
+	return { description, detail: detail ?? '' };
 };
 
 const isHiddenProgressEntry = (log: LogEntry): boolean =>
@@ -160,6 +176,9 @@ interface LogItemProps {
 	onShowErrorDetails?: (error: AgentError) => void;
 	// Save to file callback (AI mode only, non-user messages)
 	onSaveToFile?: (text: string) => void;
+	// Publish to GitHub Gist (AI mode only, non-user messages, requires gh CLI)
+	ghCliAvailable?: boolean;
+	onPublishGist?: (text: string) => void;
 	// Message alignment
 	userMessageAlignment: 'left' | 'right';
 }
@@ -200,6 +219,8 @@ const LogItemComponent = memo(
 		onFileClick,
 		onShowErrorDetails,
 		onSaveToFile,
+		ghCliAvailable,
+		onPublishGist,
 		userMessageAlignment,
 	}: LogItemProps) => {
 		// Ref for the log item container - used for scroll-into-view on expand
@@ -625,7 +646,7 @@ const LogItemComponent = memo(
 							const toolInput = log.metadata?.toolState?.input as
 								| Record<string, unknown>
 								| undefined;
-							const toolDetail = toolInput ? summarizeToolInput(toolInput) : null;
+							const toolSummary = toolInput ? summarizeToolInput(toolInput) : null;
 
 							return (
 								<div
@@ -663,15 +684,26 @@ const LogItemComponent = memo(
 												!
 											</span>
 										)}
-										{toolDetail && (
+										{toolSummary?.description && (
 											<span
-												className="opacity-70 break-words whitespace-pre-wrap"
+												className="opacity-50 break-words"
 												style={{ color: theme.colors.textMain }}
 											>
-												{toolDetail}
+												{toolSummary.description}
 											</span>
 										)}
 									</div>
+									{toolSummary?.detail && (
+										<div
+											className="mt-1 ml-1 pl-2 opacity-70 break-words whitespace-pre-wrap border-l"
+											style={{
+												color: theme.colors.textMain,
+												borderColor: `${theme.colors.accent}40`,
+											}}
+										>
+											{toolSummary.detail}
+										</div>
+									)}
 								</div>
 							);
 						})()}
@@ -936,6 +968,17 @@ const LogItemComponent = memo(
 								<Save className="w-3.5 h-3.5" />
 							</button>
 						)}
+						{/* Publish to GitHub Gist - only for AI responses when gh CLI available */}
+						{log.source !== 'user' && isAIMode && ghCliAvailable && onPublishGist && (
+							<button
+								onClick={() => onPublishGist(log.text)}
+								className="p-1.5 rounded opacity-0 group-hover:opacity-50 hover:!opacity-100"
+								style={{ color: theme.colors.textDim }}
+								title="Publish as GitHub Gist"
+							>
+								<Share2 className="w-3.5 h-3.5" />
+							</button>
+						)}
 						{/* Delete button for user messages (both AI and terminal modes) */}
 						{log.source === 'user' &&
 							onDeleteLog &&
@@ -988,6 +1031,18 @@ const LogItemComponent = memo(
 									<Trash2 className="w-3.5 h-3.5" />
 								</button>
 							))}
+						{/* Force parallel indicator for messages sent via Cmd+Shift+Enter */}
+						{isUserMessage && isAIMode && log.forceParallel && (
+							<span
+								title="Sent via forced parallel execution (bypassed queue)"
+								className="flex items-center"
+							>
+								<Zap
+									className="w-3.5 h-3.5"
+									style={{ color: theme.colors.warning, opacity: 0.7 }}
+								/>
+							</span>
+						)}
 						{/* Delivery checkmark for user messages in AI mode - positioned at the end */}
 						{isUserMessage && isAIMode && log.delivered && (
 							<span title="Message delivered" className="flex items-center">
@@ -1012,6 +1067,7 @@ const LogItemComponent = memo(
 			prevProps.log.readOnly === nextProps.log.readOnly &&
 			prevProps.log.metadata?.hiddenProgress === nextProps.log.metadata?.hiddenProgress &&
 			prevProps.log.metadata?.toolState?.status === nextProps.log.metadata?.toolState?.status &&
+			prevProps.log.forceParallel === nextProps.log.forceParallel &&
 			prevProps.isExpanded === nextProps.isExpanded &&
 			prevProps.localFilterQuery === nextProps.localFilterQuery &&
 			prevProps.filterMode.mode === nextProps.filterMode.mode &&
@@ -1023,7 +1079,8 @@ const LogItemComponent = memo(
 			prevProps.maxOutputLines === nextProps.maxOutputLines &&
 			prevProps.markdownEditMode === nextProps.markdownEditMode &&
 			prevProps.fontFamily === nextProps.fontFamily &&
-			prevProps.userMessageAlignment === nextProps.userMessageAlignment
+			prevProps.userMessageAlignment === nextProps.userMessageAlignment &&
+			prevProps.ghCliAvailable === nextProps.ghCliAvailable
 		);
 	}
 );
@@ -1063,8 +1120,9 @@ interface TerminalOutputProps {
 	onFileClick?: (path: string) => void; // Callback when a file link is clicked
 	onShowErrorDetails?: (error: AgentError) => void; // Callback to show the error modal (for error log entries)
 	onFileSaved?: () => void; // Callback when markdown content is saved to file (e.g., to refresh file list)
-	autoScrollAiMode?: boolean; // Whether to auto-scroll in AI mode (like terminal mode)
 	userMessageAlignment?: 'left' | 'right'; // User message bubble alignment (default: right)
+	ghCliAvailable?: boolean; // Whether gh CLI is available for gist publishing
+	onPublishMessageGist?: (text: string) => void; // Callback to publish a single message as a gist
 	onOpenInTab?: (file: {
 		path: string;
 		name: string;
@@ -1107,9 +1165,10 @@ export const TerminalOutput = memo(
 			onFileClick,
 			onShowErrorDetails,
 			onFileSaved,
-			autoScrollAiMode,
 			userMessageAlignment = 'right',
 			onOpenInTab,
+			ghCliAvailable,
+			onPublishMessageGist,
 		} = props;
 
 		// Use the forwarded ref if provided, otherwise create a local one
@@ -1160,6 +1219,8 @@ export const TerminalOutput = memo(
 
 		// New message indicator state
 		const [isAtBottom, setIsAtBottom] = useState(true);
+		const [hasNewMessages, setHasNewMessages] = useState(false);
+		const [newMessageCount, setNewMessageCount] = useState(0);
 		const lastLogCountRef = useRef(0);
 		// Track previous isAtBottom to detect changes for callback
 		const prevIsAtBottomRef = useRef(true);
@@ -1421,13 +1482,15 @@ export const TerminalOutput = memo(
 
 			// Clear new message indicator when user scrolls to bottom
 			if (atBottom) {
+				setHasNewMessages(false);
+				setNewMessageCount(0);
 				// Resume auto-scroll when user scrolls back to bottom
 				setAutoScrollPaused(false);
 				// Save read state for current tab
 				if (activeTabId) {
 					tabReadStateRef.current.set(activeTabId, filteredLogs.length);
 				}
-			} else if (autoScrollAiMode) {
+			} else {
 				if (isProgrammaticScrollRef.current) {
 					// This scroll event was triggered by our own scrollTo() call —
 					// consume the guard flag here inside the throttled handler to avoid
@@ -1450,13 +1513,7 @@ export const TerminalOutput = memo(
 					scrollSaveTimerRef.current = null;
 				}, 200);
 			}
-		}, [
-			activeTabId,
-			filteredLogs.length,
-			onScrollPositionChange,
-			onAtBottomChange,
-			autoScrollAiMode,
-		]);
+		}, [activeTabId, filteredLogs.length, onScrollPositionChange, onAtBottomChange]);
 
 		// PERF: Throttle at 16ms (60fps) instead of 4ms to reduce state updates during scroll
 		const handleScroll = useThrottledCallback(handleScrollInner, 16);
@@ -1464,6 +1521,9 @@ export const TerminalOutput = memo(
 		// Restore read state when switching tabs
 		useEffect(() => {
 			if (!activeTabId) {
+				// Terminal mode - just reset
+				setHasNewMessages(false);
+				setNewMessageCount(0);
 				setIsAtBottom(true);
 				lastLogCountRef.current = filteredLogs.length;
 				return;
@@ -1477,13 +1537,19 @@ export const TerminalOutput = memo(
 				// Tab was visited before - check for new messages since last read
 				const unreadCount = currentCount - savedReadCount;
 				if (unreadCount > 0) {
+					setHasNewMessages(true);
+					setNewMessageCount(unreadCount);
 					setIsAtBottom(false);
 				} else {
+					setHasNewMessages(false);
+					setNewMessageCount(0);
 					setIsAtBottom(true);
 				}
 			} else {
 				// First visit to this tab - mark all as read
 				tabReadStateRef.current.set(activeTabId, currentCount);
+				setHasNewMessages(false);
+				setNewMessageCount(0);
 				setIsAtBottom(true);
 			}
 
@@ -1507,6 +1573,9 @@ export const TerminalOutput = memo(
 				}
 
 				if (!actuallyAtBottom) {
+					const newCount = currentCount - lastLogCountRef.current;
+					setHasNewMessages(true);
+					setNewMessageCount((prev) => prev + newCount);
 					// Update isAtBottom state to match reality
 					setIsAtBottom(false);
 				} else {
@@ -1519,13 +1588,6 @@ export const TerminalOutput = memo(
 			lastLogCountRef.current = currentCount;
 		}, [filteredLogs.length, isAtBottom, activeTabId]);
 
-		// Reset auto-scroll pause when user explicitly re-enables auto-scroll (button or shortcut)
-		useEffect(() => {
-			if (autoScrollAiMode) {
-				setAutoScrollPaused(false);
-			}
-		}, [autoScrollAiMode]);
-
 		// Auto-scroll to bottom when DOM content changes in the scroll container.
 		// Uses MutationObserver to detect ALL content mutations — new nodes (log entries),
 		// text changes (thinking stream growth), and attribute changes (tool status updates).
@@ -1535,8 +1597,7 @@ export const TerminalOutput = memo(
 			const container = scrollContainerRef.current;
 			if (!container) return;
 
-			const shouldAutoScroll = () =>
-				(autoScrollAiMode && !autoScrollPaused) || isAtBottomRef.current;
+			const shouldAutoScroll = () => !autoScrollPaused || isAtBottomRef.current;
 
 			const scrollToBottom = () => {
 				if (!scrollContainerRef.current) return;
@@ -1580,7 +1641,7 @@ export const TerminalOutput = memo(
 			});
 
 			return () => observer.disconnect();
-		}, [autoScrollAiMode, autoScrollPaused]);
+		}, [autoScrollPaused]);
 
 		// Restore scroll position when component mounts or initialScrollTop changes
 		// Uses requestAnimationFrame to ensure DOM is ready
@@ -1637,6 +1698,8 @@ export const TerminalOutput = memo(
 			() => generateTerminalProseStyles(theme, '.terminal-output'),
 			[theme]
 		);
+
+		const isAutoScrollActive = !autoScrollPaused;
 
 		return (
 			<div
@@ -1736,10 +1799,7 @@ export const TerminalOutput = memo(
 					ref={scrollContainerRef}
 					className="flex-1 overflow-y-auto scrollbar-thin"
 					style={{
-						overflowAnchor:
-							session.inputMode === 'ai' && (!autoScrollAiMode || autoScrollPaused)
-								? 'none'
-								: undefined,
+						overflowAnchor: session.inputMode === 'ai' && autoScrollPaused ? 'none' : undefined,
 					}}
 					onScroll={handleScroll}
 				>
@@ -1783,6 +1843,8 @@ export const TerminalOutput = memo(
 							onFileClick={onFileClick}
 							onShowErrorDetails={onShowErrorDetails}
 							onSaveToFile={handleSaveToFile}
+							ghCliAvailable={ghCliAvailable}
+							onPublishGist={onPublishMessageGist}
 							userMessageAlignment={userMessageAlignment}
 						/>
 					))}
@@ -1800,6 +1862,54 @@ export const TerminalOutput = memo(
 					{/* End ref for scrolling - always rendered so Cmd+Shift+J works even when busy */}
 					<div ref={logsEndRef} />
 				</div>
+
+				{/* Scroll-to-bottom / auto-scroll resume (AI mode only) */}
+				{session.inputMode === 'ai' && filteredLogs.length > 0 && !isAtBottom && (
+					<button
+						onClick={() => {
+							// Jump to bottom and resume auto-scroll
+							setAutoScrollPaused(false);
+							setHasNewMessages(false);
+							setNewMessageCount(0);
+							if (scrollContainerRef.current) {
+								scrollContainerRef.current.scrollTo({
+									top: scrollContainerRef.current.scrollHeight,
+									behavior: 'smooth',
+								});
+							}
+						}}
+						className={`absolute bottom-4 ${userMessageAlignment === 'right' ? 'left-6' : 'right-6'} flex items-center gap-2 px-3 py-2 rounded-full shadow-lg transition-all hover:scale-105 z-20 outline-none`}
+						style={{
+							backgroundColor: isAutoScrollActive
+								? theme.colors.accent
+								: hasNewMessages
+									? theme.colors.accent
+									: theme.colors.bgSidebar,
+							color: isAutoScrollActive
+								? theme.colors.accentForeground
+								: hasNewMessages
+									? theme.colors.accentForeground
+									: theme.colors.textDim,
+							border: `1px solid ${isAutoScrollActive || hasNewMessages ? 'transparent' : theme.colors.border}`,
+							animation:
+								hasNewMessages && !isAutoScrollActive
+									? 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+									: undefined,
+						}}
+						title={
+							hasNewMessages
+								? 'New messages (click to pin to bottom)'
+								: 'Scroll to bottom (click to pin)'
+						}
+					>
+						<ArrowDown className="w-4 h-4" />
+						{newMessageCount > 0 && !isAutoScrollActive && (
+							<span className="text-xs font-bold">
+								{newMessageCount > 99 ? '99+' : newMessageCount}
+							</span>
+						)}
+					</button>
+				)}
 
 				{/* Copied to Clipboard Notification */}
 				{showCopiedNotification && (

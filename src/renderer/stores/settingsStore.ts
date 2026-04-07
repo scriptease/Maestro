@@ -15,6 +15,7 @@
  */
 
 import { create } from 'zustand';
+import { isWindowsPlatform } from '../utils/platformUtils';
 import type {
 	LLMProvider,
 	ThemeId,
@@ -34,6 +35,8 @@ import type {
 import { DEFAULT_CUSTOM_THEME_COLORS } from '../constants/themes';
 import { DEFAULT_SHORTCUTS, TAB_SHORTCUTS, FIXED_SHORTCUTS } from '../constants/shortcuts';
 import { getLevelIndex } from '../constants/keyboardMastery';
+import type { FileExplorerIconTheme } from '../utils/fileExplorerIcons/shared';
+import { isFileExplorerIconTheme } from '../utils/fileExplorerIcons/shared';
 import { commitCommandPrompt } from '../../prompts';
 
 // ============================================================================
@@ -193,7 +196,8 @@ export interface SettingsStoreState {
 	customThemeColors: ThemeColors;
 	customThemeBaseId: ThemeId;
 	enterToSendAI: boolean;
-	enterToSendTerminal: boolean;
+	forcedParallelExecution: boolean;
+	forcedParallelAcknowledged: boolean;
 	defaultSaveToHistory: boolean;
 	defaultShowThinking: ThinkingMode;
 	leftSidebarWidth: number;
@@ -201,6 +205,8 @@ export interface SettingsStoreState {
 	markdownEditMode: boolean;
 	chatRawTextMode: boolean;
 	showHiddenFiles: boolean;
+	fileExplorerIconTheme: FileExplorerIconTheme;
+	terminalWidth: number;
 	logLevel: string;
 	maxLogBuffer: number;
 	maxOutputLines: number;
@@ -229,12 +235,14 @@ export interface SettingsStoreState {
 	contextManagementSettings: ContextManagementSettings;
 	keyboardMasteryStats: KeyboardMasteryStats;
 	colorBlindMode: boolean;
+	showStarredInUnreadFilter: boolean;
+	showFilePreviewsInUnreadFilter: boolean;
 	documentGraphShowExternalLinks: boolean;
 	documentGraphMaxNodes: number;
 	documentGraphPreviewCharLimit: number;
 	documentGraphLayoutType: DocumentGraphLayoutType;
 	statsCollectionEnabled: boolean;
-	defaultStatsTimeRange: 'day' | 'week' | 'month' | 'year' | 'all';
+	defaultStatsTimeRange: 'day' | 'week' | 'month' | 'quarter' | 'year' | 'all';
 	preventSleepEnabled: boolean;
 	disableGpuAcceleration: boolean;
 	disableConfetti: boolean;
@@ -245,7 +253,6 @@ export interface SettingsStoreState {
 	automaticTabNamingEnabled: boolean;
 	fileTabAutoRefreshEnabled: boolean;
 	suppressWindowsWarning: boolean;
-	autoScrollAiMode: boolean;
 	userMessageAlignment: 'left' | 'right';
 	encoreFeatures: EncoreFeatureFlags;
 	symphonyRegistryUrls: string[];
@@ -255,6 +262,7 @@ export interface SettingsStoreState {
 	wakatimeDetailedTracking: boolean;
 	useNativeTitleBar: boolean;
 	autoHideMenuBar: boolean;
+	moderatorStandingInstructions: string;
 }
 
 export interface SettingsStoreActions {
@@ -274,7 +282,8 @@ export interface SettingsStoreActions {
 	setCustomThemeColors: (value: ThemeColors) => void;
 	setCustomThemeBaseId: (value: ThemeId) => void;
 	setEnterToSendAI: (value: boolean) => void;
-	setEnterToSendTerminal: (value: boolean) => void;
+	setForcedParallelExecution: (value: boolean) => void;
+	setForcedParallelAcknowledged: (value: boolean) => void;
 	setDefaultSaveToHistory: (value: boolean) => void;
 	setDefaultShowThinking: (value: ThinkingMode) => void;
 	setLeftSidebarWidth: (value: number) => void;
@@ -282,6 +291,8 @@ export interface SettingsStoreActions {
 	setMarkdownEditMode: (value: boolean) => void;
 	setChatRawTextMode: (value: boolean) => void;
 	setShowHiddenFiles: (value: boolean) => void;
+	setFileExplorerIconTheme: (value: FileExplorerIconTheme) => void;
+	setTerminalWidth: (value: number) => void;
 	setMaxOutputLines: (value: number) => void;
 	setOsNotificationsEnabled: (value: boolean) => void;
 	setAudioFeedbackEnabled: (value: boolean) => void;
@@ -302,12 +313,14 @@ export interface SettingsStoreActions {
 	setWebInterfaceUseCustomPort: (value: boolean) => void;
 	setWebInterfaceCustomPort: (value: number) => void;
 	setColorBlindMode: (value: boolean) => void;
+	setShowStarredInUnreadFilter: (value: boolean) => void;
+	setShowFilePreviewsInUnreadFilter: (value: boolean) => void;
 	setDocumentGraphShowExternalLinks: (value: boolean) => void;
 	setDocumentGraphMaxNodes: (value: number) => void;
 	setDocumentGraphPreviewCharLimit: (value: number) => void;
 	setDocumentGraphLayoutType: (value: DocumentGraphLayoutType) => void;
 	setStatsCollectionEnabled: (value: boolean) => void;
-	setDefaultStatsTimeRange: (value: 'day' | 'week' | 'month' | 'year' | 'all') => void;
+	setDefaultStatsTimeRange: (value: 'day' | 'week' | 'month' | 'quarter' | 'year' | 'all') => void;
 	setDisableGpuAcceleration: (value: boolean) => void;
 	setDisableConfetti: (value: boolean) => void;
 	setLocalIgnorePatterns: (value: string[]) => void;
@@ -317,7 +330,6 @@ export interface SettingsStoreActions {
 	setAutomaticTabNamingEnabled: (value: boolean) => void;
 	setFileTabAutoRefreshEnabled: (value: boolean) => void;
 	setSuppressWindowsWarning: (value: boolean) => void;
-	setAutoScrollAiMode: (value: boolean) => void;
 	setUserMessageAlignment: (value: 'left' | 'right') => void;
 	setEncoreFeatures: (value: EncoreFeatureFlags) => void;
 	setSymphonyRegistryUrls: (value: string[]) => void;
@@ -327,6 +339,7 @@ export interface SettingsStoreActions {
 	setWakatimeDetailedTracking: (value: boolean) => void;
 	setUseNativeTitleBar: (value: boolean) => void;
 	setAutoHideMenuBar: (value: boolean) => void;
+	setModeratorStandingInstructions: (value: string) => void;
 
 	// Async setters
 	setLogLevel: (value: string) => Promise<void>;
@@ -406,7 +419,7 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 		llmProvider: 'openrouter',
 		modelSlug: 'anthropic/claude-3.5-sonnet',
 		apiKey: '',
-		defaultShell: 'zsh',
+		defaultShell: isWindowsPlatform() ? 'powershell' : 'zsh',
 		customShellPath: '',
 		shellArgs: '',
 		shellEnvVars: {},
@@ -417,7 +430,8 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 		customThemeColors: DEFAULT_CUSTOM_THEME_COLORS,
 		customThemeBaseId: 'dracula',
 		enterToSendAI: false,
-		enterToSendTerminal: true,
+		forcedParallelExecution: false,
+		forcedParallelAcknowledged: false,
 		defaultSaveToHistory: true,
 		defaultShowThinking: 'off',
 		leftSidebarWidth: 256,
@@ -425,6 +439,8 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 		markdownEditMode: false,
 		chatRawTextMode: false,
 		showHiddenFiles: true,
+		fileExplorerIconTheme: 'default',
+		terminalWidth: 100,
 		logLevel: 'info',
 		maxLogBuffer: 5000,
 		maxOutputLines: 25,
@@ -453,6 +469,8 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 		contextManagementSettings: DEFAULT_CONTEXT_MANAGEMENT_SETTINGS,
 		keyboardMasteryStats: DEFAULT_KEYBOARD_MASTERY_STATS,
 		colorBlindMode: false,
+		showStarredInUnreadFilter: false,
+		showFilePreviewsInUnreadFilter: false,
 		documentGraphShowExternalLinks: false,
 		documentGraphMaxNodes: 50,
 		documentGraphPreviewCharLimit: 100,
@@ -469,7 +487,6 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 		automaticTabNamingEnabled: true,
 		fileTabAutoRefreshEnabled: false,
 		suppressWindowsWarning: false,
-		autoScrollAiMode: false,
 		userMessageAlignment: 'right',
 		encoreFeatures: DEFAULT_ENCORE_FEATURES,
 		symphonyRegistryUrls: [],
@@ -477,8 +494,9 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 		wakatimeApiKey: '',
 		wakatimeEnabled: false,
 		wakatimeDetailedTracking: false,
-		useNativeTitleBar: false,
+		useNativeTitleBar: isWindowsPlatform(),
 		autoHideMenuBar: false,
+		moderatorStandingInstructions: '',
 
 		// ============================================================================
 		// Simple Setters
@@ -560,9 +578,14 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 			window.maestro.settings.set('enterToSendAI', value);
 		},
 
-		setEnterToSendTerminal: (value) => {
-			set({ enterToSendTerminal: value });
-			window.maestro.settings.set('enterToSendTerminal', value);
+		setForcedParallelExecution: (value) => {
+			set({ forcedParallelExecution: value });
+			window.maestro.settings.set('forcedParallelExecution', value);
+		},
+
+		setForcedParallelAcknowledged: (value) => {
+			set({ forcedParallelAcknowledged: value });
+			window.maestro.settings.set('forcedParallelAcknowledged', value);
 		},
 
 		setDefaultSaveToHistory: (value) => {
@@ -599,6 +622,16 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 		setShowHiddenFiles: (value) => {
 			set({ showHiddenFiles: value });
 			window.maestro.settings.set('showHiddenFiles', value);
+		},
+
+		setFileExplorerIconTheme: (value) => {
+			set({ fileExplorerIconTheme: value });
+			window.maestro.settings.set('fileExplorerIconTheme', value);
+		},
+
+		setTerminalWidth: (value) => {
+			set({ terminalWidth: value });
+			window.maestro.settings.set('terminalWidth', value);
 		},
 
 		setMaxOutputLines: (value) => {
@@ -763,6 +796,16 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 			window.maestro.settings.set('colorBlindMode', value);
 		},
 
+		setShowStarredInUnreadFilter: (value) => {
+			set({ showStarredInUnreadFilter: value });
+			window.maestro.settings.set('showStarredInUnreadFilter', value);
+		},
+
+		setShowFilePreviewsInUnreadFilter: (value) => {
+			set({ showFilePreviewsInUnreadFilter: value });
+			window.maestro.settings.set('showFilePreviewsInUnreadFilter', value);
+		},
+
 		setDocumentGraphShowExternalLinks: (value) => {
 			set({ documentGraphShowExternalLinks: value });
 			window.maestro.settings.set('documentGraphShowExternalLinks', value);
@@ -841,11 +884,6 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 			window.maestro.settings.set('suppressWindowsWarning', value);
 		},
 
-		setAutoScrollAiMode: (value) => {
-			set({ autoScrollAiMode: value });
-			window.maestro.settings.set('autoScrollAiMode', value);
-		},
-
 		setUserMessageAlignment: (value) => {
 			set({ userMessageAlignment: value });
 			window.maestro.settings.set('userMessageAlignment', value);
@@ -889,6 +927,12 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 		setAutoHideMenuBar: (value) => {
 			set({ autoHideMenuBar: value });
 			window.maestro.settings.set('autoHideMenuBar', value);
+		},
+
+		setModeratorStandingInstructions: (value) => {
+			const trimmed = value.slice(0, 2000);
+			set({ moderatorStandingInstructions: trimmed });
+			window.maestro.settings.set('moderatorStandingInstructions', trimmed);
 		},
 
 		// ============================================================================
@@ -1445,8 +1489,10 @@ export async function loadAllSettings(): Promise<void> {
 		if (allSettings['enterToSendAI'] !== undefined)
 			patch.enterToSendAI = allSettings['enterToSendAI'] as boolean;
 
-		if (allSettings['enterToSendTerminal'] !== undefined)
-			patch.enterToSendTerminal = allSettings['enterToSendTerminal'] as boolean;
+		if (allSettings['forcedParallelExecution'] !== undefined)
+			patch.forcedParallelExecution = allSettings['forcedParallelExecution'] as boolean;
+		if (allSettings['forcedParallelAcknowledged'] !== undefined)
+			patch.forcedParallelAcknowledged = allSettings['forcedParallelAcknowledged'] as boolean;
 
 		if (allSettings['defaultSaveToHistory'] !== undefined)
 			patch.defaultSaveToHistory = allSettings['defaultSaveToHistory'] as boolean;
@@ -1476,6 +1522,15 @@ export async function loadAllSettings(): Promise<void> {
 
 		if (allSettings['showHiddenFiles'] !== undefined)
 			patch.showHiddenFiles = allSettings['showHiddenFiles'] as boolean;
+
+		if (allSettings['fileExplorerIconTheme'] !== undefined) {
+			patch.fileExplorerIconTheme = isFileExplorerIconTheme(allSettings['fileExplorerIconTheme'])
+				? allSettings['fileExplorerIconTheme']
+				: 'default';
+		}
+
+		if (allSettings['terminalWidth'] !== undefined)
+			patch.terminalWidth = allSettings['terminalWidth'] as number;
 
 		// Logger settings
 		if (savedLogLevel !== undefined) patch.logLevel = savedLogLevel;
@@ -1677,6 +1732,14 @@ export async function loadAllSettings(): Promise<void> {
 		if (allSettings['colorBlindMode'] !== undefined)
 			patch.colorBlindMode = allSettings['colorBlindMode'] as boolean;
 
+		if (allSettings['showStarredInUnreadFilter'] !== undefined)
+			patch.showStarredInUnreadFilter = allSettings['showStarredInUnreadFilter'] as boolean;
+
+		if (allSettings['showFilePreviewsInUnreadFilter'] !== undefined)
+			patch.showFilePreviewsInUnreadFilter = allSettings[
+				'showFilePreviewsInUnreadFilter'
+			] as boolean;
+
 		// Document Graph settings (with validation)
 		if (allSettings['documentGraphShowExternalLinks'] !== undefined)
 			patch.documentGraphShowExternalLinks = allSettings[
@@ -1709,12 +1772,13 @@ export async function loadAllSettings(): Promise<void> {
 			patch.statsCollectionEnabled = allSettings['statsCollectionEnabled'] as boolean;
 
 		if (allSettings['defaultStatsTimeRange'] !== undefined) {
-			const validTimeRanges = ['day', 'week', 'month', 'year', 'all'];
+			const validTimeRanges = ['day', 'week', 'month', 'quarter', 'year', 'all'];
 			if (validTimeRanges.includes(allSettings['defaultStatsTimeRange'] as string)) {
 				patch.defaultStatsTimeRange = allSettings['defaultStatsTimeRange'] as
 					| 'day'
 					| 'week'
 					| 'month'
+					| 'quarter'
 					| 'year'
 					| 'all';
 			}
@@ -1760,9 +1824,6 @@ export async function loadAllSettings(): Promise<void> {
 		if (allSettings['suppressWindowsWarning'] !== undefined)
 			patch.suppressWindowsWarning = allSettings['suppressWindowsWarning'] as boolean;
 
-		if (allSettings['autoScrollAiMode'] !== undefined)
-			patch.autoScrollAiMode = allSettings['autoScrollAiMode'] as boolean;
-
 		if (allSettings['userMessageAlignment'] !== undefined)
 			patch.userMessageAlignment = allSettings['userMessageAlignment'] as 'left' | 'right';
 
@@ -1804,6 +1865,9 @@ export async function loadAllSettings(): Promise<void> {
 		if (allSettings['autoHideMenuBar'] !== undefined)
 			patch.autoHideMenuBar = allSettings['autoHideMenuBar'] as boolean;
 
+		if (allSettings['moderatorStandingInstructions'] !== undefined)
+			patch.moderatorStandingInstructions = allSettings['moderatorStandingInstructions'] as string;
+
 		// Apply the entire patch in one setState call
 		patch.settingsLoaded = true;
 		useSettingsStore.setState(patch);
@@ -1840,7 +1904,8 @@ export function getSettingsActions() {
 		setCustomThemeColors: state.setCustomThemeColors,
 		setCustomThemeBaseId: state.setCustomThemeBaseId,
 		setEnterToSendAI: state.setEnterToSendAI,
-		setEnterToSendTerminal: state.setEnterToSendTerminal,
+		setForcedParallelExecution: state.setForcedParallelExecution,
+		setForcedParallelAcknowledged: state.setForcedParallelAcknowledged,
 		setDefaultSaveToHistory: state.setDefaultSaveToHistory,
 		setDefaultShowThinking: state.setDefaultShowThinking,
 		setLeftSidebarWidth: state.setLeftSidebarWidth,
@@ -1848,6 +1913,8 @@ export function getSettingsActions() {
 		setMarkdownEditMode: state.setMarkdownEditMode,
 		setChatRawTextMode: state.setChatRawTextMode,
 		setShowHiddenFiles: state.setShowHiddenFiles,
+		setFileExplorerIconTheme: state.setFileExplorerIconTheme,
+		setTerminalWidth: state.setTerminalWidth,
 		setLogLevel: state.setLogLevel,
 		setMaxLogBuffer: state.setMaxLogBuffer,
 		setMaxOutputLines: state.setMaxOutputLines,
@@ -1894,6 +1961,8 @@ export function getSettingsActions() {
 		acknowledgeKeyboardMasteryLevel: state.acknowledgeKeyboardMasteryLevel,
 		getUnacknowledgedKeyboardMasteryLevel: state.getUnacknowledgedKeyboardMasteryLevel,
 		setColorBlindMode: state.setColorBlindMode,
+		setShowStarredInUnreadFilter: state.setShowStarredInUnreadFilter,
+		setShowFilePreviewsInUnreadFilter: state.setShowFilePreviewsInUnreadFilter,
 		setDocumentGraphShowExternalLinks: state.setDocumentGraphShowExternalLinks,
 		setDocumentGraphMaxNodes: state.setDocumentGraphMaxNodes,
 		setDocumentGraphPreviewCharLimit: state.setDocumentGraphPreviewCharLimit,
@@ -1910,7 +1979,6 @@ export function getSettingsActions() {
 		setAutomaticTabNamingEnabled: state.setAutomaticTabNamingEnabled,
 		setFileTabAutoRefreshEnabled: state.setFileTabAutoRefreshEnabled,
 		setSuppressWindowsWarning: state.setSuppressWindowsWarning,
-		setAutoScrollAiMode: state.setAutoScrollAiMode,
 		setEncoreFeatures: state.setEncoreFeatures,
 		setSymphonyRegistryUrls: state.setSymphonyRegistryUrls,
 		setDirectorNotesSettings: state.setDirectorNotesSettings,
@@ -1919,5 +1987,6 @@ export function getSettingsActions() {
 		setWakatimeDetailedTracking: state.setWakatimeDetailedTracking,
 		setUseNativeTitleBar: state.setUseNativeTitleBar,
 		setAutoHideMenuBar: state.setAutoHideMenuBar,
+		setModeratorStandingInstructions: state.setModeratorStandingInstructions,
 	};
 }

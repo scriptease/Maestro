@@ -38,6 +38,7 @@ export interface CueExecutionConfig {
 	customArgs?: string;
 	customEnvVars?: Record<string, string>;
 	customModel?: string;
+	customEffort?: string;
 	onLog: (level: string, message: string) => void;
 	/** Optional SSH settings store for SSH remote execution */
 	sshStore?: SshRemoteSettingsStore;
@@ -64,19 +65,6 @@ export interface CueProcessInfo {
 	cwd: string;
 	toolType: string;
 	startTime: number;
-}
-
-const PROMPT_REDACTED = '<PROMPT_REDACTED>';
-
-/**
- * Build a display-safe copy of spawn args by replacing the prompt payload
- * with a fixed placeholder. The prompt is typically the last positional arg
- * (after '--') or embedded via promptArgs; we identify it by matching the
- * substitutedPrompt value.
- */
-function buildDisplayArgs(args: string[], prompt: string): string[] {
-	if (!prompt) return args;
-	return args.map((arg) => (arg === prompt ? PROMPT_REDACTED : arg));
 }
 
 /** Map of active Cue processes by runId */
@@ -139,6 +127,7 @@ export async function executeCuePrompt(config: CueExecutionConfig): Promise<CueR
 		customArgs,
 		customEnvVars,
 		customModel,
+		customEffort,
 		onLog,
 		sshStore,
 		agentConfigValues,
@@ -274,6 +263,7 @@ export async function executeCuePrompt(config: CueExecutionConfig): Promise<CueR
 	const configResolution = applyAgentConfigOverrides(agentConfig, finalArgs, {
 		agentConfigValues: (agentConfigValues ?? {}) as Record<string, any>,
 		sessionCustomModel: customModel,
+		sessionCustomEffort: customEffort,
 		sessionCustomArgs: customArgs,
 		sessionCustomEnvVars: customEnvVars,
 	});
@@ -291,6 +281,7 @@ export async function executeCuePrompt(config: CueExecutionConfig): Promise<CueR
 	let spawnCwd = projectRoot;
 	let spawnEnvVars = effectiveEnvVars;
 	let prompt: string | undefined = substitutedPrompt;
+	let sshStdinScript: string | undefined;
 
 	if (sshRemoteConfig?.enabled && sshStore) {
 		const sshWrapConfig: SshSpawnWrapConfig = {
@@ -310,6 +301,7 @@ export async function executeCuePrompt(config: CueExecutionConfig): Promise<CueR
 		spawnCwd = sshResult.cwd;
 		spawnEnvVars = sshResult.customEnvVars;
 		prompt = sshResult.prompt;
+		sshStdinScript = sshResult.sshStdinScript;
 
 		if (sshResult.sshRemoteUsed) {
 			onLog(
@@ -350,7 +342,7 @@ export async function executeCuePrompt(config: CueExecutionConfig): Promise<CueR
 		activeProcesses.set(runId, {
 			child,
 			command,
-			args: buildDisplayArgs(spawnArgs, substitutedPrompt),
+			args: spawnArgs,
 			cwd: spawnCwd,
 			toolType,
 			startTime: Date.now(),
@@ -414,8 +406,12 @@ export async function executeCuePrompt(config: CueExecutionConfig): Promise<CueR
 		// For agents with promptArgs (like OpenCode -p), the prompt is in the args
 		// For others (like Claude --print), if prompt was passed via args separator, skip stdin
 		// When SSH wrapping returns a prompt, it means "send via stdin"
-		if (prompt && sshRemoteConfig?.enabled) {
-			// SSH large prompt mode — send via stdin
+		if (sshStdinScript && sshRemoteConfig?.enabled) {
+			// SSH stdin script mode — send the full bash script (includes prompt) via stdin
+			child.stdin?.write(sshStdinScript);
+			child.stdin?.end();
+		} else if (prompt && sshRemoteConfig?.enabled) {
+			// SSH small prompt mode — send raw prompt via stdin
 			child.stdin?.write(prompt);
 			child.stdin?.end();
 		} else {

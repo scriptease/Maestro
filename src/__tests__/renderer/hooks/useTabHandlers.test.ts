@@ -350,6 +350,67 @@ describe('useTabHandlers', () => {
 			expect(session.activeFileTabId).toBe(session.filePreviewTabs[0].id);
 		});
 
+		it('handleOpenFileTab switches from terminal mode when creating new tab', () => {
+			const aiTab = createMockAITab({ id: 'ai-1' });
+			// Start in terminal mode
+			useSessionStore.getState().setSessions((prev: Session[]) =>
+				prev.map((s) => ({
+					...s,
+					inputMode: 'terminal' as const,
+					activeTerminalTabId: 'term-1',
+				}))
+			);
+			setupSessionWithTabs([aiTab]);
+			useSessionStore.getState().setSessions((prev: Session[]) =>
+				prev.map((s) => ({
+					...s,
+					inputMode: 'terminal' as const,
+					activeTerminalTabId: 'term-1',
+				}))
+			);
+
+			const { result } = renderHook(() => useTabHandlers());
+			act(() => {
+				result.current.handleOpenFileTab({
+					path: '/test/new.ts',
+					name: 'new.ts',
+					content: 'new content',
+				});
+			});
+
+			const session = getSession();
+			expect(session.inputMode).toBe('ai');
+			expect(session.activeTerminalTabId).toBeNull();
+			expect(session.activeFileTabId).toBe(session.filePreviewTabs[0].id);
+		});
+
+		it('handleOpenFileTab switches from terminal mode when selecting existing tab', () => {
+			const aiTab = createMockAITab({ id: 'ai-1' });
+			const fileTab = createMockFileTab({ id: 'file-1', path: '/test/existing.ts' });
+			setupSessionWithTabs([aiTab], [fileTab]);
+			useSessionStore.getState().setSessions((prev: Session[]) =>
+				prev.map((s) => ({
+					...s,
+					inputMode: 'terminal' as const,
+					activeTerminalTabId: 'term-1',
+				}))
+			);
+
+			const { result } = renderHook(() => useTabHandlers());
+			act(() => {
+				result.current.handleOpenFileTab({
+					path: '/test/existing.ts',
+					name: 'existing.ts',
+					content: 'updated content',
+				});
+			});
+
+			const session = getSession();
+			expect(session.inputMode).toBe('ai');
+			expect(session.activeTerminalTabId).toBeNull();
+			expect(session.activeFileTabId).toBe('file-1');
+		});
+
 		it('handleOpenFileTab selects existing tab if path matches', () => {
 			const aiTab = createMockAITab({ id: 'ai-1' });
 			const fileTab = createMockFileTab({ id: 'file-1', path: '/test/existing.ts' });
@@ -617,7 +678,7 @@ describe('useTabHandlers', () => {
 			expect(closeResult.tabId).toBe('tab-1');
 		});
 
-		it('handleCloseCurrentTab returns prevented when only one AI tab', () => {
+		it('handleCloseCurrentTab allows closing the last AI tab', () => {
 			const tab = createMockAITab({ id: 'tab-1' });
 			const { result } = renderWithSession([tab]);
 			let closeResult: any;
@@ -625,7 +686,8 @@ describe('useTabHandlers', () => {
 				closeResult = result.current.handleCloseCurrentTab();
 			});
 
-			expect(closeResult.type).toBe('prevented');
+			expect(closeResult.type).toBe('ai');
+			expect(closeResult.tabId).toBe('tab-1');
 		});
 
 		it('handleCloseCurrentTab returns none when no session', () => {

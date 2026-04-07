@@ -34,7 +34,7 @@ import { createSshRemoteApi } from './sshRemote';
 import { createLoggerApi } from './logger';
 import { createClaudeApi, createAgentSessionsApi } from './sessions';
 import { createTempfileApi, createHistoryApi, createCliApi } from './files';
-import { createSpeckitApi, createOpenspecApi } from './commands';
+import { createSpeckitApi, createOpenspecApi, createBmadApi } from './commands';
 import { createAutorunApi, createPlaybooksApi, createMarketplaceApi } from './autorun';
 import { createDebugApi, createDocumentGraphApi } from './debug';
 import { createGroupChatApi } from './groupChat';
@@ -44,6 +44,7 @@ import { createLeaderboardApi } from './leaderboard';
 import { createAttachmentsApi } from './attachments';
 import { createProcessApi } from './process';
 import { createGitApi } from './git';
+import { createFeedbackApi } from './feedback';
 import { createFsApi } from './fs';
 import { createAgentsApi } from './agents';
 import { createSymphonyApi } from './symphony';
@@ -66,6 +67,7 @@ contextBridge.exposeInMainWorld('maestro', {
 
 	// Process/Session API
 	process: createProcessApi(),
+	feedback: createFeedbackApi(),
 
 	// Agent Error Handling API
 	agentError: createAgentErrorApi(),
@@ -144,6 +146,9 @@ contextBridge.exposeInMainWorld('maestro', {
 
 	// OpenSpec API
 	openspec: createOpenspecApi(),
+
+	// BMAD API
+	bmad: createBmadApi(),
 
 	// Notification API
 	notification: createNotificationApi(),
@@ -235,6 +240,7 @@ export {
 	// Commands
 	createSpeckitApi,
 	createOpenspecApi,
+	createBmadApi,
 	// Auto Run
 	createAutorunApi,
 	createPlaybooksApi,
@@ -254,6 +260,8 @@ export {
 	createAttachmentsApi,
 	// Process
 	createProcessApi,
+	// Feedback
+	createFeedbackApi,
 	// Git
 	createGitApi,
 	// Filesystem
@@ -403,6 +411,12 @@ export type {
 	AttachmentListResponse,
 	AttachmentPathResponse,
 } from './attachments';
+export type {
+	// From feedback
+	FeedbackApi,
+	FeedbackAuthResponse,
+	FeedbackSubmitResponse,
+} from './feedback';
 export type {
 	// From process
 	ProcessApi,

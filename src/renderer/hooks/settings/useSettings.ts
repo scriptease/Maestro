@@ -27,6 +27,7 @@ import type {
 	DirectorNotesSettings,
 	EncoreFeatureFlags,
 } from '../../types';
+import type { FileExplorerIconTheme } from '../../utils/fileExplorerIcons/shared';
 import {
 	useSettingsStore,
 	loadAllSettings,
@@ -79,8 +80,6 @@ export interface UseSettingsReturn {
 	setCustomThemeBaseId: (value: ThemeId) => void;
 	enterToSendAI: boolean;
 	setEnterToSendAI: (value: boolean) => void;
-	enterToSendTerminal: boolean;
-	setEnterToSendTerminal: (value: boolean) => void;
 	defaultSaveToHistory: boolean;
 	setDefaultSaveToHistory: (value: boolean) => void;
 
@@ -97,6 +96,8 @@ export interface UseSettingsReturn {
 	setChatRawTextMode: (value: boolean) => void;
 	showHiddenFiles: boolean;
 	setShowHiddenFiles: (value: boolean) => void;
+	fileExplorerIconTheme: FileExplorerIconTheme;
+	setFileExplorerIconTheme: (value: FileExplorerIconTheme) => void;
 
 	// Logging settings
 	logLevel: string;
@@ -225,6 +226,12 @@ export interface UseSettingsReturn {
 	colorBlindMode: boolean;
 	setColorBlindMode: (value: boolean) => void;
 
+	// Tab filtering settings
+	showStarredInUnreadFilter: boolean;
+	setShowStarredInUnreadFilter: (value: boolean) => void;
+	showFilePreviewsInUnreadFilter: boolean;
+	setShowFilePreviewsInUnreadFilter: (value: boolean) => void;
+
 	// Document Graph settings
 	documentGraphShowExternalLinks: boolean;
 	setDocumentGraphShowExternalLinks: (value: boolean) => void;
@@ -238,8 +245,8 @@ export interface UseSettingsReturn {
 	// Stats settings
 	statsCollectionEnabled: boolean;
 	setStatsCollectionEnabled: (value: boolean) => void;
-	defaultStatsTimeRange: 'day' | 'week' | 'month' | 'year' | 'all';
-	setDefaultStatsTimeRange: (value: 'day' | 'week' | 'month' | 'year' | 'all') => void;
+	defaultStatsTimeRange: 'day' | 'week' | 'month' | 'quarter' | 'year' | 'all';
+	setDefaultStatsTimeRange: (value: 'day' | 'week' | 'month' | 'quarter' | 'year' | 'all') => void;
 
 	// Power management settings
 	preventSleepEnabled: boolean;
@@ -275,10 +282,6 @@ export interface UseSettingsReturn {
 	suppressWindowsWarning: boolean;
 	setSuppressWindowsWarning: (value: boolean) => void;
 
-	// Auto-scroll in AI mode
-	autoScrollAiMode: boolean;
-	setAutoScrollAiMode: (value: boolean) => void;
-
 	// Message alignment
 	userMessageAlignment: 'left' | 'right';
 	setUserMessageAlignment: (value: 'left' | 'right') => void;
@@ -290,6 +293,12 @@ export interface UseSettingsReturn {
 	// Symphony registry URLs (additional user-configured registries)
 	symphonyRegistryUrls: string[];
 	setSymphonyRegistryUrls: (value: string[]) => void;
+
+	// Forced Parallel Execution
+	forcedParallelExecution: boolean;
+	setForcedParallelExecution: (value: boolean) => void;
+	forcedParallelAcknowledged: boolean;
+	setForcedParallelAcknowledged: (value: boolean) => void;
 
 	// Director's Notes settings
 	directorNotesSettings: DirectorNotesSettings;
@@ -308,6 +317,10 @@ export interface UseSettingsReturn {
 	setUseNativeTitleBar: (value: boolean) => void;
 	autoHideMenuBar: boolean;
 	setAutoHideMenuBar: (value: boolean) => void;
+
+	// Group Chat settings
+	moderatorStandingInstructions: string;
+	setModeratorStandingInstructions: (value: string) => void;
 }
 
 export function useSettings(): UseSettingsReturn {
@@ -327,6 +340,18 @@ export function useSettings(): UseSettingsReturn {
 		}
 		const cleanup = window.maestro.app.onSystemResume(() => {
 			console.log('[Settings] System resumed from sleep, reloading settings');
+			loadAllSettings();
+		});
+		return cleanup;
+	}, []);
+
+	// Reload settings when external change detected (e.g., maestro-cli settings set)
+	useEffect(() => {
+		if (!window.maestro?.settings?.onExternalChange) {
+			return;
+		}
+		const cleanup = window.maestro.settings.onExternalChange(() => {
+			console.log('[Settings] External settings change detected, reloading');
 			loadAllSettings();
 		});
 		return cleanup;

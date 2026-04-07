@@ -57,6 +57,7 @@
 							"group-chat",
 							"remote-control",
 							"ssh-remote-execution",
+							"feedback",
 							"configuration"
 						]
 					},
@@ -67,7 +68,8 @@
 							"autorun-playbooks",
 							"playbook-exchange",
 							"speckit-commands",
-							"openspec-commands"
+							"openspec-commands",
+							"bmad-commands"
 						]
 					},
 					{

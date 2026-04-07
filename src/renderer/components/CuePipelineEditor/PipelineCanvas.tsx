@@ -57,6 +57,7 @@ export interface PipelineCanvasProps {
 	onEdgeClick: (event: React.MouseEvent, edge: Edge) => void;
 	onPaneClick: () => void;
 	onNodeContextMenu: (event: React.MouseEvent, node: Node) => void;
+	onNodeDragStop: (event: React.MouseEvent, node: Node, nodes: Node[]) => void;
 	onDragOver: (event: React.DragEvent) => void;
 	onDrop: (event: React.DragEvent) => void;
 	// Drawers
@@ -85,6 +86,7 @@ export interface PipelineCanvasProps {
 	selectedEdge: PipelineEdgeType | null;
 	selectedNodeHasOutgoingEdge: boolean;
 	hasIncomingAgentEdges: boolean;
+	incomingAgentEdgeCount: number;
 	incomingTriggerEdges: IncomingTriggerEdgeInfo[];
 	onUpdateNode: (nodeId: string, data: Partial<TriggerNodeData | AgentNodeData>) => void;
 	onUpdateEdgePrompt: (edgeId: string, prompt: string) => void;
@@ -117,6 +119,7 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 	onEdgeClick,
 	onPaneClick,
 	onNodeContextMenu,
+	onNodeDragStop,
 	onDragOver,
 	onDrop,
 	triggerDrawerOpen,
@@ -140,6 +143,7 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 	selectedEdge,
 	selectedNodeHasOutgoingEdge,
 	hasIncomingAgentEdges,
+	incomingAgentEdgeCount,
 	incomingTriggerEdges,
 	onUpdateNode,
 	onUpdateEdgePrompt,
@@ -243,10 +247,10 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 				onEdgeClick={onEdgeClick}
 				onPaneClick={onPaneClick}
 				onNodeContextMenu={onNodeContextMenu}
+				onNodeDragStop={onNodeDragStop}
 				onDragOver={onDragOver}
 				onDrop={onDrop}
 				connectionMode={ConnectionMode.Loose}
-				fitView
 				style={{
 					backgroundColor: theme.colors.bgMain,
 				}}
@@ -301,10 +305,9 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 						alignItems: 'center',
 						gap: 12,
 						padding: '6px 14px',
-						backgroundColor: `${theme.colors.bgActivity}ee`,
+						backgroundColor: `${theme.colors.bgActivity}f5`,
 						border: `1px solid ${theme.colors.border}`,
 						borderRadius: 6,
-						backdropFilter: 'blur(8px)',
 					}}
 				>
 					{pipelines.map((p) => (
@@ -358,6 +361,7 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 						setIsDirty(true);
 					}}
 					onClose={() => setShowSettings(false)}
+					theme={theme}
 				/>
 			)}
 
@@ -371,9 +375,11 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 					return (
 						<NodeConfigPanel
 							selectedNode={selectedNode}
+							theme={theme}
 							pipelines={pipelines}
 							hasOutgoingEdge={selectedNodeHasOutgoingEdge}
 							hasIncomingAgentEdges={hasIncomingAgentEdges}
+							incomingAgentEdgeCount={incomingAgentEdgeCount}
 							incomingTriggerEdges={incomingTriggerEdges}
 							onUpdateNode={onUpdateNode}
 							onUpdateEdgePrompt={onUpdateEdgePrompt}
@@ -391,6 +397,7 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 			{selectedEdge && !selectedNode && (
 				<EdgeConfigPanel
 					selectedEdge={selectedEdge}
+					theme={theme}
 					sourceNode={edgeSourceNode}
 					targetNode={edgeTargetNode}
 					pipelineColor={selectedEdgePipelineColor}

@@ -28,6 +28,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useMergeSessionWithSessions } from './useMergeSession';
 import { useSendToAgentWithSessions } from './useSendToAgent';
 import { captureException } from '../../utils/sentry';
+import { getStdinFlags } from '../../utils/spawnHelpers';
 
 // ============================================================================
 // Dependencies interface
@@ -175,7 +176,13 @@ export function useMergeTransferHandlers(
 					setSessions((prev) =>
 						prev.map((s) => {
 							if (s.id !== result.targetSessionId) return s;
-							return { ...s, activeTabId: targetTabId };
+							return {
+								...s,
+								activeTabId: targetTabId,
+								activeFileTabId: null,
+								activeTerminalTabId: null,
+								inputMode: 'ai' as const,
+							};
 						})
 					);
 				}
@@ -405,6 +412,9 @@ You are taking over this conversation. Based on the context above, provide a bri
 							thinkingStartTime: Date.now(),
 							aiTabs: [...s.aiTabs, newTab],
 							activeTabId: newTabId,
+							activeFileTabId: null,
+							activeTerminalTabId: null,
+							inputMode: 'ai' as const,
 							unifiedTabOrder: [
 								...(s.unifiedTabOrder || []),
 								{ type: 'ai' as const, id: newTabId },
@@ -448,8 +458,18 @@ You are taking over this conversation. Based on the context above, provide a bri
 					const baseArgs = agent.args ?? [];
 					const commandToUse = agent.path || agent.command;
 
+					// Determine whether to send the prompt via stdin on Windows to avoid
+					// exceeding the command line length limit. Context transfer prompts
+					// contain the full conversation history and can easily exceed ~8KB.
+					const isSshSession = Boolean(targetSession.sessionSshRemoteConfig?.enabled);
+					const { sendPromptViaStdin, sendPromptViaStdinRaw } = getStdinFlags({
+						isSshSession,
+						supportsStreamJsonInput: agent.capabilities?.supportsStreamJsonInput ?? false,
+						hasImages: false, // Context transfer never sends images
+					});
+
 					// Build the full prompt with Maestro system prompt for new sessions
-					let effectivePrompt = contextMessage;
+					const effectivePrompt = contextMessage;
 
 					// Get git branch for template substitution
 					let gitBranch: string | undefined;
@@ -472,16 +492,17 @@ You are taking over this conversation. Based on the context above, provide a bri
 					// Read conductorProfile from settings store at call time
 					const conductorProfile = useSettingsStore.getState().conductorProfile;
 
-					// Prepend Maestro system prompt since this is a new session
+					// Prepare Maestro system prompt separately for token-efficient delivery
+					let appendSystemPrompt: string | undefined;
 					if (maestroSystemPrompt) {
-						const substitutedSystemPrompt = substituteTemplateVariables(maestroSystemPrompt, {
+						appendSystemPrompt = substituteTemplateVariables(maestroSystemPrompt, {
 							session: targetSession,
 							gitBranch,
 							groupId: targetSession.groupId,
 							activeTabId: newTabId,
 							conductorProfile,
+							readOnlyMode: false,
 						});
-						effectivePrompt = `${substitutedSystemPrompt}\n\n---\n\n# User Request\n\n${effectivePrompt}`;
 					}
 
 					// Spawn agent
@@ -493,6 +514,7 @@ You are taking over this conversation. Based on the context above, provide a bri
 						command: commandToUse,
 						args: [...baseArgs],
 						prompt: effectivePrompt,
+						appendSystemPrompt,
 						// Per-session config overrides (if set)
 						sessionCustomPath: targetSession.customPath,
 						sessionCustomArgs: targetSession.customArgs,
@@ -500,6 +522,10 @@ You are taking over this conversation. Based on the context above, provide a bri
 						sessionCustomModel: targetSession.customModel,
 						sessionCustomContextWindow: targetSession.customContextWindow,
 						sessionSshRemoteConfig: targetSession.sessionSshRemoteConfig,
+						// Windows stdin handling - context transfer prompts contain the
+						// full conversation history and can easily exceed shell limits
+						sendPromptViaStdin,
+						sendPromptViaStdinRaw,
 					});
 				} catch (error) {
 					captureException(error, {
@@ -551,7 +577,17 @@ You are taking over this conversation. Based on the context above, provide a bri
 			const currentSession = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
 			if (currentSession) {
 				setSessions((prev) =>
-					prev.map((s) => (s.id === currentSession.id ? { ...s, activeTabId: tabId } : s))
+					prev.map((s) =>
+						s.id === currentSession.id
+							? {
+									...s,
+									activeTabId: tabId,
+									activeFileTabId: null,
+									activeTerminalTabId: null,
+									inputMode: 'ai' as const,
+								}
+							: s
+					)
 				);
 			}
 			getModalActions().setMergeSessionModalOpen(true);
@@ -564,7 +600,17 @@ You are taking over this conversation. Based on the context above, provide a bri
 			const currentSession = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
 			if (currentSession) {
 				setSessions((prev) =>
-					prev.map((s) => (s.id === currentSession.id ? { ...s, activeTabId: tabId } : s))
+					prev.map((s) =>
+						s.id === currentSession.id
+							? {
+									...s,
+									activeTabId: tabId,
+									activeFileTabId: null,
+									activeTerminalTabId: null,
+									inputMode: 'ai' as const,
+								}
+							: s
+					)
 				);
 			}
 			getModalActions().setSendToAgentModalOpen(true);

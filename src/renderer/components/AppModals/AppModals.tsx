@@ -56,8 +56,11 @@ export interface AppModalsProps {
 	hasNoAgents: boolean;
 	keyboardMasteryStats: KeyboardMasteryStats;
 	onCloseAboutModal: () => void;
+	feedbackModalOpen: boolean;
+	onCloseFeedbackModal: () => void;
 	autoRunStats: AutoRunStats;
 	usageStats?: MaestroUsageStats | null;
+	onSwitchToSession: (sessionId: string) => void;
 	/** Global hands-on time in milliseconds (from settings) */
 	handsOnTimeMs: number;
 	onOpenLeaderboardRegistration: () => void;
@@ -65,11 +68,11 @@ export interface AppModalsProps {
 	// leaderboardRegistration is provided via AppAgentModals props below
 	onCloseUpdateCheckModal: () => void;
 	onCloseProcessMonitor: () => void;
-	onNavigateToSession: (sessionId: string, tabId?: string) => void;
+	onNavigateToSession: (sessionId: string, tabId?: string, processType?: string) => void;
 	onNavigateToGroupChat: (groupChatId: string) => void;
 	onCloseUsageDashboard: () => void;
 	/** Default time range for the Usage Dashboard from settings */
-	defaultStatsTimeRange?: 'day' | 'week' | 'month' | 'year' | 'all';
+	defaultStatsTimeRange?: 'day' | 'week' | 'month' | 'quarter' | 'year' | 'all';
 	/** Enable colorblind-friendly colors for dashboard charts */
 	colorBlindMode?: boolean;
 
@@ -132,6 +135,7 @@ export interface AppModalsProps {
 	renameTabInitialName: string;
 	onCloseRenameTabModal: () => void;
 	onRenameTab: (newName: string) => void;
+	onAutoNameTab: () => void;
 
 	// --- AppGroupModals props ---
 	createGroupModalOpen: boolean;
@@ -180,6 +184,7 @@ export interface AppModalsProps {
 	setSettingsTab: (tab: SettingsTab) => void;
 	setShortcutsHelpOpen: (open: boolean) => void;
 	setAboutModalOpen: (open: boolean) => void;
+	setFeedbackModalOpen: (open: boolean) => void;
 	setLogViewerOpen: (open: boolean) => void;
 	setProcessMonitorOpen: (open: boolean) => void;
 	setUsageDashboardOpen?: (open: boolean) => void;
@@ -232,6 +237,7 @@ export interface AppModalsProps {
 	autoRunSelectedDocument: string | null;
 	autoRunCompletedTaskCount: number;
 	onAutoRunResetTasks: () => void;
+	onClearActiveTerminal?: () => void;
 	// Gist publishing
 	isFilePreviewOpen: boolean;
 	ghCliAvailable: boolean;
@@ -272,9 +278,6 @@ export interface AppModalsProps {
 	// Maestro Cue
 	onOpenMaestroCue?: () => void;
 	onConfigureCue?: (session: Session) => void;
-	// Auto-scroll
-	autoScrollAiMode?: boolean;
-	setAutoScrollAiMode?: (value: boolean) => void;
 	onCloseTabSwitcher: () => void;
 	onTabSelect: (tabId: string) => void;
 	onFileTabSelect?: (tabId: string) => void;
@@ -306,6 +309,7 @@ export interface AppModalsProps {
 	onPromptToggleTabSaveToHistory?: () => void;
 	promptTabReadOnlyMode: boolean;
 	onPromptToggleTabReadOnlyMode: () => void;
+	promptComposerAgentId?: string;
 	promptTabShowThinking: ThinkingMode;
 	onPromptToggleTabShowThinking?: () => void;
 	promptSupportsThinking: boolean;
@@ -313,7 +317,7 @@ export interface AppModalsProps {
 	onPromptToggleEnterToSend: () => void;
 	onCloseQueueBrowser: () => void;
 	onRemoveQueueItem: (sessionId: string, itemId: string) => void;
-	onSwitchQueueSession: (sessionId: string) => void;
+	onSwitchQueueSession: (sessionId: string, tabId?: string) => void;
 	onReorderQueueItems: (sessionId: string, fromIndex: number, toIndex: number) => void;
 
 	// --- AppGroupChatModals props ---
@@ -479,8 +483,11 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 		hasNoAgents,
 		keyboardMasteryStats,
 		onCloseAboutModal,
+		feedbackModalOpen,
+		onCloseFeedbackModal,
 		autoRunStats,
 		usageStats,
+		onSwitchToSession,
 		handsOnTimeMs,
 		onOpenLeaderboardRegistration,
 		isLeaderboardRegistered,
@@ -518,6 +525,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 		renameTabInitialName,
 		onCloseRenameTabModal,
 		onRenameTab,
+		onAutoNameTab,
 		// Group modals
 		createGroupModalOpen,
 		onCloseCreateGroupModal,
@@ -563,6 +571,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 		setSettingsTab,
 		setShortcutsHelpOpen,
 		setAboutModalOpen,
+		setFeedbackModalOpen,
 		setLogViewerOpen,
 		setProcessMonitorOpen,
 		setUsageDashboardOpen,
@@ -609,6 +618,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 		autoRunSelectedDocument,
 		autoRunCompletedTaskCount,
 		onAutoRunResetTasks,
+		onClearActiveTerminal,
 		// Gist publishing
 		isFilePreviewOpen,
 		ghCliAvailable,
@@ -644,9 +654,6 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 		// Maestro Cue
 		onOpenMaestroCue,
 		onConfigureCue,
-		// Auto-scroll
-		autoScrollAiMode,
-		setAutoScrollAiMode,
 		onCloseTabSwitcher,
 		onTabSelect,
 		onFileTabSelect,
@@ -669,6 +676,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 		onPromptToggleTabSaveToHistory,
 		promptTabReadOnlyMode,
 		onPromptToggleTabReadOnlyMode,
+		promptComposerAgentId,
 		promptTabShowThinking,
 		onPromptToggleTabShowThinking,
 		promptSupportsThinking,
@@ -736,8 +744,11 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 				keyboardMasteryStats={keyboardMasteryStats}
 				aboutModalOpen={aboutModalOpen}
 				onCloseAboutModal={onCloseAboutModal}
+				feedbackModalOpen={feedbackModalOpen}
+				onCloseFeedbackModal={onCloseFeedbackModal}
 				autoRunStats={autoRunStats}
 				usageStats={usageStats}
+				onSwitchToSession={onSwitchToSession}
 				handsOnTimeMs={handsOnTimeMs}
 				onOpenLeaderboardRegistration={onOpenLeaderboardRegistration}
 				isLeaderboardRegistered={isLeaderboardRegistered}
@@ -800,6 +811,12 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 				renameTabInitialName={renameTabInitialName}
 				onCloseRenameTabModal={onCloseRenameTabModal}
 				onRenameTab={onRenameTab}
+				onAutoNameTab={onAutoNameTab}
+				onOpenManualSetup={() =>
+					useModalStore.getState().openModal('newInstance', { duplicatingSessionId: null })
+				}
+				onOpenWizardSetup={openWizard}
+				wizardAvailable={Boolean(openWizard)}
 			/>
 
 			{/* Group Management Modals */}
@@ -874,6 +891,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 				setSettingsTab={setSettingsTab}
 				setShortcutsHelpOpen={setShortcutsHelpOpen}
 				setAboutModalOpen={setAboutModalOpen}
+				setFeedbackModalOpen={setFeedbackModalOpen}
 				setLogViewerOpen={setLogViewerOpen}
 				setProcessMonitorOpen={setProcessMonitorOpen}
 				setUsageDashboardOpen={setUsageDashboardOpen}
@@ -921,6 +939,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 				autoRunSelectedDocument={autoRunSelectedDocument}
 				autoRunCompletedTaskCount={autoRunCompletedTaskCount}
 				onAutoRunResetTasks={onAutoRunResetTasks}
+				onClearActiveTerminal={onClearActiveTerminal}
 				isFilePreviewOpen={isFilePreviewOpen}
 				ghCliAvailable={ghCliAvailable}
 				onPublishGist={onPublishGist}
@@ -930,8 +949,6 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 				onOpenDirectorNotes={onOpenDirectorNotes}
 				onOpenMaestroCue={onOpenMaestroCue}
 				onConfigureCue={onConfigureCue}
-				autoScrollAiMode={autoScrollAiMode}
-				setAutoScrollAiMode={setAutoScrollAiMode}
 				lightboxImage={lightboxImage}
 				lightboxImages={lightboxImages}
 				stagedImages={stagedImages}
@@ -982,6 +999,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 				onPromptToggleTabSaveToHistory={onPromptToggleTabSaveToHistory}
 				promptTabReadOnlyMode={promptTabReadOnlyMode}
 				onPromptToggleTabReadOnlyMode={onPromptToggleTabReadOnlyMode}
+				promptComposerAgentId={promptComposerAgentId}
 				promptTabShowThinking={promptTabShowThinking}
 				onPromptToggleTabShowThinking={onPromptToggleTabShowThinking}
 				promptSupportsThinking={promptSupportsThinking}

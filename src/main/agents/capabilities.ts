@@ -82,6 +82,9 @@ export interface AgentCapabilities {
 	/** Agent uses a combined input+output context window (vs separate limits) */
 	usesCombinedContextWindow: boolean;
 
+	/** Agent supports --append-system-prompt for separate system prompt delivery */
+	supportsAppendSystemPrompt: boolean;
+
 	/** How images should be handled on resume when -i flag is not available.
 	 * 'prompt-embed': Save images to temp files and embed file paths in the prompt text.
 	 * undefined: Use default image handling (or no special resume handling needed). */
@@ -116,6 +119,7 @@ export const DEFAULT_CAPABILITIES: AgentCapabilities = {
 	supportsGroupChatModeration: false,
 	usesJsonLineOutput: false,
 	usesCombinedContextWindow: false,
+	supportsAppendSystemPrompt: false,
 };
 
 /**
@@ -149,7 +153,7 @@ export const AGENT_CAPABILITIES: Record<string, AgentCapabilities> = {
 		requiresPromptToStart: false, // Claude Code can run in --print mode waiting for input
 		supportsStreaming: true, // Stream JSON events
 		supportsResultMessages: true, // "result" event type
-		supportsModelSelection: false, // Model is configured via Anthropic account
+		supportsModelSelection: true, // --model flag (aliases: sonnet, opus, haiku, or full model names)
 		supportsStreamJsonInput: true, // --input-format stream-json for images via stdin
 		supportsThinkingDisplay: true, // Emits streaming assistant messages
 		supportsContextMerge: true, // Can receive merged context via prompts
@@ -158,6 +162,7 @@ export const AGENT_CAPABILITIES: Record<string, AgentCapabilities> = {
 		supportsGroupChatModeration: true, // Can serve as group chat moderator
 		usesJsonLineOutput: false, // Uses stream-json, not JSONL
 		usesCombinedContextWindow: false, // Claude has separate input/output limits
+		supportsAppendSystemPrompt: true, // --append-system-prompt flag
 	},
 
 	/**
@@ -188,13 +193,14 @@ export const AGENT_CAPABILITIES: Record<string, AgentCapabilities> = {
 		supportsGroupChatModeration: false,
 		usesJsonLineOutput: false,
 		usesCombinedContextWindow: false,
+		supportsAppendSystemPrompt: false,
 	},
 
 	/**
 	 * Codex - OpenAI's Codex CLI
 	 * https://github.com/openai/codex
 	 *
-	 * Verified capabilities based on CLI testing (v0.73.0+) and documentation review.
+	 * Verified capabilities based on CLI testing (v0.111.0+) and documentation review.
 	 * See .maestro/playbooks/Codex-Support.md for investigation details.
 	 */
 	codex: {
@@ -221,6 +227,7 @@ export const AGENT_CAPABILITIES: Record<string, AgentCapabilities> = {
 		supportsGroupChatModeration: true, // Can serve as group chat moderator
 		usesJsonLineOutput: true, // Uses JSONL output format
 		usesCombinedContextWindow: true, // OpenAI models use combined context window
+		supportsAppendSystemPrompt: false,
 		imageResumeMode: 'prompt-embed', // codex exec resume doesn't support -i; embed file paths in prompt text
 	},
 
@@ -254,6 +261,7 @@ export const AGENT_CAPABILITIES: Record<string, AgentCapabilities> = {
 		supportsGroupChatModeration: false, // PLACEHOLDER
 		usesJsonLineOutput: false, // PLACEHOLDER
 		usesCombinedContextWindow: false, // PLACEHOLDER
+		supportsAppendSystemPrompt: false,
 	},
 
 	/**
@@ -286,6 +294,7 @@ export const AGENT_CAPABILITIES: Record<string, AgentCapabilities> = {
 		supportsGroupChatModeration: false, // PLACEHOLDER
 		usesJsonLineOutput: false, // PLACEHOLDER
 		usesCombinedContextWindow: false, // PLACEHOLDER
+		supportsAppendSystemPrompt: false,
 	},
 
 	/**
@@ -319,6 +328,7 @@ export const AGENT_CAPABILITIES: Record<string, AgentCapabilities> = {
 		supportsGroupChatModeration: true, // Can serve as group chat moderator
 		usesJsonLineOutput: true, // Uses JSONL output format
 		usesCombinedContextWindow: false, // Depends on model provider
+		supportsAppendSystemPrompt: false,
 	},
 
 	/**
@@ -351,6 +361,7 @@ export const AGENT_CAPABILITIES: Record<string, AgentCapabilities> = {
 		supportsGroupChatModeration: true, // Can serve as group chat moderator
 		usesJsonLineOutput: true, // Uses JSONL output format
 		usesCombinedContextWindow: false, // Depends on model provider
+		supportsAppendSystemPrompt: false,
 	},
 
 	/**
@@ -384,6 +395,7 @@ export const AGENT_CAPABILITIES: Record<string, AgentCapabilities> = {
 		supportsGroupChatModeration: false, // PLACEHOLDER
 		usesJsonLineOutput: false, // PLACEHOLDER
 		usesCombinedContextWindow: false, // PLACEHOLDER
+		supportsAppendSystemPrompt: false,
 	},
 
 	/**

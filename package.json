@@ -1,6 +1,6 @@
 {
 	"name": "maestro",
-	"version": "0.16.3-RC",
+	"version": "0.16.8-RC",
 	"description": "Maestro hones fractured attention into focused intent.",
 	"main": "dist/main/index.js",
 	"author": {
@@ -56,7 +56,8 @@
 		"test:integration:watch": "vitest --config vitest.integration.config.ts",
 		"test:performance": "vitest run --config vitest.performance.config.mts",
 		"refresh-speckit": "node scripts/refresh-speckit.mjs",
-		"refresh-openspec": "node scripts/refresh-openspec.mjs"
+		"refresh-openspec": "node scripts/refresh-openspec.mjs",
+		"refresh-bmad": "node scripts/refresh-bmad.mjs"
 	},
 	"build": {
 		"npmRebuild": false,
@@ -95,20 +96,8 @@
 			"entitlements": "build/entitlements.mac.plist",
 			"entitlementsInherit": "build/entitlements.mac.plist",
 			"target": [
-				{
-					"target": "dmg",
-					"arch": [
-						"x64",
-						"arm64"
-					]
-				},
-				{
-					"target": "zip",
-					"arch": [
-						"x64",
-						"arm64"
-					]
-				}
+				"dmg",
+				"zip"
 			],
 			"artifactName": "${name}-${version}-${arch}-mac.${ext}",
 			"icon": "build/icon.icns",
@@ -124,6 +113,10 @@
 				{
 					"from": "src/prompts/openspec",
 					"to": "prompts/openspec"
+				},
+				{
+					"from": "src/prompts/bmad",
+					"to": "prompts/bmad"
 				}
 			]
 		},
@@ -156,6 +149,10 @@
 				{
 					"from": "src/prompts/openspec",
 					"to": "prompts/openspec"
+				},
+				{
+					"from": "src/prompts/bmad",
+					"to": "prompts/bmad"
 				}
 			]
 		},
@@ -180,6 +177,10 @@
 				{
 					"from": "src/prompts/openspec",
 					"to": "prompts/openspec"
+				},
+				{
+					"from": "src/prompts/bmad",
+					"to": "prompts/bmad"
 				}
 			]
 		},
@@ -332,7 +333,7 @@
 		"node": ">=22.0.0"
 	},
 	"lint-staged": {
-		"*": [
+		"*.{js,cjs,mjs,jsx,ts,tsx,mts,cts,md,json,yml,yaml,css,scss,less,html,svg}": [
 			"prettier --write --ignore-unknown"
 		],
 		"*.{js,cjs,mjs,jsx,ts,tsx,mts,cts}": [

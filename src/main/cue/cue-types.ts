@@ -4,6 +4,7 @@ import * as crypto from 'crypto';
  * Core type definitions for the Maestro Cue event-driven automation system.
  *
  * Cue triggers agent prompts in response to events:
+ * - app.startup: fires once when the Maestro application starts (per session, per app launch)
  * - time.heartbeat: periodic timer-based triggers ("run every X minutes")
  * - time.scheduled: cron-like triggers (specific times and days of week)
  * - file.changed: file system change triggers
@@ -29,6 +30,7 @@ export const CUE_SCHEDULE_DAYS: CueScheduleDay[] = [
 
 /** Event types that can trigger a Cue subscription */
 export type CueEventType =
+	| 'app.startup'
 	| 'time.heartbeat'
 	| 'time.scheduled'
 	| 'file.changed'
@@ -39,6 +41,7 @@ export type CueEventType =
 
 /** All valid event type values (used for validation) */
 export const CUE_EVENT_TYPES: CueEventType[] = [
+	'app.startup',
 	'time.heartbeat',
 	'time.scheduled',
 	'file.changed',
@@ -69,6 +72,8 @@ export interface CueSubscription {
 	watch?: string;
 	source_session?: string | string[];
 	fan_out?: string[];
+	/** Per-target prompts for fan-out. Each entry corresponds to the same-index entry in fan_out. */
+	fan_out_prompts?: string[];
 	filter?: Record<string, string | number | boolean>;
 	repo?: string;
 	poll_minutes?: number;
@@ -78,6 +83,10 @@ export interface CueSubscription {
 	agent_id?: string;
 	/** Human-readable label for the trigger (e.g. "Morning Check"). Editor metadata, ignored by engine. */
 	label?: string;
+	/** Per-subscription timeout override for fan-in (minutes). Falls back to global settings.timeout_minutes. */
+	fan_in_timeout_minutes?: number;
+	/** Per-subscription timeout-on-fail override for fan-in. Falls back to global settings.timeout_on_fail. */
+	fan_in_timeout_on_fail?: 'break' | 'continue';
 }
 
 /** Global Cue settings */

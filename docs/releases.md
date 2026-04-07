@@ -13,9 +13,29 @@ Maestro can update itself automatically! This feature was introduced in **v0.8.7
 
 ---
 
+## v0.16.x - Maestro Cue
+
+**Latest: v0.16.6-RC** | In Development
+
+### New Features
+
+- **Maestro Cue** — Event-driven automation engine that watches for file changes, time intervals, agent completions, GitHub PRs/issues, and pending markdown tasks to trigger automated prompts. Configured via `.maestro/cue.yaml` per project. Gated as an Encore Feature
+- **Environment tab** — Dedicated Settings tab for managing global environment variables passed to all agents
+- **Static history graph with viewport indicator** — The activity graph in the History panel no longer shifts as you scroll; instead, a sliding indicator line with a timestamp label shows your current position in the timeline
+- **File preview tab filtering** — New setting to control whether file preview tabs remain visible when the unread filter is active, with a redesigned Tab Filtering section in Display settings
+- **Cloudflare tunnel auto-restart** — The web/mobile tunnel automatically restarts when the web server port changes
+- **Custom TTS notifications** — Synopsis text is now sent to custom notification commands for user-initiated tasks
+
+### Bug Fixes
+
+- **Auto Run document clarity** — Rewrote the Auto Run instructions in the system prompt for improved agent comprehension
+- **openExternal guard** — Prevented relative paths from being passed to `shell.openExternal`, suppressing RangeError noise
+
+---
+
 ## v0.15.x - Maestro Symphony
 
-**Latest: v0.15.3** | Released January 1, 1
+**Latest: v0.15.3** | Released April 5, 2026
 
 ### Major 0.15.x Additions
 
@@ -29,49 +49,21 @@ Maestro can update itself automatically! This feature was introduced in **v0.8.7
 
 🤖 **Factory.ai Droid Support** — Added support for the [Factory.ai](https://factory.ai/product/cli) droid agent. Full session management and output parsing integration.
 
-### Changes in v0.15.2
+## Changes in v0.15.3
 
-Patch release with bug fixes, UX improvements, and cherry-picks from the 0.16.0 RC.
-
-### New Features
-
-- **Cmd+0 → Last Tab:** Remapped Cmd+0 to jump to last tab; Cmd+Shift+0 now resets font size
-- **Unsent draft protection:** Confirm dialog before closing tabs with unsent draft input
-- **Read-only CLI flag:** Added `--read-only` flag to `maestro-cli send` command
-- **Gemini read-only enforcement:** Gemini `-y` flag now works in read-only mode
-- **Capability-based providers:** Replaced hardcoded agent ID checks with capability flags and shared metadata
-
-### Bug Fixes
-
-- **Sticky overlay scroll:** Fixed sticky overlays breaking tab scroll-into-view
-- **Director's Notes stats:** Count only agents with entries in lookback window
-- **SSH remote config:** Check `sessionSshRemoteConfig` as primary SSH remote ID source
-- **.maestro file tree:** Always show .maestro directory even when dotfiles are hidden
-- **Provider hardening:** Prototype safety, capability gates, stale map cleanup
-- **Session search:** Per-session error resilience and metadata-based title matching
-- **File tree stale loads:** Load sequence counter prevents stale file tree updates
-- **File tree Unicode:** NFC normalization prevents duplicate entries
-- **File tree duplicates:** Tree-structured data resolves duplicate entries
-- **File tree auto-refresh:** Timer no longer destroyed on right panel tab switch
-- **Menu z-index:** Branding header menu renders above sidebar content
-- **Dropdown clipping:** Fixed hamburger menu and live overlay dropdown clipping
-- **Font size shortcuts:** Restored Cmd+/- font size shortcuts lost with custom menu
-- **Draft input preservation:** Replaying a previous message no longer discards current draft
-- **SSH directory collision:** Skip warning when agents are on different SSH hosts
-- **IPC error handling:** Handle expected IPC errors gracefully
-- **Auto-focus on mode switch:** Input field auto-focuses when toggling AI/Shell mode
-- **OpenCode parser:** Preserve JSON error events; reset resultEmitted on step_start
-- **NDJSON performance:** Eliminated triple JSON parsing on hot path
-- **Agent config overrides:** Apply config overrides in context groomer before spawning
-- **Stale closure fix:** Resolved model not saving in wizard agent config
-
-### Visual Polish
-
-- **Light theme contrast:** Improved syntax highlighting contrast across all light themes
-- **Context warning sash:** Dark text colors in light mode for readability
-- **Session name dimming:** Use `textMain` color to prevent visual dimming
-- **Session name pill:** Allow shrinking so date doesn't collide with type pill
-- **Scroll-to-bottom arrow:** Removed noisy indicator from terminal output view
+- **CLI settings management:** Full `maestro-cli settings` command suite — list, get, set, and reset any Maestro setting from the command line. Includes per-agent configuration (custom paths, args, env vars, model overrides). Supports category filtering, verbose descriptions, and machine-readable JSON output for scripting
+- **Live settings reload:** Settings changes made via the CLI are automatically detected by the running desktop app — no restart required
+- **Plan-Mode toggle:** Claude Code and OpenCode agents now show "Plan-Mode" instead of "Read-Only" for the read-only toggle, matching their native terminology
+- **Solarized Dark theme:** New Solarized Dark color theme with tuned contrast for tags, code blocks, and pill labels
+- **Files pane icon theme:** Choose between default and rich icon themes in the files pane — rich theme adds colorful, language-specific icons for 70+ file types and folder categories. Toggle under Settings > Display
+- **Persistent web link:** The web/mobile interface link now persists across app restarts — no need to re-enable it each session
+- **OpenCode v1.2+ session support:** Automatically reads OpenCode's new SQLite session storage format alongside the legacy JSONL format
+- **Group chat @mentions:** Use `@agent-name` syntax in the prompt composer to direct messages to specific agents in group chat
+- **Group chat over SSH:** Group chat synthesis and moderation now run correctly on SSH remote agents instead of always spawning locally
+- **Group chat participant management:** Remove button on participant cards lets you remove stale or unwanted participants from a group chat
+- **Batch resume/abort:** New controls in the right panel for resuming or aborting batch operations
+- **Default worktree directory:** Worktree configuration now defaults to the parent of the agent's working directory instead of blank
+- **Drawfinity in Symphony:** Added Drawfinity to the Symphony project registry
 
 ### Previous Releases in this Series
 
@@ -99,13 +91,13 @@ Changes in this point release include:
 
 The major contributions to 0.14.x remain:
 
-🗄️ Document Graphs. Launch from file preview or from the File tree panel. Explore relationships between Markdown documents that contain links between documents and to URLs.
+🗄️ Document Graphs. Launch from file preview or from the FIle tree panel. Explore relationships between Markdown documents that contain links between documents and to URLs.
 
 📶 SSH support for agents. Manage a remote agent with feature parity over SSH. Includes support for Git and File tree panels. Manage agents on remote systems or in containers. This even works for Group Chat, which is rad as hell.
 
 🧙‍♂️ Added an in-tab wizard for generating Auto Run Playbooks via `/wizard` or a new button in the Auto Run panel.
 
-### Smaller Changes in 0.14.x
+# Smaller Changes in 014.x
 
 - Improved User Dashboard, available from hamburger menu, command palette or hotkey 🎛️
 - Leaderboard tracking now works across multiple systems and syncs level from cloud 🏆

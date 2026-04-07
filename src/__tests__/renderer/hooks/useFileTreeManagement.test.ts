@@ -19,6 +19,7 @@ import type { RefObject, SetStateAction } from 'react';
 import { loadFileTree, compareFileTrees } from '../../../renderer/utils/fileExplorer';
 import { gitService } from '../../../renderer/services/git';
 import { useFileExplorerStore } from '../../../renderer/stores/fileExplorerStore';
+import { useSessionStore } from '../../../renderer/stores/sessionStore';
 
 vi.mock('../../../renderer/utils/fileExplorer', () => ({
 	loadFileTree: vi.fn(),
@@ -105,6 +106,8 @@ describe('useFileTreeManagement', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		useFileExplorerStore.setState({ fileTreeFilter: '' });
+		// Most tests assume sessions are loaded (safety timeout can fire)
+		useSessionStore.setState({ sessionsLoaded: true });
 		originalHistory = window.maestro.history as typeof window.maestro.history | undefined;
 		window.maestro = {
 			...window.maestro,
@@ -115,6 +118,7 @@ describe('useFileTreeManagement', () => {
 	});
 
 	afterEach(() => {
+		useSessionStore.setState({ sessionsLoaded: false, initialFileTreeReady: false });
 		if (originalHistory) {
 			window.maestro.history = originalHistory;
 		} else {
@@ -325,6 +329,166 @@ describe('useFileTreeManagement', () => {
 		);
 	});
 
+	it('fires shallow load before full load for SSH sessions on initial mount', async () => {
+		const shallowTree: FileNode[] = [
+			{ name: 'src', type: 'folder', children: [] },
+			{ name: 'README.md', type: 'file' },
+		];
+		const fullTree: FileNode[] = [
+			{
+				name: 'src',
+				type: 'folder',
+				children: [{ name: 'index.ts', type: 'file' }],
+			},
+			{ name: 'README.md', type: 'file' },
+		];
+
+		// First call (shallow, depth=1) returns quickly, second call (full, depth=10) returns later
+		vi.mocked(loadFileTree).mockResolvedValueOnce(shallowTree).mockResolvedValueOnce(fullTree);
+
+		const mockDirectorySize = vi.fn().mockResolvedValue({
+			fileCount: 2,
+			folderCount: 1,
+			totalSize: 1000,
+		});
+
+		const originalFs = window.maestro?.fs;
+		window.maestro = {
+			...window.maestro,
+			fs: {
+				...originalFs,
+				directorySize: mockDirectorySize,
+			},
+		};
+
+		const sshSession = createMockSession({
+			fileTree: [],
+			sshRemoteId: 'my-ssh-remote',
+			remoteCwd: '/remote/project',
+		});
+		const state = createSessionsState([sshSession]);
+		const deps = createDeps(state);
+
+		renderHook(() => useFileTreeManagement(deps));
+
+		await waitFor(() => {
+			// Shallow load should be called with depth=1
+			expect(loadFileTree).toHaveBeenCalledWith(
+				'/test/project',
+				1,
+				0,
+				expect.objectContaining({ sshRemoteId: 'my-ssh-remote' }),
+				undefined,
+				undefined
+			);
+			// Full load should be called with depth=10
+			expect(loadFileTree).toHaveBeenCalledWith(
+				'/test/project',
+				10,
+				0,
+				expect.objectContaining({ sshRemoteId: 'my-ssh-remote' }),
+				expect.any(Function),
+				undefined
+			);
+		});
+
+		// After both complete, final tree should be the full tree
+		await waitFor(() => {
+			expect(state.getSessions()[0].fileTree).toEqual(fullTree);
+			expect(state.getSessions()[0].fileTreeLoading).toBe(false);
+		});
+
+		if (originalFs) {
+			window.maestro.fs = originalFs;
+		}
+	});
+
+	it('does not fire shallow load for local sessions on initial mount', async () => {
+		const fullTree: FileNode[] = [{ name: 'loaded.txt', type: 'file' }];
+		vi.mocked(loadFileTree).mockResolvedValue(fullTree);
+
+		const state = createSessionsState([createMockSession({ fileTree: [] })]);
+		const deps = createDeps(state);
+
+		renderHook(() => useFileTreeManagement(deps));
+
+		await waitFor(() => {
+			expect(state.getSessions()[0].fileTree).toEqual(fullTree);
+		});
+
+		// loadFileTree should only be called once (full load, no shallow pass)
+		expect(loadFileTree).toHaveBeenCalledTimes(1);
+		expect(loadFileTree).toHaveBeenCalledWith(
+			'/test/project',
+			10,
+			0,
+			undefined,
+			undefined,
+			undefined
+		);
+	});
+
+	it('decouples stats from tree display in initial load', async () => {
+		const fullTree: FileNode[] = [{ name: 'file.txt', type: 'file' }];
+
+		// Tree resolves immediately
+		vi.mocked(loadFileTree).mockResolvedValue(fullTree);
+
+		// Stats resolve after a delay
+		let resolveStats: (value: {
+			fileCount: number;
+			folderCount: number;
+			totalSize: number;
+		}) => void;
+		const statsPromise = new Promise<{ fileCount: number; folderCount: number; totalSize: number }>(
+			(resolve) => {
+				resolveStats = resolve;
+			}
+		);
+		const mockDirectorySize = vi.fn().mockReturnValue(statsPromise);
+
+		const originalFs = window.maestro?.fs;
+		window.maestro = {
+			...window.maestro,
+			fs: {
+				...originalFs,
+				directorySize: mockDirectorySize,
+			},
+		};
+
+		const state = createSessionsState([createMockSession({ fileTree: [] })]);
+		const deps = createDeps(state);
+
+		renderHook(() => useFileTreeManagement(deps));
+
+		// Tree should be set before stats resolve
+		await waitFor(() => {
+			expect(state.getSessions()[0].fileTree).toEqual(fullTree);
+			expect(state.getSessions()[0].fileTreeLoading).toBe(false);
+		});
+
+		// Stats should not be set yet
+		expect(state.getSessions()[0].fileTreeStats).toBeUndefined();
+
+		// Now resolve stats
+		await act(async () => {
+			resolveStats!({ fileCount: 5, folderCount: 2, totalSize: 10000 });
+			// Allow microtasks to flush
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		});
+
+		// Stats should now be populated
+		expect(state.getSessions()[0].fileTreeStats).toEqual({
+			fileCount: 5,
+			folderCount: 2,
+			totalSize: 10000,
+		});
+
+		if (originalFs) {
+			window.maestro.fs = originalFs;
+		}
+	});
+
 	it('fetches stats for sessions with file tree but no stats (migration)', async () => {
 		// Mock directorySize for the migration
 		const mockDirectorySize = vi.fn().mockResolvedValue({
@@ -356,7 +520,12 @@ describe('useFileTreeManagement', () => {
 
 		// Wait for the migration effect to run
 		await waitFor(() => {
-			expect(mockDirectorySize).toHaveBeenCalledWith('/test/project', undefined);
+			expect(mockDirectorySize).toHaveBeenCalledWith(
+				'/test/project',
+				undefined,
+				undefined,
+				undefined
+			);
 		});
 
 		// Verify stats were populated
@@ -373,6 +542,73 @@ describe('useFileTreeManagement', () => {
 		if (originalFs) {
 			window.maestro.fs = originalFs;
 		}
+	});
+
+	it('does not fire file-tree safety timeout until sessionsLoaded is true', () => {
+		vi.useFakeTimers();
+
+		// Start with sessionsLoaded = false (simulates startup before sessions restore)
+		useSessionStore.setState({ sessionsLoaded: false, initialFileTreeReady: false });
+
+		const state = createSessionsState([createMockSession({ fileTree: [] })]);
+		const deps = createDeps(state);
+
+		renderHook(() => useFileTreeManagement(deps));
+
+		// Advance past the 5-second file-tree timeout but not the 8-second backstop
+		act(() => {
+			vi.advanceTimersByTime(6000);
+		});
+
+		// initialFileTreeReady should still be false — gated timer hasn't started yet
+		expect(useSessionStore.getState().initialFileTreeReady).toBe(false);
+
+		// Now mark sessions as loaded
+		act(() => {
+			useSessionStore.setState({ sessionsLoaded: true });
+		});
+
+		// Advance just under the 5-second threshold
+		act(() => {
+			vi.advanceTimersByTime(1900);
+		});
+		expect(useSessionStore.getState().initialFileTreeReady).toBe(false);
+
+		// Advance past the gated 5-second threshold (total 7.9s from mount)
+		act(() => {
+			vi.advanceTimersByTime(200);
+		});
+
+		// The backstop hasn't fired yet (only 8.1s from mount, but the gated timer has)
+		expect(useSessionStore.getState().initialFileTreeReady).toBe(true);
+
+		vi.useRealTimers();
+	});
+
+	it('absolute backstop fires at 8s even if sessionsLoaded is never set', () => {
+		vi.useFakeTimers();
+
+		// sessionsLoaded stays false — simulates a stuck session restoration
+		useSessionStore.setState({ sessionsLoaded: false, initialFileTreeReady: false });
+
+		const state = createSessionsState([createMockSession({ fileTree: [] })]);
+		const deps = createDeps(state);
+
+		renderHook(() => useFileTreeManagement(deps));
+
+		// At 7.9s — backstop hasn't fired yet
+		act(() => {
+			vi.advanceTimersByTime(7900);
+		});
+		expect(useSessionStore.getState().initialFileTreeReady).toBe(false);
+
+		// At 8s — backstop fires
+		act(() => {
+			vi.advanceTimersByTime(200);
+		});
+		expect(useSessionStore.getState().initialFileTreeReady).toBe(true);
+
+		vi.useRealTimers();
 	});
 
 	it('does not fetch stats when session already has stats', async () => {

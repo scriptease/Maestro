@@ -46,6 +46,7 @@ import {
 	registerDebugHandlers,
 	registerSpeckitHandlers,
 	registerOpenSpecHandlers,
+	registerBmadHandlers,
 	registerContextHandlers,
 	registerMarketplaceHandlers,
 	registerStatsHandlers,
@@ -63,6 +64,7 @@ import {
 	registerDirectorNotesHandlers,
 	registerCueHandlers,
 	registerWakatimeHandlers,
+	registerFeedbackHandlers,
 	setupLoggerEventForwarding,
 	cleanupAllGroomingSessions,
 	getActiveGroomingSessionCount,
@@ -75,15 +77,19 @@ import {
 	setGetSessionsCallback,
 	setGetCustomEnvVarsCallback,
 	setGetAgentConfigCallback,
+	setGetModeratorSettingsCallback,
 	setSshStore,
 	setGetCustomShellPathCallback,
 	markParticipantResponded,
 	spawnModeratorSynthesis,
 	getGroupChatReadOnlyState,
 	respawnParticipantWithRecovery,
+	clearActiveParticipantTaskSession,
+	clearModeratorResponseTimeout,
 } from './group-chat/group-chat-router';
 import { createSshRemoteStoreAdapter } from './utils/ssh-remote-resolver';
 import { updateParticipant, loadGroupChat, updateGroupChat } from './group-chat/group-chat-storage';
+import { stopSessionCleanup } from './group-chat/group-chat-moderator';
 import { needsSessionRecovery, initiateSessionRecovery } from './group-chat/session-recovery';
 import { initializeSessionStorages } from './storage';
 import { initializeOutputParsers } from './parsers';
@@ -117,6 +123,7 @@ import { createWebServerFactory } from './web-server/web-server-factory';
 import {
 	setupGlobalErrorHandlers,
 	createCliWatcher,
+	createSettingsWatcher,
 	createWindowManager,
 	createQuitHandler,
 } from './app-lifecycle';
@@ -231,10 +238,14 @@ if (crashReportingEnabled && !isDevelopment) {
 			setTag('channel', version.includes('-RC') ? 'rc' : 'stable');
 
 			// Start memory monitoring for crash diagnostics (MAESTRO-5A/4Y)
-			// Records breadcrumbs with memory state every minute, warns above 500MB heap
-			import('./utils/sentry').then(({ startMemoryMonitoring }) => {
-				startMemoryMonitoring(500, 60000);
-			});
+			// Records breadcrumbs with memory state every minute, warns above 1GB heap
+			import('./utils/sentry')
+				.then(({ startMemoryMonitoring }) => {
+					startMemoryMonitoring(1024, 60000);
+				})
+				.catch((err) => {
+					logger.warn('Failed to start memory monitoring', 'Startup', { error: String(err) });
+				});
 		})
 		.catch((err) => {
 			logger.warn('Failed to initialize Sentry', 'Startup', { error: String(err) });
@@ -276,6 +287,13 @@ const safeSend = createSafeSend(() => mainWindow);
 const cliWatcher = createCliWatcher({
 	getMainWindow: () => mainWindow,
 	getUserDataPath: () => app.getPath('userData'),
+});
+
+// Create settings file watcher for external changes (e.g., from maestro-cli)
+const settingsWatcher = createSettingsWatcher({
+	getMainWindow: () => mainWindow,
+	getSettingsPath: () => syncPath,
+	getAgentConfigsPath: () => productionDataPath,
 });
 
 const devServerPort = process.env.VITE_PORT ? parseInt(process.env.VITE_PORT, 10) : 5173;
@@ -441,6 +459,7 @@ app.whenReady().then(async () => {
 				customArgs: storedSession.customArgs,
 				customEnvVars: storedSession.customEnvVars,
 				customModel: storedSession.customModel,
+				customEffort: storedSession.customEffort,
 				onLog: (level, message) => {
 					if (level === 'error') {
 						logger.error(message, 'Cue');
@@ -528,7 +547,14 @@ app.whenReady().then(async () => {
 	const encoreFeatures = store.get('encoreFeatures', {}) as Record<string, boolean>;
 	if (encoreFeatures.maestroCue && cueEngine) {
 		logger.info('Maestro Cue Encore Feature enabled — starting Cue engine', 'Startup');
-		cueEngine.start();
+		try {
+			cueEngine.start(true);
+		} catch (err) {
+			logger.error(
+				`Cue engine failed to start at boot — will remain available for retry via Settings: ${err}`,
+				'Startup'
+			);
+		}
 	}
 
 	// Set custom application menu to prevent macOS from injecting native
@@ -580,6 +606,9 @@ app.whenReady().then(async () => {
 		settingsStore: store,
 	});
 
+	// Start settings file watcher for external changes (e.g., maestro-cli settings set)
+	settingsWatcher.start();
+
 	app.on('activate', () => {
 		if (BrowserWindow.getAllWindows().length === 0) {
 			createWindow();
@@ -624,6 +653,9 @@ const quitHandler = createQuitHandler({
 			cueEngine.stop();
 		}
 	},
+	stopSettingsWatcher: () => settingsWatcher.stop(),
+	powerManager,
+	stopSessionCleanup,
 });
 quitHandler.setup();
 
@@ -664,7 +696,11 @@ function setupIpcHandlers() {
 
 	// History operations - extracted to src/main/ipc/handlers/history.ts
 	// Uses HistoryManager singleton for per-session storage
-	registerHistoryHandlers({ safeSend });
+	registerHistoryHandlers({
+		safeSend,
+		getMaxEntries: () => store.get('maxLogBuffer', 5000) as number,
+		getSshRemoteById,
+	});
 
 	// Director's Notes - unified history + synopsis generation
 	registerDirectorNotesHandlers({
@@ -774,6 +810,9 @@ function setupIpcHandlers() {
 	// Register OpenSpec handlers (no dependencies needed)
 	registerOpenSpecHandlers();
 
+	// Register BMAD handlers (no dependencies needed)
+	registerBmadHandlers();
+
 	// Register Context Merge handlers for session context transfer and grooming
 	registerContextHandlers({
 		getMainWindow: () => mainWindow,
@@ -826,6 +865,8 @@ function setupIpcHandlers() {
 				sshRemoteName,
 				// Pass full SSH config for remote execution support
 				sshRemoteConfig: s.sessionSshRemoteConfig,
+				autoRunFolderPath: s.autoRunFolderPath,
+				worktreeBasePath: s.worktreeConfig?.basePath,
 			};
 		});
 	});
@@ -833,6 +874,12 @@ function setupIpcHandlers() {
 	// Set up callback for group chat router to lookup custom env vars for agents
 	setGetCustomEnvVarsCallback(getCustomEnvVarsForAgent);
 	setGetAgentConfigCallback(getAgentConfigForAgent);
+
+	// Set up callback for group chat router to get moderator standing instructions + conductor profile
+	setGetModeratorSettingsCallback(() => ({
+		standingInstructions: (store.get('moderatorStandingInstructions', '') as string) || '',
+		conductorProfile: (store.get('conductorProfile', '') as string) || '',
+	}));
 
 	// Set up SSH store for group chat SSH remote execution support
 	setSshStore(createSshRemoteStoreAdapter(store));
@@ -886,6 +933,20 @@ function setupIpcHandlers() {
 
 	// Register WakaTime handlers (CLI check, API key validation)
 	registerWakatimeHandlers(wakatimeManager);
+
+	// Register feedback handlers (gh auth + feedback submission)
+	registerFeedbackHandlers({
+		getProcessManager: () => processManager,
+		debugPackageDeps: {
+			getAgentDetector: () => agentDetector,
+			getProcessManager: () => processManager,
+			getWebServer: () => webServer,
+			settingsStore: store,
+			sessionsStore,
+			groupsStore,
+			bootstrapStore,
+		},
+	});
 }
 
 // Handle process output streaming (set up after initialization)
@@ -906,6 +967,8 @@ function setupProcessListeners() {
 				spawnModeratorSynthesis,
 				getGroupChatReadOnlyState,
 				respawnParticipantWithRecovery,
+				clearActiveParticipantTaskSession,
+				clearModeratorResponseTimeout,
 			},
 			groupChatStorage: {
 				loadGroupChat,

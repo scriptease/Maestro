@@ -14,6 +14,7 @@ import {
 	DEFAULT_AI_COMMANDS,
 } from '../../../renderer/stores/settingsStore';
 import type { SettingsStoreState } from '../../../renderer/stores/settingsStore';
+import type { FileExplorerIconTheme } from '../../../renderer/utils/fileExplorerIcons/shared';
 import { DEFAULT_SHORTCUTS, TAB_SHORTCUTS } from '../../../renderer/constants/shortcuts';
 import { DEFAULT_CUSTOM_THEME_COLORS } from '../../../renderer/constants/themes';
 
@@ -39,7 +40,6 @@ function resetStore() {
 		customThemeColors: DEFAULT_CUSTOM_THEME_COLORS,
 		customThemeBaseId: 'dracula',
 		enterToSendAI: false,
-		enterToSendTerminal: true,
 		defaultSaveToHistory: true,
 		defaultShowThinking: 'off',
 		leftSidebarWidth: 256,
@@ -47,6 +47,8 @@ function resetStore() {
 		markdownEditMode: false,
 		chatRawTextMode: false,
 		showHiddenFiles: true,
+		fileExplorerIconTheme: 'default',
+		terminalWidth: 100,
 		logLevel: 'info',
 		maxLogBuffer: 5000,
 		maxOutputLines: 25,
@@ -91,6 +93,8 @@ function resetStore() {
 		directorNotesSettings: { provider: 'claude-code', defaultLookbackDays: 7 },
 		wakatimeApiKey: '',
 		wakatimeEnabled: false,
+		forcedParallelExecution: false,
+		forcedParallelAcknowledged: false,
 	});
 }
 
@@ -117,7 +121,7 @@ describe('settingsStore', () => {
 	// ========================================================================
 
 	describe('initial state', () => {
-		it('has correct default values for all 65 fields', () => {
+		it('has correct default values for all 68 fields', () => {
 			const state = useSettingsStore.getState();
 
 			expect(state.settingsLoaded).toBe(false);
@@ -136,7 +140,6 @@ describe('settingsStore', () => {
 			expect(state.customThemeColors).toEqual(DEFAULT_CUSTOM_THEME_COLORS);
 			expect(state.customThemeBaseId).toBe('dracula');
 			expect(state.enterToSendAI).toBe(false);
-			expect(state.enterToSendTerminal).toBe(true);
 			expect(state.defaultSaveToHistory).toBe(true);
 			expect(state.defaultShowThinking).toBe('off');
 			expect(state.leftSidebarWidth).toBe(256);
@@ -144,6 +147,8 @@ describe('settingsStore', () => {
 			expect(state.markdownEditMode).toBe(false);
 			expect(state.chatRawTextMode).toBe(false);
 			expect(state.showHiddenFiles).toBe(true);
+			expect(state.fileExplorerIconTheme).toBe('default');
+			expect(state.terminalWidth).toBe(100);
 			expect(state.logLevel).toBe('info');
 			expect(state.maxLogBuffer).toBe(5000);
 			expect(state.maxOutputLines).toBe(25);
@@ -191,6 +196,8 @@ describe('settingsStore', () => {
 			});
 			expect(state.wakatimeApiKey).toBe('');
 			expect(state.wakatimeEnabled).toBe(false);
+			expect(state.forcedParallelExecution).toBe(false);
+			expect(state.forcedParallelAcknowledged).toBe(false);
 		});
 	});
 
@@ -298,12 +305,6 @@ describe('settingsStore', () => {
 				expect(window.maestro.settings.set).toHaveBeenCalledWith('enterToSendAI', true);
 			});
 
-			it('setEnterToSendTerminal updates state and persists', () => {
-				useSettingsStore.getState().setEnterToSendTerminal(false);
-				expect(useSettingsStore.getState().enterToSendTerminal).toBe(false);
-				expect(window.maestro.settings.set).toHaveBeenCalledWith('enterToSendTerminal', false);
-			});
-
 			it('setDefaultSaveToHistory updates state and persists', () => {
 				useSettingsStore.getState().setDefaultSaveToHistory(false);
 				expect(useSettingsStore.getState().defaultSaveToHistory).toBe(false);
@@ -342,6 +343,12 @@ describe('settingsStore', () => {
 				useSettingsStore.getState().setShowHiddenFiles(false);
 				expect(useSettingsStore.getState().showHiddenFiles).toBe(false);
 				expect(window.maestro.settings.set).toHaveBeenCalledWith('showHiddenFiles', false);
+			});
+
+			it('setFileExplorerIconTheme updates state and persists', () => {
+				useSettingsStore.getState().setFileExplorerIconTheme('rich');
+				expect(useSettingsStore.getState().fileExplorerIconTheme).toBe('rich');
+				expect(window.maestro.settings.set).toHaveBeenCalledWith('fileExplorerIconTheme', 'rich');
 			});
 		});
 
@@ -606,6 +613,31 @@ describe('settingsStore', () => {
 				useSettingsStore.getState().setWakatimeEnabled(true);
 				expect(useSettingsStore.getState().wakatimeEnabled).toBe(true);
 				expect(window.maestro.settings.set).toHaveBeenCalledWith('wakatimeEnabled', true);
+			});
+		});
+
+		describe('Forced Parallel Execution', () => {
+			it('setForcedParallelExecution updates state and persists', () => {
+				useSettingsStore.getState().setForcedParallelExecution(true);
+				expect(useSettingsStore.getState().forcedParallelExecution).toBe(true);
+				expect(window.maestro.settings.set).toHaveBeenCalledWith('forcedParallelExecution', true);
+			});
+
+			it('setForcedParallelAcknowledged updates state and persists', () => {
+				useSettingsStore.getState().setForcedParallelAcknowledged(true);
+				expect(useSettingsStore.getState().forcedParallelAcknowledged).toBe(true);
+				expect(window.maestro.settings.set).toHaveBeenCalledWith(
+					'forcedParallelAcknowledged',
+					true
+				);
+			});
+
+			it('forcedParallelExecution defaults to false', () => {
+				expect(useSettingsStore.getState().forcedParallelExecution).toBe(false);
+			});
+
+			it('forcedParallelAcknowledged defaults to false', () => {
+				expect(useSettingsStore.getState().forcedParallelAcknowledged).toBe(false);
 			});
 		});
 	});
@@ -1331,6 +1363,27 @@ describe('settingsStore', () => {
 			expect(state.enterToSendAI).toBe(true);
 		});
 
+		it('loads fileExplorerIconTheme when the persisted value is valid', async () => {
+			vi.mocked(window.maestro.settings.getAll).mockResolvedValue({
+				fileExplorerIconTheme: 'rich' satisfies FileExplorerIconTheme,
+			});
+
+			await loadAllSettings();
+
+			expect(useSettingsStore.getState().fileExplorerIconTheme).toBe('rich');
+		});
+
+		it('falls back to default for invalid fileExplorerIconTheme values', async () => {
+			useSettingsStore.setState({ fileExplorerIconTheme: 'rich' });
+			vi.mocked(window.maestro.settings.getAll).mockResolvedValue({
+				fileExplorerIconTheme: 'neon' as any,
+			});
+
+			await loadAllSettings();
+
+			expect(useSettingsStore.getState().fileExplorerIconTheme).toBe('default');
+		});
+
 		it('uses defaults when settings are empty/undefined', async () => {
 			vi.mocked(window.maestro.settings.getAll).mockResolvedValue({});
 
@@ -1559,6 +1612,16 @@ describe('settingsStore', () => {
 
 			// Invalid value rejected, keeps default
 			expect(useSettingsStore.getState().defaultStatsTimeRange).toBe('week');
+		});
+
+		it('accepts quarter as valid defaultStatsTimeRange', async () => {
+			vi.mocked(window.maestro.settings.getAll).mockResolvedValue({
+				defaultStatsTimeRange: 'quarter',
+			});
+
+			await loadAllSettings();
+
+			expect(useSettingsStore.getState().defaultStatsTimeRange).toBe('quarter');
 		});
 
 		it('validates documentGraphPreviewCharLimit on load (rejects out-of-range)', async () => {

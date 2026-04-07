@@ -115,6 +115,16 @@ export interface DeleteAgentModalData {
 	session: Session;
 }
 
+/** Director's Notes modal data */
+export interface DirectorNotesData {
+	initialTab?: 'overview' | 'history' | 'ai-overview';
+}
+
+/** Cue modal data */
+export interface CueModalData {
+	initialTab?: 'dashboard' | 'pipeline';
+}
+
 /** Cue YAML editor data */
 export interface CueYamlEditorData {
 	sessionId: string;
@@ -162,8 +172,10 @@ export type ModalId =
 	| 'settings'
 	| 'shortcutsHelp'
 	| 'about'
+	| 'feedback'
 	| 'updateCheck'
 	// Instance Management
+	| 'newAgentChoice'
 	| 'newInstance'
 	| 'editAgent'
 	| 'deleteAgent'
@@ -260,6 +272,8 @@ export interface ModalDataMap {
 	firstRunCelebration: FirstRunCelebrationData;
 	keyboardMastery: KeyboardMasteryData;
 	lightbox: LightboxData;
+	directorNotes: DirectorNotesData;
+	cueModal: CueModalData;
 	cueYamlEditor: CueYamlEditorData;
 }
 
@@ -538,6 +552,10 @@ export function getModalActions() {
 		// About Modal
 		setAboutModalOpen: (open: boolean) => (open ? openModal('about') : closeModal('about')),
 
+		// Feedback Modal
+		setFeedbackModalOpen: (open: boolean) =>
+			open ? openModal('feedback') : closeModal('feedback'),
+
 		// Update Check Modal
 		setUpdateCheckModalOpen: (open: boolean) =>
 			open ? openModal('updateCheck') : closeModal('updateCheck'),
@@ -785,6 +803,8 @@ export function getModalActions() {
 
 		// Maestro Cue Modal
 		setCueModalOpen: (open: boolean) => (open ? openModal('cueModal') : closeModal('cueModal')),
+		openCueModalWithTab: (tab: 'dashboard' | 'pipeline') =>
+			openModal('cueModal', { initialTab: tab }),
 
 		// Maestro Cue YAML Editor (standalone, bypasses CueModal dashboard)
 		openCueYamlEditor: (sessionId: string, projectRoot: string) =>
@@ -827,6 +847,7 @@ export function useModalActions() {
 	const quickActionData = useModalStore(selectModalData('quickAction'));
 	const lightboxData = useModalStore(selectModalData('lightbox'));
 	const aboutModalOpen = useModalStore(selectModalOpen('about'));
+	const feedbackModalOpen = useModalStore(selectModalOpen('feedback'));
 	const updateCheckModalOpen = useModalStore(selectModalOpen('updateCheck'));
 	const leaderboardRegistrationOpen = useModalStore(selectModalOpen('leaderboard'));
 	const standingOvationData = useModalStore(selectModalData('standingOvation'));
@@ -918,6 +939,7 @@ export function useModalActions() {
 
 		// About Modal
 		aboutModalOpen,
+		feedbackModalOpen,
 
 		// Update Check Modal
 		updateCheckModalOpen,

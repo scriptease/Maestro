@@ -13,6 +13,7 @@ import type {
 
 // Info/Display Modal Components
 import { AboutModal } from '../AboutModal';
+import { FeedbackModal } from '../FeedbackModal';
 import { ShortcutsHelpModal } from '../ShortcutsHelpModal';
 import { UpdateCheckModal } from '../UpdateCheckModal';
 
@@ -41,8 +42,11 @@ export interface AppInfoModalsProps {
 	// About Modal
 	aboutModalOpen: boolean;
 	onCloseAboutModal: () => void;
+	feedbackModalOpen: boolean;
+	onCloseFeedbackModal: () => void;
 	autoRunStats: AutoRunStats;
 	usageStats?: MaestroUsageStats | null;
+	onSwitchToSession: (sessionId: string) => void;
 	/** Global hands-on time in milliseconds (from settings) */
 	handsOnTimeMs: number;
 	onOpenLeaderboardRegistration: () => void;
@@ -59,14 +63,14 @@ export interface AppInfoModalsProps {
 	sessions: Session[]; // Used by ProcessMonitor
 	groups: Group[];
 	groupChats: GroupChat[];
-	onNavigateToSession: (sessionId: string, tabId?: string) => void;
+	onNavigateToSession: (sessionId: string, tabId?: string, processType?: string) => void;
 	onNavigateToGroupChat: (groupChatId: string) => void;
 
 	// Usage Dashboard Modal
 	usageDashboardOpen: boolean;
 	onCloseUsageDashboard: () => void;
 	/** Default time range for the Usage Dashboard from settings */
-	defaultStatsTimeRange?: 'day' | 'week' | 'month' | 'year' | 'all';
+	defaultStatsTimeRange?: 'day' | 'week' | 'month' | 'quarter' | 'year' | 'all';
 	/** Enable colorblind-friendly colors for dashboard charts */
 	colorBlindMode?: boolean;
 }
@@ -96,8 +100,11 @@ export const AppInfoModals = memo(function AppInfoModals({
 	// About Modal
 	aboutModalOpen,
 	onCloseAboutModal,
+	feedbackModalOpen,
+	onCloseFeedbackModal,
 	autoRunStats,
 	usageStats,
+	onSwitchToSession,
 	handsOnTimeMs,
 	onOpenLeaderboardRegistration,
 	isLeaderboardRegistered,
@@ -144,6 +151,16 @@ export const AppInfoModals = memo(function AppInfoModals({
 					onOpenLeaderboardRegistration={onOpenLeaderboardRegistration}
 					isLeaderboardRegistered={isLeaderboardRegistered}
 					leaderboardRegistration={leaderboardRegistration}
+				/>
+			)}
+
+			{/* --- FEEDBACK MODAL --- */}
+			{feedbackModalOpen && (
+				<FeedbackModal
+					theme={theme}
+					sessions={sessions}
+					onClose={onCloseFeedbackModal}
+					onSwitchToSession={onSwitchToSession}
 				/>
 			)}
 

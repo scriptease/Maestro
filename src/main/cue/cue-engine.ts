@@ -88,6 +88,12 @@ export class CueEngine {
 	private pendingYamlWatchers = new Map<string, () => void>();
 	/** Tracks "subName:HH:MM" keys that time.scheduled already fired, preventing double-fire on config refresh */
 	private scheduledFiredKeys = new Set<string>();
+	/** Tracks "sessionId:subName" keys for app.startup subscriptions that already fired this process lifecycle.
+	 *  NOT cleared on stop() — persists across engine stop/start cycles (feature toggling). Only resets on app restart. */
+	private startupFiredKeys = new Set<string>();
+	/** True only during the initial session scan inside start(true). Cleared immediately after the scan
+	 *  completes so that later refreshSession/initSession calls don't fire app.startup subs. */
+	private isBootScan = false;
 	private heartbeat: CueHeartbeat;
 	private deps: CueEngineDeps;
 
@@ -144,11 +150,17 @@ export class CueEngine {
 		});
 	}
 
-	/** Enable the engine and scan all sessions for Cue configs */
-	start(): void {
+	/** Enable the engine and scan all sessions for Cue configs.
+	 *  @param isSystemBoot Pass `true` only at application launch (index.ts). When false (default),
+	 *  app.startup subscriptions will NOT fire — this prevents re-firing when the user toggles Cue on/off. */
+	start(isSystemBoot = false): void {
 		if (this.enabled) return;
 
-		// Initialize Cue database and prune old events — bail if this fails
+		if (isSystemBoot) {
+			this.isBootScan = true;
+		}
+
+		// Initialize Cue database and prune old events — fail gracefully so app startup is not blocked
 		try {
 			initCueDb((level, msg) => this.deps.onLog(level as MainLogLevel, msg));
 			pruneCueEvents(EVENT_PRUNE_AGE_MS);
@@ -160,6 +172,7 @@ export class CueEngine {
 			captureException(error instanceof Error ? error : new Error(String(error)), {
 				extra: { operation: 'cue.dbInit' },
 			});
+			this.isBootScan = false;
 			return;
 		}
 
@@ -170,6 +183,10 @@ export class CueEngine {
 		for (const session of sessions) {
 			this.initSession(session);
 		}
+
+		// Boot scan complete — clear the flag so later refreshSession/initSession
+		// calls (YAML hot-reload, auto-discovery) don't fire app.startup subs
+		this.isBootScan = false;
 
 		// Detect sleep gap from previous heartbeat
 		this.heartbeat.detectSleepAndReconcile();
@@ -198,6 +215,9 @@ export class CueEngine {
 		this.runManager.reset();
 		this.fanInTracker.reset();
 		this.scheduledFiredKeys.clear();
+		// NOTE: startupFiredKeys is NOT cleared here — it persists across engine stop/start
+		// cycles so that toggling Cue off/on does not re-fire app.startup subscriptions.
+		// It only resets when the Electron process restarts (new CueEngine instance).
 
 		// Stop heartbeat and close database
 		this.heartbeat.stop();
@@ -255,6 +275,13 @@ export class CueEngine {
 		this.teardownSession(sessionId);
 		this.sessions.delete(sessionId);
 		this.runManager.clearQueue(sessionId);
+
+		// Clear startup fired keys so re-adding this session will fire startup again
+		for (const key of this.startupFiredKeys) {
+			if (key.startsWith(`${sessionId}:`)) {
+				this.startupFiredKeys.delete(key);
+			}
+		}
 
 		const pendingWatcher = this.pendingYamlWatchers.get(sessionId);
 		if (pendingWatcher) {
@@ -379,9 +406,7 @@ export class CueEngine {
 				sessionId,
 				sessionName: session.name,
 				toolType: session.toolType,
-				subscriptions: state.config.subscriptions.filter(
-					(s) => !s.agent_id || s.agent_id === sessionId
-				),
+				subscriptions: state.config.subscriptions,
 			});
 		}
 
@@ -396,9 +421,7 @@ export class CueEngine {
 					sessionId: session.id,
 					sessionName: session.name,
 					toolType: session.toolType,
-					subscriptions: config.subscriptions.filter(
-						(s) => !s.agent_id || s.agent_id === session.id
-					),
+					subscriptions: config.subscriptions,
 				});
 			}
 		}
@@ -429,8 +452,8 @@ export class CueEngine {
 	}
 
 	/** Clears queued events for a session */
-	clearQueue(sessionId: string): void {
-		this.runManager.clearQueue(sessionId);
+	clearQueue(sessionId: string, preserveStartup = false): void {
+		this.runManager.clearQueue(sessionId, preserveStartup);
 	}
 
 	/**
@@ -499,15 +522,29 @@ export class CueEngine {
 				if (!sources.some((src) => src === sessionId || src === completingName)) continue;
 
 				if (sources.length === 1) {
-					// Single source — fire immediately
+					// Single source — fire immediately.
+					//
+					// INVARIANT: sourceOutput is built EXCLUSIVELY from
+					// completionData.stdout. There must NEVER be a fallback to any
+					// session-level output store, group-chat output buffer, or live
+					// process buffer. Adding such a fallback would leak whatever the
+					// caller's session buffer happens to contain (including group-chat
+					// transcripts when the source session is also a group-chat
+					// participant) into the downstream {{CUE_SOURCE_OUTPUT}} template.
+					// The exit-listener path (process-listeners/exit-listener.ts)
+					// passes only { status, exitCode } → sourceOutput = ''.
+					// The self-loop path (cue-engine.ts onRunCompleted) passes the
+					// cue-spawned run's own extractCleanStdout() result, which is the
+					// ONLY sanctioned way stdout reaches this field.
+					const rawStdout = completionData?.stdout ?? '';
 					const event = createCueEvent('agent.completed', sub.name, {
 						sourceSession: completingName,
 						sourceSessionId: sessionId,
 						status: completionData?.status ?? 'completed',
 						exitCode: completionData?.exitCode ?? null,
 						durationMs: completionData?.durationMs ?? 0,
-						sourceOutput: (completionData?.stdout ?? '').slice(-SOURCE_OUTPUT_MAX_CHARS),
-						outputTruncated: (completionData?.stdout ?? '').length > SOURCE_OUTPUT_MAX_CHARS,
+						sourceOutput: rawStdout.slice(-SOURCE_OUTPUT_MAX_CHARS),
+						outputTruncated: rawStdout.length > SOURCE_OUTPUT_MAX_CHARS,
 						triggeredBy: completionData?.triggeredBy,
 					});
 
@@ -581,9 +618,11 @@ export class CueEngine {
 						fanOutIndex: i,
 					},
 				};
+				const perTargetPrompt = sub.fan_out_prompts?.[i];
+				const prompt = perTargetPrompt || sub.prompt_file || sub.prompt;
 				this.runManager.execute(
 					targetSession.id,
-					sub.prompt_file ?? sub.prompt,
+					prompt,
 					fanOutEvent,
 					sub.name,
 					sub.output_prompt,
@@ -668,6 +707,37 @@ export class CueEngine {
 			// agent.completed subscriptions are handled reactively via notifyAgentCompleted
 		}
 
+		// Fire app.startup subscriptions (once per system boot, deduplicated across hot-reloads and feature toggles)
+		for (const sub of config.subscriptions) {
+			if (sub.enabled === false) continue;
+			if (sub.agent_id && sub.agent_id !== session.id) continue;
+			if (sub.event !== 'app.startup') continue;
+
+			// Only fire during the initial boot scan (app launch), not on later refreshSession/feature toggle
+			if (!this.isBootScan) continue;
+
+			const firedKey = `${session.id}:${sub.name}`;
+			if (this.startupFiredKeys.has(firedKey)) continue;
+			this.startupFiredKeys.add(firedKey);
+
+			const event = createCueEvent('app.startup', sub.name, {
+				reason: 'system_startup',
+			});
+
+			// Check payload filter
+			if (sub.filter && !matchesFilter(event.payload, sub.filter)) {
+				this.deps.onLog(
+					'cue',
+					`[CUE] "${sub.name}" filter not matched (${describeFilter(sub.filter)})`
+				);
+				continue;
+			}
+
+			this.deps.onLog('cue', `[CUE] "${sub.name}" triggered (app.startup)`);
+			state.lastTriggered = event.timestamp;
+			this.dispatchSubscription(session.id, sub, event, session.name);
+		}
+
 		this.sessions.set(session.id, state);
 
 		// Prevent system sleep if this session has time-based subscriptions
@@ -721,7 +791,9 @@ export class CueEngine {
 		this.clearFanInState(sessionId);
 
 		// Clean up queued events for this session (prevents stale events after config reload)
-		this.clearQueue(sessionId);
+		// Preserve app.startup events — they are one-time boot intents that should survive
+		// config hot-reloads (e.g., OneDrive touching the YAML file during the boot scan).
+		this.clearQueue(sessionId, /* preserveStartup */ true);
 
 		// Clean up scheduledFiredKeys for this session's subscriptions
 		for (const sub of state.config.subscriptions) {

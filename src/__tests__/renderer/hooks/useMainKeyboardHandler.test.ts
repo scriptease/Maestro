@@ -1937,7 +1937,7 @@ describe('useMainKeyboardHandler', () => {
 				expect(mockFocusActiveTerminal).toHaveBeenCalled();
 			});
 
-			it('Cmd+K clears terminal in terminal mode instead of opening command palette', () => {
+			it('Cmd+K opens command palette in terminal mode (not clear terminal)', () => {
 				const { result } = renderHook(() => useMainKeyboardHandler());
 
 				const mockClearActiveTerminal = vi.fn();
@@ -1961,8 +1961,34 @@ describe('useMainKeyboardHandler', () => {
 					);
 				});
 
+				expect(mockSetQuickActionOpen).toHaveBeenCalledWith(true, 'main');
+				expect(mockClearActiveTerminal).not.toHaveBeenCalled();
+			});
+
+			it('Cmd+Shift+K clears terminal in terminal mode', () => {
+				const { result } = renderHook(() => useMainKeyboardHandler());
+
+				const mockClearActiveTerminal = vi.fn();
+
+				result.current.keyboardHandlerRef.current = createTerminalTabContext({
+					isShortcut: () => false,
+					sessions: [{ id: 'session-1' }],
+					mainPanelRef: { current: { clearActiveTerminal: mockClearActiveTerminal } },
+					recordShortcutUsage: vi.fn().mockReturnValue({ newLevel: null }),
+				});
+
+				act(() => {
+					window.dispatchEvent(
+						new KeyboardEvent('keydown', {
+							key: 'k',
+							metaKey: true,
+							shiftKey: true,
+							bubbles: true,
+						})
+					);
+				});
+
 				expect(mockClearActiveTerminal).toHaveBeenCalled();
-				expect(mockSetQuickActionOpen).not.toHaveBeenCalled();
 			});
 
 			it('Cmd+Shift+R opens rename modal for terminal tab', () => {
@@ -1994,6 +2020,55 @@ describe('useMainKeyboardHandler', () => {
 				expect(mockSetRenameTabId).toHaveBeenCalledWith('term-1');
 				expect(mockSetRenameTabInitialName).toHaveBeenCalledWith('Terminal 1');
 				expect(mockSetRenameTabModalOpen).toHaveBeenCalledWith(true);
+			});
+
+			it('Cmd+U toggles unread filter from terminal mode', () => {
+				const { result } = renderHook(() => useMainKeyboardHandler());
+
+				const mockToggleUnreadFilter = vi.fn();
+
+				result.current.keyboardHandlerRef.current = createTerminalTabContext({
+					isTabShortcut: (_e: KeyboardEvent, actionId: string) => actionId === 'filterUnreadTabs',
+					toggleUnreadFilter: mockToggleUnreadFilter,
+					recordShortcutUsage: vi.fn().mockReturnValue({ newLevel: null }),
+				});
+
+				act(() => {
+					window.dispatchEvent(
+						new KeyboardEvent('keydown', {
+							key: 'u',
+							metaKey: true,
+							bubbles: true,
+						})
+					);
+				});
+
+				expect(mockToggleUnreadFilter).toHaveBeenCalled();
+			});
+
+			it('Alt+Shift+U toggles tab unread from terminal mode', () => {
+				const { result } = renderHook(() => useMainKeyboardHandler());
+
+				const mockToggleTabUnread = vi.fn();
+
+				result.current.keyboardHandlerRef.current = createTerminalTabContext({
+					isTabShortcut: (_e: KeyboardEvent, actionId: string) => actionId === 'toggleTabUnread',
+					toggleTabUnread: mockToggleTabUnread,
+					recordShortcutUsage: vi.fn().mockReturnValue({ newLevel: null }),
+				});
+
+				act(() => {
+					window.dispatchEvent(
+						new KeyboardEvent('keydown', {
+							key: 'u',
+							altKey: true,
+							shiftKey: true,
+							bubbles: true,
+						})
+					);
+				});
+
+				expect(mockToggleTabUnread).toHaveBeenCalled();
 			});
 		});
 	});
@@ -2414,7 +2489,7 @@ describe('useMainKeyboardHandler', () => {
 	});
 
 	describe('jumpToTerminal shortcut', () => {
-		it('should navigate to closest terminal tab on Alt+J', () => {
+		it('should navigate to closest terminal tab on Opt+Cmd+J', () => {
 			const { result } = renderHook(() => useMainKeyboardHandler());
 			const mockSetSessions = vi.fn();
 			const mockSession = { id: 'test-session', name: 'Test', inputMode: 'ai' as const };
@@ -2440,6 +2515,7 @@ describe('useMainKeyboardHandler', () => {
 					new KeyboardEvent('keydown', {
 						key: 'j',
 						altKey: true,
+						metaKey: true,
 						bubbles: true,
 					})
 				);
@@ -2448,9 +2524,9 @@ describe('useMainKeyboardHandler', () => {
 			expect(mockSetSessions).toHaveBeenCalled();
 		});
 
-		it('should not navigate when no terminal tabs exist', () => {
+		it('should create a new terminal tab when no terminal tabs exist', () => {
 			const { result } = renderHook(() => useMainKeyboardHandler());
-			const mockSetSessions = vi.fn();
+			const mockHandleOpenTerminalTab = vi.fn();
 			const mockSession = { id: 'test-session', name: 'Test', inputMode: 'ai' as const };
 
 			result.current.keyboardHandlerRef.current = createMockContext({
@@ -2459,7 +2535,8 @@ describe('useMainKeyboardHandler', () => {
 				activeSession: mockSession,
 				activeGroupChatId: null,
 				navigateToClosestTerminalTab: vi.fn().mockReturnValue(null),
-				setSessions: mockSetSessions,
+				setSessions: vi.fn(),
+				handleOpenTerminalTab: mockHandleOpenTerminalTab,
 				mainPanelRef: { current: { focusActiveTerminal: vi.fn() } },
 				recordShortcutUsage: vi.fn().mockReturnValue({ newLevel: null }),
 			});
@@ -2469,12 +2546,13 @@ describe('useMainKeyboardHandler', () => {
 					new KeyboardEvent('keydown', {
 						key: 'j',
 						altKey: true,
+						metaKey: true,
 						bubbles: true,
 					})
 				);
 			});
 
-			expect(mockSetSessions).not.toHaveBeenCalled();
+			expect(mockHandleOpenTerminalTab).toHaveBeenCalled();
 		});
 
 		it('should not navigate in group chat mode', () => {
@@ -2497,12 +2575,102 @@ describe('useMainKeyboardHandler', () => {
 					new KeyboardEvent('keydown', {
 						key: 'j',
 						altKey: true,
+						metaKey: true,
 						bubbles: true,
 					})
 				);
 			});
 
 			expect(mockNavigate).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('terminal focus recovery does not intercept group chat input', () => {
+		it('should not preventDefault on regular keystrokes in group chat even when session is in terminal mode', () => {
+			const { result } = renderHook(() => useMainKeyboardHandler());
+			const mockFocusActiveTerminal = vi.fn();
+
+			result.current.keyboardHandlerRef.current = createMockContext({
+				activeSessionId: 'test-session',
+				activeSession: {
+					id: 'test-session',
+					name: 'Test',
+					inputMode: 'terminal',
+					activeTerminalTabId: 'term-1',
+				},
+				activeGroupChatId: 'group-1',
+				mainPanelRef: { current: { focusActiveTerminal: mockFocusActiveTerminal } },
+			});
+
+			const event = new KeyboardEvent('keydown', {
+				key: 'a',
+				bubbles: true,
+			});
+
+			act(() => {
+				window.dispatchEvent(event);
+			});
+
+			// Terminal focus recovery should NOT fire when group chat is active
+			expect(mockFocusActiveTerminal).not.toHaveBeenCalled();
+		});
+
+		it('should not intercept Backspace in group chat when session is in terminal mode', () => {
+			const { result } = renderHook(() => useMainKeyboardHandler());
+			const mockFocusActiveTerminal = vi.fn();
+
+			result.current.keyboardHandlerRef.current = createMockContext({
+				activeSessionId: 'test-session',
+				activeSession: {
+					id: 'test-session',
+					name: 'Test',
+					inputMode: 'terminal',
+					activeTerminalTabId: 'term-1',
+				},
+				activeGroupChatId: 'group-1',
+				mainPanelRef: { current: { focusActiveTerminal: mockFocusActiveTerminal } },
+			});
+
+			const event = new KeyboardEvent('keydown', {
+				key: 'Backspace',
+				bubbles: true,
+			});
+
+			act(() => {
+				window.dispatchEvent(event);
+			});
+
+			expect(mockFocusActiveTerminal).not.toHaveBeenCalled();
+		});
+
+		it('should not intercept Ctrl+key in group chat when session is in terminal mode (macOS)', () => {
+			const { result } = renderHook(() => useMainKeyboardHandler());
+			const mockFocusActiveTerminal = vi.fn();
+
+			result.current.keyboardHandlerRef.current = createMockContext({
+				activeSessionId: 'test-session',
+				activeSession: {
+					id: 'test-session',
+					name: 'Test',
+					inputMode: 'terminal',
+					activeTerminalTabId: 'term-1',
+				},
+				activeGroupChatId: 'group-1',
+				mainPanelRef: { current: { focusActiveTerminal: mockFocusActiveTerminal } },
+			});
+
+			act(() => {
+				window.dispatchEvent(
+					new KeyboardEvent('keydown', {
+						key: 'c',
+						ctrlKey: true,
+						bubbles: true,
+					})
+				);
+			});
+
+			// Ctrl handler should NOT fire when group chat is active
+			expect(mockFocusActiveTerminal).not.toHaveBeenCalled();
 		});
 	});
 });

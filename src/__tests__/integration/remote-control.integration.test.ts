@@ -299,7 +299,7 @@ describe.skipIf(!runTests)('Remote Control Integration Tests', () => {
 
 			const response = await responsePromise;
 
-			expect(desktopCallback).toHaveBeenCalledWith('session-2', undefined);
+			expect(desktopCallback).toHaveBeenCalledWith('session-2', undefined, undefined);
 			expect(response.success).toBe(true);
 
 			client.close();

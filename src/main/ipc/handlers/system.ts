@@ -14,7 +14,7 @@
  * Extracted from main/index.ts to improve code organization.
  */
 
-import { ipcMain, dialog, shell, BrowserWindow, App } from 'electron';
+import { ipcMain, dialog, shell, clipboard, nativeImage, BrowserWindow, App } from 'electron';
 import * as path from 'path';
 import * as fsSync from 'fs';
 import Store from 'electron-store';
@@ -200,7 +200,20 @@ export function registerSystemHandlers(deps: SystemHandlerDependencies): void {
 		try {
 			parsed = new URL(url);
 		} catch {
-			throw new Error(`Invalid URL: ${url}`);
+			// Detect absolute file paths and redirect to openPath — Fixes MAESTRO-FN/FA/F4
+			if (path.isAbsolute(url)) {
+				if (fsSync.existsSync(url)) {
+					const errorMessage = await shell.openPath(url);
+					if (errorMessage) {
+						throw new Error(errorMessage);
+					}
+					return;
+				}
+				throw new Error(`Path does not exist: ${url}`);
+			}
+			// Relative paths (LICENSE, ./README.md, vscode/**) are not actionable — log and return
+			logger.warn(`Ignored non-URL string passed to openExternal: "${url}"`, 'Shell');
+			return;
 		}
 		// Redirect file:// URLs to shell.openPath instead of rejecting — Fixes MAESTRO-9M
 		if (parsed.protocol === 'file:') {
@@ -287,6 +300,18 @@ export function registerSystemHandlers(deps: SystemHandlerDependencies): void {
 		if (errorMessage) {
 			logger.warn(`shell:openPath failed for ${absolutePath}: ${errorMessage}`, 'Shell');
 		}
+	});
+
+	// Clipboard operations - copy image to system clipboard via Electron native API
+	ipcMain.handle('clipboard:writeImage', async (_event, dataUrl: string) => {
+		if (!dataUrl || typeof dataUrl !== 'string') {
+			throw new Error('Invalid data URL: must be a non-empty string');
+		}
+		const img = nativeImage.createFromDataURL(dataUrl);
+		if (img.isEmpty()) {
+			throw new Error('Failed to create image from data URL');
+		}
+		clipboard.writeImage(img);
 	});
 
 	// ============ Tunnel Handlers (Cloudflare) ============

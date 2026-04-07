@@ -18,6 +18,7 @@ import { generateId } from './ids';
 import { getAutoRunFolderPath } from './existingDocsDetector';
 import { createTerminalTab } from './terminalTabHelpers';
 import { useSettingsStore } from '../stores/settingsStore';
+import { isWindowsPlatform } from './platformUtils';
 
 /**
  * Build the unified tab list from a session's tab data.
@@ -101,17 +102,35 @@ export function getRepairedUnifiedTabOrder(session: Session): UnifiedTabRef[] {
 	const fileTabs = session.filePreviewTabs || [];
 	const terminalTabs = session.terminalTabs || [];
 
-	// Build sets of IDs already in the order
+	// Build sets of IDs that actually exist (for pruning stale entries)
+	const liveAiIds = new Set(aiTabs.map((t) => t.id));
+	const liveFileIds = new Set(fileTabs.map((t) => t.id));
+	const liveTerminalIds = new Set(terminalTabs.map((t) => t.id));
+
+	// Prune stale entries and duplicates — refs whose tabs no longer exist, and
+	// later duplicate refs for the same type+id (buildUnifiedTabs also skips both).
+	// Without this, navigation indices diverge from the rendered tab bar.
+	const seen = new Set<string>();
+	const prunedOrder = order.filter((ref) => {
+		const key = `${ref.type}:${ref.id}`;
+		if (seen.has(key)) return false;
+		seen.add(key);
+		if (ref.type === 'ai') return liveAiIds.has(ref.id);
+		if (ref.type === 'file') return liveFileIds.has(ref.id);
+		return liveTerminalIds.has(ref.id);
+	});
+
+	// Track which live IDs are already in the pruned order
 	const aiIdsInOrder = new Set<string>();
 	const fileIdsInOrder = new Set<string>();
 	const terminalIdsInOrder = new Set<string>();
-	for (const ref of order) {
+	for (const ref of prunedOrder) {
 		if (ref.type === 'ai') aiIdsInOrder.add(ref.id);
 		else if (ref.type === 'file') fileIdsInOrder.add(ref.id);
 		else terminalIdsInOrder.add(ref.id);
 	}
 
-	// Collect orphaned tabs
+	// Collect orphaned tabs (exist in data but missing from order)
 	const orphanedRefs: UnifiedTabRef[] = [];
 	for (const tab of aiTabs) {
 		if (!aiIdsInOrder.has(tab.id)) {
@@ -129,9 +148,10 @@ export function getRepairedUnifiedTabOrder(session: Session): UnifiedTabRef[] {
 		}
 	}
 
-	// Return original if no orphans (avoids allocation)
-	if (orphanedRefs.length === 0) return order;
-	return [...order, ...orphanedRefs];
+	// Return original if nothing changed (avoids allocation)
+	if (prunedOrder.length === order.length && orphanedRefs.length === 0) return order;
+	if (orphanedRefs.length === 0) return prunedOrder;
+	return [...prunedOrder, ...orphanedRefs];
 }
 
 /**
@@ -142,6 +162,48 @@ export function getRepairedUnifiedTabOrder(session: Session): UnifiedTabRef[] {
  * @param tab - The AI tab being renamed
  * @returns The name to pre-fill in the rename input (empty for auto-generated names)
  */
+/**
+ * Get the display name for a tab.
+ * Priority: name > agent session ID marker > "New Session"
+ *
+ * Handles different agent session ID formats:
+ * - Claude UUID: "abc123-def456-ghi789" → "ABC123" (first octet)
+ * - OpenCode: "SES_4BCDFE8C5FFE4KC1UV9NSMYEDB" → "SES_4BCD" (prefix + 4 chars)
+ * - Codex: "thread_abc123..." → "THR_ABC1" (prefix + 4 chars)
+ *
+ * "New Session" is the correct state before any message is sent. Once the agent
+ * responds with a session ID, the display transitions to the UUID marker.
+ */
+export function getTabDisplayName(tab: AITab): string {
+	if (tab.name) {
+		return tab.name;
+	}
+	if (tab.agentSessionId) {
+		return formatSessionId(tab.agentSessionId);
+	}
+	return 'New Session';
+}
+
+/**
+ * Format a session/tab ID into a short display label.
+ */
+function formatSessionId(id: string): string {
+	// OpenCode format: ses_XXXX... or SES_XXXX...
+	if (id.toLowerCase().startsWith('ses_')) {
+		return `SES_${id.slice(4, 8).toUpperCase()}`;
+	}
+	// Codex format: thread_XXXX...
+	if (id.toLowerCase().startsWith('thread_')) {
+		return `THR_${id.slice(7, 11).toUpperCase()}`;
+	}
+	// UUID format: has dashes, return first octet
+	if (id.includes('-')) {
+		return id.split('-')[0].toUpperCase();
+	}
+	// Generic fallback: first 8 chars uppercase
+	return id.slice(0, 8).toUpperCase();
+}
+
 export function getInitialRenameValue(tab: AITab): string {
 	return tab.name || '';
 }
@@ -250,7 +312,11 @@ export function getNavigableTabs(session: Session, showUnreadOnly = false): AITa
 	}
 
 	if (showUnreadOnly) {
-		return session.aiTabs.filter((tab) => tab.hasUnread || tab.state === 'busy' || hasDraft(tab));
+		const showStarred = useSettingsStore.getState().showStarredInUnreadFilter;
+		return session.aiTabs.filter(
+			(tab) =>
+				tab.hasUnread || tab.state === 'busy' || hasDraft(tab) || (showStarred && tab.starred)
+		);
 	}
 
 	return session.aiTabs;
@@ -352,15 +418,18 @@ export function createTab(
 		showThinking,
 	};
 
-	// Update the session with the new tab added and set as active
-	// Also clear activeFileTabId so the new AI tab is shown in the main panel
-	// Add the new tab to unifiedTabOrder so it appears in the unified tab bar
+	// Update the session with the new tab added and set as active.
+	// Clear activeFileTabId and activeTerminalTabId so the new AI tab is shown in the
+	// main panel, and set inputMode to 'ai' so callers don't need to patch it manually.
+	// Add the new tab to unifiedTabOrder so it appears in the unified tab bar.
 	const newTabRef = { type: 'ai' as const, id: newTab.id };
 	const updatedSession: Session = {
 		...session,
 		aiTabs: [...(session.aiTabs || []), newTab],
 		activeTabId: newTab.id,
 		activeFileTabId: null,
+		activeTerminalTabId: null,
+		inputMode: 'ai' as const,
 		unifiedTabOrder: [...(session.unifiedTabOrder || []), newTabRef],
 	};
 
@@ -480,11 +549,12 @@ export function closeTab(
 				newActiveTabId = updatedTabs[newIndex].id;
 			}
 		} else {
-			// Normal mode: use unifiedTabOrder to find the correct left neighbor.
+			// Normal mode: use repaired unifiedTabOrder to find the correct left neighbor.
 			// This respects the visual tab order which includes terminal and file tabs —
 			// without this, closing an AI tab that sits to the right of a terminal tab
 			// would fall back to a random AI tab instead of the adjacent terminal tab.
-			const unifiedOrder = session.unifiedTabOrder || [];
+			// We use getRepairedUnifiedTabOrder to skip stale/duplicate refs (same as rendering).
+			const unifiedOrder = getRepairedUnifiedTabOrder(session);
 			const closedUnifiedIndex = unifiedOrder.findIndex(
 				(ref) => ref.type === 'ai' && ref.id === tabId
 			);
@@ -701,24 +771,25 @@ export function closeFileTab(session: Session, tabId: string): CloseFileTabResul
 		return null;
 	}
 
-	// Find the position in unifiedTabOrder
-	const unifiedIndex = session.unifiedTabOrder.findIndex(
-		(ref) => ref.type === 'file' && ref.id === tabId
-	);
+	// Use repaired order to skip stale/duplicate refs (same as rendering)
+	const repairedOrder = getRepairedUnifiedTabOrder(session);
+
+	// Find the position in the repaired unifiedTabOrder
+	const unifiedIndex = repairedOrder.findIndex((ref) => ref.type === 'file' && ref.id === tabId);
 
 	// Create closed tab entry
 	const closedTabEntry: ClosedTabEntry = {
 		type: 'file',
 		tab: { ...tabToClose },
-		unifiedIndex: unifiedIndex !== -1 ? unifiedIndex : session.unifiedTabOrder.length,
+		unifiedIndex: unifiedIndex !== -1 ? unifiedIndex : repairedOrder.length,
 		closedAt: Date.now(),
 	};
 
 	// Remove from filePreviewTabs
 	const updatedFilePreviewTabs = session.filePreviewTabs.filter((tab) => tab.id !== tabId);
 
-	// Remove from unifiedTabOrder
-	const updatedUnifiedTabOrder = session.unifiedTabOrder.filter(
+	// Remove from unifiedTabOrder (filter from repaired order to persist the fix)
+	const updatedUnifiedTabOrder = repairedOrder.filter(
 		(ref) => !(ref.type === 'file' && ref.id === tabId)
 	);
 
@@ -1064,10 +1135,11 @@ export function setActiveTab(session: Session, tabId: string): SetActiveTabResul
 		return null;
 	}
 
-	// If already active, no file tab is selected, and already in AI mode, return current state
+	// If already active, no file/terminal tab is selected, and already in AI mode, return current state
 	if (
 		session.activeTabId === tabId &&
 		session.activeFileTabId === null &&
+		session.activeTerminalTabId === null &&
 		session.inputMode === 'ai'
 	) {
 		return {
@@ -1076,15 +1148,18 @@ export function setActiveTab(session: Session, tabId: string): SetActiveTabResul
 		};
 	}
 
-	// When selecting an AI tab, deselect any active file preview tab and switch to AI mode.
-	// This ensures only one tab type (AI or file) is active at a time, and switching
-	// from terminal mode back to AI mode works by clicking any AI tab.
+	// When selecting an AI tab, deselect any active file/terminal tab and switch to AI mode.
+	// This ensures only one tab type (AI, file, or terminal) is active at a time, and
+	// switching from terminal mode back to AI mode works by clicking any AI tab.
+	// Clearing activeTerminalTabId is critical — getCurrentUnifiedTabIndex checks it first,
+	// so a stale value causes next/prev tab navigation to start from the wrong position.
 	return {
 		tab: targetTab,
 		session: {
 			...session,
 			activeTabId: tabId,
 			activeFileTabId: null,
+			activeTerminalTabId: null,
 			inputMode: 'ai' as const,
 		},
 	};
@@ -1404,10 +1479,14 @@ export function navigateToUnifiedTabByIndex(
 		const aiTab = session.aiTabs.find((tab) => tab.id === targetTabRef.id);
 		if (!aiTab) return null;
 
-		// If already active and in AI mode, return current state (with repair if needed)
+		// If already active, no file/terminal tab selected, and in AI mode, return current state.
+		// The activeTerminalTabId check is critical: without it, a stale terminal selection
+		// causes the early return to fire and skip the clearing update below, leaving
+		// getCurrentUnifiedTabIndex pointing at the wrong tab.
 		if (
 			session.activeTabId === targetTabRef.id &&
 			session.activeFileTabId === null &&
+			session.activeTerminalTabId === null &&
 			session.inputMode === 'ai'
 		) {
 			return {
@@ -1577,22 +1656,40 @@ export function navigateToNextUnifiedTab(
 		return null;
 	}
 
-	// When showUnreadOnly is true, we need to skip AI tabs that are read and have no drafts
+	// When showUnreadOnly is true, we need to skip AI tabs that are read and have no drafts.
+	// The active AI tab (session.activeTabId) is always navigable because the TabBar always
+	// displays it — without this, switching to a terminal/file tab and pressing next/prev
+	// would fail to navigate back to the visible AI tab.
 	if (showUnreadOnly) {
 		for (let offset = 1; offset < length; offset++) {
 			const nextIndex = (currentIndex + offset) % length;
 			const tabRef = effectiveOrder[nextIndex];
 
-			// File and terminal tabs are always navigable (if they still exist)
-			if (tabRef.type === 'file' || tabRef.type === 'terminal') {
+			// File tabs: only navigable if setting enabled; terminal tabs always navigable
+			if (tabRef.type === 'file') {
+				if (useSettingsStore.getState().showFilePreviewsInUnreadFilter) {
+					const result = navigateToUnifiedTabByIndex(session, nextIndex);
+					if (result) return result;
+				}
+				continue;
+			}
+			if (tabRef.type === 'terminal') {
 				const result = navigateToUnifiedTabByIndex(session, nextIndex);
 				if (result) return result;
-				continue; // Orphaned tab, skip
+				continue;
 			}
 
-			// For AI tabs, check if it's unread or has a draft
+			// For AI tabs, check if it's unread, busy, has a draft, starred (if setting enabled), or is the active tab
+			// (the active tab is always shown in the tab bar, so it must be reachable)
 			const aiTab = session.aiTabs.find((t) => t.id === tabRef.id);
-			if (aiTab && (aiTab.hasUnread || aiTab.state === 'busy' || hasDraft(aiTab))) {
+			if (
+				aiTab &&
+				(aiTab.hasUnread ||
+					aiTab.state === 'busy' ||
+					hasDraft(aiTab) ||
+					tabRef.id === session.activeTabId ||
+					(useSettingsStore.getState().showStarredInUnreadFilter && aiTab.starred))
+			) {
 				return navigateToUnifiedTabByIndex(session, nextIndex);
 			}
 		}
@@ -1649,22 +1746,40 @@ export function navigateToPrevUnifiedTab(
 		return null;
 	}
 
-	// When showUnreadOnly is true, we need to skip AI tabs that are read and have no drafts
+	// When showUnreadOnly is true, we need to skip AI tabs that are read and have no drafts.
+	// The active AI tab (session.activeTabId) is always navigable because the TabBar always
+	// displays it — without this, switching to a terminal/file tab and pressing next/prev
+	// would fail to navigate back to the visible AI tab.
 	if (showUnreadOnly) {
 		for (let offset = 1; offset < length; offset++) {
 			const prevIndex = (currentIndex - offset + length) % length;
 			const tabRef = effectiveOrder[prevIndex];
 
-			// File and terminal tabs are always navigable (if they still exist)
-			if (tabRef.type === 'file' || tabRef.type === 'terminal') {
+			// File tabs: only navigable if setting enabled; terminal tabs always navigable
+			if (tabRef.type === 'file') {
+				if (useSettingsStore.getState().showFilePreviewsInUnreadFilter) {
+					const result = navigateToUnifiedTabByIndex(session, prevIndex);
+					if (result) return result;
+				}
+				continue;
+			}
+			if (tabRef.type === 'terminal') {
 				const result = navigateToUnifiedTabByIndex(session, prevIndex);
 				if (result) return result;
-				continue; // Orphaned tab, skip
+				continue;
 			}
 
-			// For AI tabs, check if it's unread, busy, or has a draft
+			// For AI tabs, check if it's unread, busy, has a draft, starred (if setting enabled), or is the active tab
+			// (the active tab is always shown in the tab bar, so it must be reachable)
 			const aiTab = session.aiTabs.find((t) => t.id === tabRef.id);
-			if (aiTab && (aiTab.hasUnread || aiTab.state === 'busy' || hasDraft(aiTab))) {
+			if (
+				aiTab &&
+				(aiTab.hasUnread ||
+					aiTab.state === 'busy' ||
+					hasDraft(aiTab) ||
+					tabRef.id === session.activeTabId ||
+					(useSettingsStore.getState().showStarredInUnreadFilter && aiTab.starred))
+			) {
 				return navigateToUnifiedTabByIndex(session, prevIndex);
 			}
 		}
@@ -1868,7 +1983,7 @@ export function createMergedSession(
 	// Create the merged session with standard structure
 	// Matches the pattern from App.tsx createNewSession
 	const initialMergeTerminalTab = createTerminalTab(
-		useSettingsStore.getState().defaultShell || 'zsh',
+		useSettingsStore.getState().defaultShell || (isWindowsPlatform() ? 'powershell' : 'zsh'),
 		projectRoot,
 		null
 	);
@@ -1925,4 +2040,53 @@ export function createMergedSession(
 	};
 
 	return { session, tabId };
+}
+
+/**
+ * Result of goToNextUnreadTab navigation.
+ * - `jumped`: true if we switched to a different session
+ * - `clearedCurrent`: true if we cleared the current session's unread tabs
+ * - `targetSessionId`: the session ID we jumped to (if jumped)
+ * - `targetTabId`: the tab ID to activate in the target session (if jumped)
+ */
+export interface GoToNextUnreadResult {
+	jumped: boolean;
+	clearedCurrent: boolean;
+	targetSessionId?: string;
+	targetTabId?: string;
+}
+
+/**
+ * Compute the next unread session to jump to (relative to the current session
+ * in the ordered session list), and return instructions for the caller to apply.
+ *
+ * Does NOT mutate state — the caller applies the result via setSessions/setActiveSessionId.
+ */
+export function findNextUnreadSession(
+	orderedSessions: Session[],
+	activeSessionId: string
+): GoToNextUnreadResult {
+	const currentIndex = orderedSessions.findIndex((s) => s.id === activeSessionId);
+	const currentSession = orderedSessions.find((s) => s.id === activeSessionId);
+	const currentHasUnread = currentSession?.aiTabs?.some((tab) => tab.hasUnread) ?? false;
+
+	// Search forward from current position, wrapping around
+	for (let i = 1; i <= orderedSessions.length; i++) {
+		const candidate = orderedSessions[(currentIndex + i) % orderedSessions.length];
+		if (candidate.id !== activeSessionId && candidate.aiTabs?.some((tab) => tab.hasUnread)) {
+			const firstUnreadTab = candidate.aiTabs.find((tab) => tab.hasUnread);
+			return {
+				jumped: true,
+				clearedCurrent: currentHasUnread,
+				targetSessionId: candidate.id,
+				targetTabId: firstUnreadTab?.id !== candidate.activeTabId ? firstUnreadTab?.id : undefined,
+			};
+		}
+	}
+
+	// No other session has unread tabs
+	return {
+		jumped: false,
+		clearedCurrent: currentHasUnread,
+	};
 }

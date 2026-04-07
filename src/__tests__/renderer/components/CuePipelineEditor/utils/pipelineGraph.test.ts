@@ -10,6 +10,7 @@ import {
 	getTriggerConfigSummary,
 	convertToReactFlowNodes,
 	convertToReactFlowEdges,
+	computePipelineYOffsets,
 } from '../../../../../renderer/components/CuePipelineEditor/utils/pipelineGraph';
 import type {
 	CuePipeline,
@@ -543,7 +544,7 @@ describe('convertToReactFlowEdges', () => {
 		expect((edges[0].data as { isActivePipeline: boolean }).isActivePipeline).toBe(true);
 	});
 
-	it('marks edges from non-selected pipeline as isActivePipeline=false', () => {
+	it('excludes edges from non-selected pipeline', () => {
 		const p1 = makePipeline('p1', {
 			nodes: [makeTrigger('t1', 'time.heartbeat'), makeAgent('a1', 'sess-1', 'Alice')],
 			edges: [makeEdge('e1', 't1', 'a1')],
@@ -553,9 +554,10 @@ describe('convertToReactFlowEdges', () => {
 			edges: [makeEdge('e2', 't2', 'a2')],
 		});
 		const edges = convertToReactFlowEdges([p1, p2], 'p2');
-		const e1 = edges.find((e) => e.id === 'p1:e1')!;
+		// Non-active pipeline edges are excluded to prevent orphaned edges
+		// (their source/target nodes are not rendered by convertToReactFlowNodes)
+		expect(edges.find((e) => e.id === 'p1:e1')).toBeUndefined();
 		const e2 = edges.find((e) => e.id === 'p2:e2')!;
-		expect((e1.data as { isActivePipeline: boolean }).isActivePipeline).toBe(false);
 		expect((e2.data as { isActivePipeline: boolean }).isActivePipeline).toBe(true);
 	});
 
@@ -704,5 +706,218 @@ describe('convertToReactFlowNodes triggerOptions', () => {
 		expect(triggerData.pipelineName).toBe('Pipeline p1');
 		expect(triggerData.isSaved).toBeUndefined();
 		expect(triggerData.isRunning).toBeUndefined();
+	});
+});
+
+// ─── computePipelineYOffsets ────────────────────────────────────────────────
+
+describe('computePipelineYOffsets', () => {
+	it('returns empty map when a pipeline is selected', () => {
+		const pipelines: CuePipeline[] = [
+			{
+				id: 'p1',
+				name: 'P1',
+				color: '#ef4444',
+				nodes: [makeTrigger('t1', 'time.heartbeat', {}, { x: 0, y: 50 })],
+				edges: [],
+			},
+			{
+				id: 'p2',
+				name: 'P2',
+				color: '#3b82f6',
+				nodes: [makeTrigger('t2', 'file.changed', {}, { x: 0, y: 100 })],
+				edges: [],
+			},
+		];
+		const offsets = computePipelineYOffsets(pipelines, 'p1');
+		expect(offsets.size).toBe(0);
+	});
+
+	it('returns empty map when there is only one pipeline', () => {
+		const pipelines: CuePipeline[] = [
+			{
+				id: 'p1',
+				name: 'P1',
+				color: '#ef4444',
+				nodes: [makeTrigger('t1', 'time.heartbeat')],
+				edges: [],
+			},
+		];
+		const offsets = computePipelineYOffsets(pipelines, null);
+		expect(offsets.size).toBe(0);
+	});
+
+	it('computes offsets so pipelines stack without overlap', () => {
+		const pipelines: CuePipeline[] = [
+			{
+				id: 'p1',
+				name: 'P1',
+				color: '#ef4444',
+				nodes: [makeTrigger('t1', 'time.heartbeat', {}, { x: 0, y: 0 })],
+				edges: [],
+			},
+			{
+				id: 'p2',
+				name: 'P2',
+				color: '#3b82f6',
+				nodes: [makeTrigger('t2', 'file.changed', {}, { x: 0, y: 0 })],
+				edges: [],
+			},
+		];
+		const offsets = computePipelineYOffsets(pipelines, null);
+		expect(offsets.get('p1')).toBe(0); // first pipeline starts at y=0
+		expect(offsets.get('p2')).toBeGreaterThan(0); // second pipeline is pushed down
+	});
+
+	it('skips empty pipelines', () => {
+		const pipelines: CuePipeline[] = [
+			{
+				id: 'p1',
+				name: 'P1',
+				color: '#ef4444',
+				nodes: [makeTrigger('t1', 'time.heartbeat', {}, { x: 0, y: 0 })],
+				edges: [],
+			},
+			{ id: 'p2', name: 'P2', color: '#3b82f6', nodes: [], edges: [] },
+			{
+				id: 'p3',
+				name: 'P3',
+				color: '#22c55e',
+				nodes: [makeTrigger('t3', 'file.changed', {}, { x: 0, y: 0 })],
+				edges: [],
+			},
+		];
+		const offsets = computePipelineYOffsets(pipelines, null);
+		expect(offsets.has('p2')).toBe(false);
+		expect(offsets.has('p1')).toBe(true);
+		expect(offsets.has('p3')).toBe(true);
+	});
+
+	it('produces offsets consistent with convertToReactFlowNodes', () => {
+		const pipelines: CuePipeline[] = [
+			{
+				id: 'p1',
+				name: 'P1',
+				color: '#ef4444',
+				nodes: [makeTrigger('t1', 'time.heartbeat', {}, { x: 0, y: 10 })],
+				edges: [],
+			},
+			{
+				id: 'p2',
+				name: 'P2',
+				color: '#3b82f6',
+				nodes: [makeTrigger('t2', 'file.changed', {}, { x: 0, y: 20 })],
+				edges: [],
+			},
+		];
+		const offsets = computePipelineYOffsets(pipelines, null);
+		const nodes = convertToReactFlowNodes(pipelines, null);
+
+		// The ReactFlow node position should equal canonical position + offset
+		const p1Node = nodes.find((n) => n.id === 'p1:t1')!;
+		const p2Node = nodes.find((n) => n.id === 'p2:t2')!;
+		expect(p1Node.position.y).toBe(10 + (offsets.get('p1') ?? 0));
+		expect(p2Node.position.y).toBe(20 + (offsets.get('p2') ?? 0));
+	});
+});
+
+// ─── Fan-out count ────────────────────────────────────────────────────────────
+
+describe('convertToReactFlowNodes fanOutCount', () => {
+	it('trigger node has fanOutCount when it fans out to multiple agents', () => {
+		const trigger = makeTrigger('t1', 'time.heartbeat');
+		const a1 = makeAgent('a1', 'sess-1', 'Alice');
+		const a2 = makeAgent('a2', 'sess-2', 'Bob');
+		const a3 = makeAgent('a3', 'sess-3', 'Carol');
+		const pipeline = makePipeline('p1', {
+			nodes: [trigger, a1, a2, a3],
+			edges: [makeEdge('e1', 't1', 'a1'), makeEdge('e2', 't1', 'a2'), makeEdge('e3', 't1', 'a3')],
+		});
+		const nodes = convertToReactFlowNodes([pipeline], 'p1');
+		const triggerNode = nodes.find((n) => n.id === 'p1:t1')!;
+		expect((triggerNode.data as any).fanOutCount).toBe(3);
+	});
+
+	it('trigger node has no fanOutCount when it targets a single agent', () => {
+		const trigger = makeTrigger('t1', 'time.heartbeat');
+		const agent = makeAgent('a1', 'sess-1', 'Alice');
+		const pipeline = makePipeline('p1', {
+			nodes: [trigger, agent],
+			edges: [makeEdge('e1', 't1', 'a1')],
+		});
+		const nodes = convertToReactFlowNodes([pipeline], 'p1');
+		const triggerNode = nodes.find((n) => n.id === 'p1:t1')!;
+		expect((triggerNode.data as any).fanOutCount).toBeUndefined();
+	});
+});
+
+// ─── Instance labels ──────────────────────────────────────────────────────────
+
+describe('convertToReactFlowNodes instanceLabel', () => {
+	it('assigns instance labels when the same sessionId appears multiple times', () => {
+		const a1 = makeAgent('a1', 'sess-shared', 'Worker');
+		const a2 = makeAgent('a2', 'sess-shared', 'Worker', {}, { x: 400, y: 0 });
+		const pipeline = makePipeline('p1', {
+			nodes: [a1, a2],
+		});
+		const nodes = convertToReactFlowNodes([pipeline], 'p1');
+		const node1 = nodes.find((n) => n.id === 'p1:a1')!;
+		const node2 = nodes.find((n) => n.id === 'p1:a2')!;
+		expect((node1.data as any).instanceLabel).toBe(1);
+		expect((node2.data as any).instanceLabel).toBe(2);
+	});
+
+	it('does not assign instance labels when all agents have unique sessionIds', () => {
+		const a1 = makeAgent('a1', 'sess-1', 'Alice');
+		const a2 = makeAgent('a2', 'sess-2', 'Bob');
+		const pipeline = makePipeline('p1', {
+			nodes: [a1, a2],
+		});
+		const nodes = convertToReactFlowNodes([pipeline], 'p1');
+		const node1 = nodes.find((n) => n.id === 'p1:a1')!;
+		const node2 = nodes.find((n) => n.id === 'p1:a2')!;
+		expect((node1.data as any).instanceLabel).toBeUndefined();
+		expect((node2.data as any).instanceLabel).toBeUndefined();
+	});
+});
+
+describe('convertToReactFlowNodes fanInCount', () => {
+	it('sets fanInCount for agent with multiple incoming agent edges', () => {
+		const a = makeAgent('a', 'sa', 'Alice');
+		const b = makeAgent('b', 'sb', 'Bob');
+		const c = makeAgent('c', 'sc', 'Carol');
+		const d = makeAgent('d', 'sd', 'Dave');
+		const pipeline = makePipeline('p1', {
+			nodes: [a, b, c, d],
+			edges: [makeEdge('e1', 'a', 'd'), makeEdge('e2', 'b', 'd'), makeEdge('e3', 'c', 'd')],
+		});
+		const nodes = convertToReactFlowNodes([pipeline], 'p1');
+		const nodeD = nodes.find((n) => n.id === 'p1:d')!;
+		expect((nodeD.data as any).fanInCount).toBe(3);
+	});
+
+	it('does not set fanInCount for agent with single incoming agent edge', () => {
+		const a = makeAgent('a', 'sa', 'Alice');
+		const d = makeAgent('d', 'sd', 'Dave');
+		const pipeline = makePipeline('p1', {
+			nodes: [a, d],
+			edges: [makeEdge('e1', 'a', 'd')],
+		});
+		const nodes = convertToReactFlowNodes([pipeline], 'p1');
+		const nodeD = nodes.find((n) => n.id === 'p1:d')!;
+		expect((nodeD.data as any).fanInCount).toBeUndefined();
+	});
+
+	it('does not count trigger edges as fan-in', () => {
+		const t = makeTrigger('t1', 'time.heartbeat', { interval_minutes: 5 });
+		const a = makeAgent('a', 'sa', 'Alice');
+		const d = makeAgent('d', 'sd', 'Dave');
+		const pipeline = makePipeline('p1', {
+			nodes: [t, a, d],
+			edges: [makeEdge('e1', 't1', 'd'), makeEdge('e2', 'a', 'd')],
+		});
+		const nodes = convertToReactFlowNodes([pipeline], 'p1');
+		const nodeD = nodes.find((n) => n.id === 'p1:d')!;
+		expect((nodeD.data as any).fanInCount).toBeUndefined();
 	});
 });

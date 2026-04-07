@@ -11,6 +11,7 @@ import type {
 	TriggerNodeData,
 	AgentNodeData,
 } from '../../../../shared/cue-pipeline-types';
+import type { Theme } from '../../../../shared/theme-types';
 import type { TriggerNodeDataProps } from '../nodes/TriggerNode';
 import type { AgentNodeDataProps } from '../nodes/AgentNode';
 import type { PipelineEdgeData } from '../edges/PipelineEdge';
@@ -45,6 +46,41 @@ export function getTriggerConfigSummary(data: TriggerNodeData): string {
 	}
 }
 
+// ─── Pipeline Y-offset (for "All Pipelines" view) ──────────────────────────
+
+const PIPELINE_GAP = 100; // px between pipeline groups
+const NODE_HEIGHT = 100; // approximate node height
+
+/**
+ * Computes vertical offsets so pipeline groups don't overlap in the
+ * "All Pipelines" view. Returns an empty map when a single pipeline is
+ * selected (offsets are only needed for the combined view).
+ *
+ * Exported so `onNodesChange` can subtract offsets before writing
+ * ReactFlow's screen-space positions back to the canonical state.
+ */
+export function computePipelineYOffsets(
+	pipelines: CuePipelineState['pipelines'],
+	selectedPipelineId: string | null
+): Map<string, number> {
+	const offsets = new Map<string, number>();
+	if (selectedPipelineId !== null || pipelines.length <= 1) return offsets;
+
+	let currentY = 0;
+	for (const pipeline of pipelines) {
+		if (pipeline.nodes.length === 0) continue;
+		let minY = Infinity;
+		let maxY = -Infinity;
+		for (const node of pipeline.nodes) {
+			minY = Math.min(minY, node.position.y);
+			maxY = Math.max(maxY, node.position.y);
+		}
+		offsets.set(pipeline.id, currentY - minY);
+		currentY += maxY - minY + NODE_HEIGHT + PIPELINE_GAP;
+	}
+	return offsets;
+}
+
 // ─── Node conversion ─────────────────────────────────────────────────────────
 
 /**
@@ -69,29 +105,18 @@ export function convertToReactFlowNodes(
 		onTriggerPipeline?: (pipelineName: string) => void;
 		isSaved?: boolean;
 		runningPipelineIds?: Set<string>;
-	}
+	},
+	theme?: Theme,
+	/** Pre-computed Y-offsets to use instead of recomputing from bounding boxes.
+	 *  Passed during drag so rendering uses the same offsets as onNodesChange. */
+	frozenYOffsets?: Map<string, number> | null
 ): Node[] {
 	const nodes: Node[] = [];
 
-	// When showing all pipelines, compute vertical offsets to prevent overlap
-	const pipelineYOffsets = new Map<string, number>();
-	if (selectedPipelineId === null && pipelines.length > 1) {
-		const PIPELINE_GAP = 100; // px between pipeline groups
-		const NODE_HEIGHT = 100; // approximate node height
-		let currentY = 0;
-		for (const pipeline of pipelines) {
-			if (pipeline.nodes.length === 0) continue;
-			let minY = Infinity;
-			let maxY = -Infinity;
-			for (const node of pipeline.nodes) {
-				minY = Math.min(minY, node.position.y);
-				maxY = Math.max(maxY, node.position.y);
-			}
-			// Offset so this pipeline's top starts at currentY
-			pipelineYOffsets.set(pipeline.id, currentY - minY);
-			currentY += maxY - minY + NODE_HEIGHT + PIPELINE_GAP;
-		}
-	}
+	// When showing all pipelines, compute vertical offsets to prevent overlap.
+	// During drag, use frozen offsets so the display stays consistent with the
+	// offsets subtracted in onNodesChange (prevents visual jump on drag end).
+	const pipelineYOffsets = frozenYOffsets ?? computePipelineYOffsets(pipelines, selectedPipelineId);
 
 	// First pass: compute all pipeline colors per agent session (for multi-color indicator)
 	const agentPipelineMap = new Map<string, string[]>();
@@ -122,6 +147,19 @@ export function convertToReactFlowNodes(
 		}
 	}
 
+	// Count agent session occurrences for duplicate instance labeling
+	const agentSessionCounts = new Map<string, number>();
+	const agentSessionIndex = new Map<string, number>();
+	for (const pipeline of pipelines) {
+		if (selectedPipelineId !== null && pipeline.id !== selectedPipelineId) continue;
+		for (const pNode of pipeline.nodes) {
+			if (pNode.type === 'agent') {
+				const sid = (pNode.data as AgentNodeData).sessionId;
+				agentSessionCounts.set(sid, (agentSessionCounts.get(sid) ?? 0) + 1);
+			}
+		}
+	}
+
 	for (const pipeline of pipelines) {
 		const isActive = selectedPipelineId === null || pipeline.id === selectedPipelineId;
 
@@ -138,6 +176,7 @@ export function convertToReactFlowNodes(
 
 			if (pNode.type === 'trigger') {
 				const triggerData = pNode.data as TriggerNodeData;
+				const fanOutCount = pipeline.edges.filter((e) => e.source === pNode.id).length;
 				const nodeData: TriggerNodeDataProps = {
 					compositeId,
 					eventType: triggerData.eventType,
@@ -148,6 +187,8 @@ export function convertToReactFlowNodes(
 					pipelineName: pipeline.name,
 					isSaved: triggerOptions?.isSaved,
 					isRunning: triggerOptions?.runningPipelineIds?.has(pipeline.id),
+					fanOutCount: fanOutCount > 1 ? fanOutCount : undefined,
+					theme,
 				};
 				nodes.push({
 					id: compositeId,
@@ -161,17 +202,31 @@ export function convertToReactFlowNodes(
 				const pipelineColors = agentPipelineMap.get(agentData.sessionId) ?? [pipeline.color];
 				const hasOutgoingEdge = pipeline.edges.some((e) => e.source === pNode.id);
 				const hasEdgePrompt = pipeline.edges.some((e) => e.target === pNode.id && !!e.prompt);
+				// Compute instance index for duplicate agent differentiation
+				const totalInstances = agentSessionCounts.get(agentData.sessionId) ?? 1;
+				const currentIdx = (agentSessionIndex.get(agentData.sessionId) ?? 0) + 1;
+				agentSessionIndex.set(agentData.sessionId, currentIdx);
+				const instanceLabel = totalInstances > 1 ? currentIdx : undefined;
+				// Compute fan-in count: incoming edges from other agent nodes
+				const incomingAgentEdgeCount = pipeline.edges.filter((e) => {
+					if (e.target !== pNode.id) return false;
+					const srcNode = pipeline.nodes.find((n) => n.id === e.source);
+					return srcNode?.type === 'agent';
+				}).length;
 				const nodeData: AgentNodeDataProps = {
 					compositeId,
 					sessionId: agentData.sessionId,
 					sessionName: agentData.sessionName,
 					toolType: agentData.toolType,
+					instanceLabel,
+					fanInCount: incomingAgentEdgeCount > 1 ? incomingAgentEdgeCount : undefined,
 					hasPrompt: !!(agentData.inputPrompt || agentData.outputPrompt || hasEdgePrompt),
 					hasOutgoingEdge,
 					pipelineColor: pipeline.color,
 					pipelineCount: agentPipelineCount.get(agentData.sessionId) ?? 1,
 					pipelineColors,
 					onConfigure: onConfigureNode,
+					theme,
 				};
 				nodes.push({
 					id: compositeId,
@@ -199,12 +254,20 @@ export function convertToReactFlowEdges(
 	pipelines: CuePipelineState['pipelines'],
 	selectedPipelineId: string | null,
 	runningPipelineIds?: Set<string>,
-	selectedEdgeId?: string | null
+	selectedEdgeId?: string | null,
+	theme?: Theme
 ): Edge[] {
 	const edges: Edge[] = [];
 
 	for (const pipeline of pipelines) {
 		const isActive = selectedPipelineId === null || pipeline.id === selectedPipelineId;
+
+		// Skip non-active pipelines entirely — their nodes are not rendered by
+		// convertToReactFlowNodes, so edges referencing them would be orphaned.
+		// React Flow may cache the "invalid" state of orphaned edges internally,
+		// causing them to not re-appear when switching back to All Pipelines view.
+		if (!isActive) continue;
+
 		const isRunning = runningPipelineIds?.has(pipeline.id) ?? false;
 
 		for (const pEdge of pipeline.edges) {
@@ -214,6 +277,7 @@ export function convertToReactFlowEdges(
 				mode: pEdge.mode,
 				isActivePipeline: isActive,
 				isRunning,
+				theme,
 			};
 			edges.push({
 				id: compositeId,

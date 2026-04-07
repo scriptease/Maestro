@@ -33,6 +33,7 @@ import { registerGroupChatHandlers, GroupChatHandlerDependencies } from './group
 import { registerDebugHandlers, DebugHandlerDependencies } from './debug';
 import { registerSpeckitHandlers } from './speckit';
 import { registerOpenSpecHandlers } from './openspec';
+import { registerBmadHandlers } from './bmad';
 import {
 	registerContextHandlers,
 	ContextHandlerDependencies,
@@ -54,11 +55,13 @@ import { registerTabNamingHandlers, TabNamingHandlerDependencies } from './tabNa
 import { registerDirectorNotesHandlers, DirectorNotesHandlerDependencies } from './director-notes';
 import { registerCueHandlers, CueHandlerDependencies } from './cue';
 import { registerWakatimeHandlers } from './wakatime';
+import { registerFeedbackHandlers } from './feedback';
 import { AgentDetector } from '../../agents';
 import { ProcessManager } from '../../process-manager';
 import { WebServer } from '../../web-server';
 import { tunnelManager as tunnelManagerInstance } from '../../tunnel-manager';
 import { createSafeSend } from '../../utils/safe-send';
+import { getSshRemoteById } from '../../stores/getters';
 
 // Type for tunnel manager instance
 type TunnelManagerType = typeof tunnelManagerInstance;
@@ -79,6 +82,7 @@ export { registerGroupChatHandlers };
 export { registerDebugHandlers };
 export { registerSpeckitHandlers };
 export { registerOpenSpecHandlers };
+export { registerBmadHandlers };
 export { registerContextHandlers, cleanupAllGroomingSessions, getActiveGroomingSessionCount };
 export { registerMarketplaceHandlers };
 export type { MarketplaceHandlerDependencies };
@@ -102,6 +106,7 @@ export type { DirectorNotesHandlerDependencies };
 export { registerCueHandlers };
 export type { CueHandlerDependencies };
 export { registerWakatimeHandlers };
+export { registerFeedbackHandlers };
 export type { AgentsHandlerDependencies };
 export type { ProcessHandlerDependencies };
 export type { PersistenceHandlerDependencies };
@@ -179,6 +184,8 @@ export function registerAllHandlers(deps: HandlerDependencies): void {
 	registerPlaybooksHandlers(deps);
 	registerHistoryHandlers({
 		safeSend: createSafeSend(deps.getMainWindow),
+		getMaxEntries: () => deps.settingsStore.get('maxLogBuffer', 5000) as number,
+		getSshRemoteById,
 	});
 	registerAgentsHandlers({
 		getAgentDetector: deps.getAgentDetector,
@@ -231,6 +238,8 @@ export function registerAllHandlers(deps: HandlerDependencies): void {
 	registerSpeckitHandlers();
 	// Register OpenSpec handlers (no dependencies needed)
 	registerOpenSpecHandlers();
+	// Register BMAD handlers (no dependencies needed)
+	registerBmadHandlers();
 	registerContextHandlers({
 		getMainWindow: deps.getMainWindow,
 		getProcessManager: deps.getProcessManager,
@@ -289,6 +298,10 @@ export function registerAllHandlers(deps: HandlerDependencies): void {
 		getProcessManager: deps.getProcessManager,
 		getAgentDetector: deps.getAgentDetector,
 		agentConfigsStore: deps.agentConfigsStore,
+	});
+	// Register Feedback handlers (gh auth + feedback submission)
+	registerFeedbackHandlers({
+		getProcessManager: deps.getProcessManager,
 	});
 	// Setup logger event forwarding to renderer
 	setupLoggerEventForwarding(deps.getMainWindow);

@@ -228,8 +228,8 @@ describe('CueEngine sleep/wake detection', () => {
 		const deps = createMockDeps();
 		const engine = new CueEngine(deps);
 
-		// Should not throw
-		expect(() => engine.start()).not.toThrow();
+		// Should return gracefully without enabling (no throw)
+		engine.start();
 
 		// Should log the error and not enable the engine
 		expect(deps.onLog).toHaveBeenCalledWith(

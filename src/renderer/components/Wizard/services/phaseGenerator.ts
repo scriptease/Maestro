@@ -13,6 +13,7 @@ import {
 	substituteTemplateVariables,
 	type TemplateContext,
 } from '../../../utils/templateVariables';
+import { getStdinFlags } from '../../../utils/spawnHelpers';
 
 /**
  * Configuration for document generation
@@ -880,7 +881,9 @@ class PhaseGenerator {
 					if (fileWatcherCleanup) {
 						fileWatcherCleanup();
 					}
-					window.maestro.process.kill(sessionId).catch(() => {});
+					window.maestro.process
+						.kill(sessionId)
+						.catch((err) => console.warn('[PhaseGenerator] Failed to kill session:', err));
 					resolve({
 						success: false,
 						error: 'Generation timed out after 20 minutes of inactivity. Please try again.',
@@ -1122,6 +1125,14 @@ class PhaseGenerator {
 			// This is critical for packaged Electron apps where PATH may not include agent locations
 			const commandToUse = agent.path || agent.command;
 
+			const isSshSession = Boolean(config.sshRemoteConfig?.enabled);
+			const { sendPromptViaStdin: sendViaStdin, sendPromptViaStdinRaw: sendViaStdinRaw } =
+				getStdinFlags({
+					isSshSession,
+					supportsStreamJsonInput: agent?.capabilities?.supportsStreamJsonInput ?? false,
+					hasImages: false, // Document generation never sends images
+				});
+
 			wizardDebugLogger.log('spawn', 'Calling process.spawn', {
 				sessionId,
 				toolType: config.agentType,
@@ -1142,6 +1153,8 @@ class PhaseGenerator {
 					command: commandToUse,
 					args: argsForSpawn,
 					prompt,
+					sendPromptViaStdin: sendViaStdin,
+					sendPromptViaStdinRaw: sendViaStdinRaw,
 					// Pass SSH configuration for remote execution
 					sessionSshRemoteConfig: config.sshRemoteConfig,
 				})
@@ -1239,7 +1252,9 @@ class PhaseGenerator {
 		}
 		// Stop watching the Auto Run folder
 		if (this.currentWatchPath) {
-			window.maestro.autorun.unwatchFolder(this.currentWatchPath).catch(() => {});
+			window.maestro.autorun
+				.unwatchFolder(this.currentWatchPath)
+				.catch((err) => console.warn('[PhaseGenerator] Failed to unwatch folder:', err));
 			this.currentWatchPath = undefined;
 		}
 	}

@@ -10,6 +10,7 @@
  */
 
 import { useMemo } from 'react';
+import { useTabStore } from '../../stores/tabStore';
 import type {
 	Session,
 	Theme,
@@ -178,6 +179,7 @@ export interface UseMainPanelPropsDeps {
 	handleToggleTabShowThinking: () => void;
 	toggleUnreadFilter: () => void;
 	handleOpenTabSearch: () => void;
+	handleOpenOutputSearch: () => void;
 	handleCloseAllTabs: () => void;
 	handleCloseOtherTabs: () => void;
 	handleCloseTabsLeft: () => void;
@@ -363,6 +365,7 @@ export function useMainPanelProps(deps: UseMainPanelPropsDeps) {
 			onToggleTabReadOnlyMode: deps.handleToggleTabReadOnlyMode,
 			onToggleUnreadFilter: deps.toggleUnreadFilter,
 			onOpenTabSearch: deps.handleOpenTabSearch,
+			onOpenOutputSearch: deps.handleOpenOutputSearch,
 			onCloseAllTabs: deps.handleCloseAllTabs,
 			onCloseOtherTabs: deps.handleCloseOtherTabs,
 			onCloseTabsLeft: deps.handleCloseTabsLeft,
@@ -442,6 +445,12 @@ export function useMainPanelProps(deps: UseMainPanelPropsDeps) {
 			},
 			ghCliAvailable: deps.ghCliAvailable,
 			onPublishGist: () => deps.setGistPublishModalOpen(true),
+			onPublishMessageGist: (text: string) => {
+				if (!text.trim()) return;
+				const filename = `ai_response_${Date.now()}.md`;
+				useTabStore.getState().setTabGistContent({ filename, content: text });
+				deps.setGistPublishModalOpen(true);
+			},
 			hasGist: deps.hasGist,
 			onOpenInGraph: () => {
 				if (deps.activeFileTab && deps.activeSession) {
@@ -570,6 +579,7 @@ export function useMainPanelProps(deps: UseMainPanelPropsDeps) {
 			deps.handleToggleTabShowThinking,
 			deps.toggleUnreadFilter,
 			deps.handleOpenTabSearch,
+			deps.handleOpenOutputSearch,
 			deps.handleCloseAllTabs,
 			deps.handleCloseOtherTabs,
 			deps.handleCloseTabsLeft,

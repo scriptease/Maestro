@@ -29,6 +29,9 @@ export const MODAL_PRIORITIES = {
 	/** Agent error modal - critical, shows recovery options */
 	AGENT_ERROR: 1010,
 
+	/** Forced parallel execution warning - one-time acknowledgment */
+	FORCED_PARALLEL_WARNING: 1005,
+
 	/** Confirmation dialogs - highest priority, always on top */
 	CONFIRM: 1000,
 
@@ -97,6 +100,9 @@ export const MODAL_PRIORITIES = {
 
 	/** Worktree configuration modal */
 	WORKTREE_CONFIG: 752,
+
+	/** New agent choice modal (Manual vs Wizard) */
+	NEW_AGENT_CHOICE: 756,
 
 	/** New instance creation modal */
 	NEW_INSTANCE: 750,
@@ -190,6 +196,9 @@ export const MODAL_PRIORITIES = {
 
 	/** Update check modal */
 	UPDATE_CHECK: 610,
+
+	/** Feedback modal */
+	FEEDBACK: 595,
 
 	/** Process monitor modal */
 	PROCESS_MONITOR: 550,

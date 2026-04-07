@@ -74,6 +74,8 @@ export interface ModalProps {
 	initialFocusRef?: React.RefObject<HTMLElement>;
 	/** Test ID for the modal container */
 	testId?: string;
+	/** Override className for the content wrapper (default: 'p-6 overflow-y-auto flex-1') */
+	contentClassName?: string;
 }
 
 /**
@@ -97,6 +99,7 @@ export function Modal({
 	layerOptions,
 	initialFocusRef,
 	testId,
+	contentClassName,
 }: ModalProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 
@@ -173,7 +176,7 @@ export function Modal({
 					))}
 
 				{/* Content */}
-				<div className="p-6 overflow-y-auto flex-1">{children}</div>
+				<div className={contentClassName ?? 'p-6 overflow-y-auto flex-1'}>{children}</div>
 
 				{/* Footer */}
 				{footer && (

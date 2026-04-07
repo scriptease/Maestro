@@ -23,6 +23,7 @@ import {
 	Trash2,
 	AlertTriangle,
 	Loader2,
+	Search,
 } from 'lucide-react';
 import type { Session, Theme, FocusArea } from '../types';
 import type { FileNode } from '../types/fileTree';
@@ -40,6 +41,9 @@ import { useClickOutside } from '../hooks/ui/useClickOutside';
 import { useContextMenuPosition } from '../hooks/ui/useContextMenuPosition';
 import { getRevealLabel, getOpenInLabel } from '../utils/platformUtils';
 import { safeClipboardWrite } from '../utils/clipboard';
+import { formatShortcutKeys } from '../utils/shortcutFormatter';
+import { useSettingsStore } from '../stores/settingsStore';
+import type { FileExplorerIconTheme } from '../utils/fileExplorerIcons/shared';
 import { Modal, ModalFooter } from './ui/Modal';
 import { FormInput } from './ui/FormInput';
 
@@ -357,6 +361,7 @@ interface FileExplorerPanelProps {
 	onAutoRefreshChange?: (interval: number) => void;
 	onShowFlash?: (message: string) => void;
 	showHiddenFiles: boolean;
+	fileExplorerIconTheme: FileExplorerIconTheme;
 	setShowHiddenFiles: (value: boolean) => void;
 	/** Callback to open graph view focused on a specific file (relative path to session.cwd) */
 	onFocusFileInGraph?: (relativePath: string) => void;
@@ -391,11 +396,16 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 		onAutoRefreshChange,
 		onShowFlash,
 		showHiddenFiles,
+		fileExplorerIconTheme,
 		setShowHiddenFiles,
 		onFocusFileInGraph,
 		lastGraphFocusFile,
 		onOpenLastDocumentGraph,
 	} = props;
+
+	const shortcuts = useSettingsStore((s) => s.shortcuts);
+	const rightPanelWidth = useSettingsStore((s) => s.rightPanelWidth);
+	const showToolbarLabels = rightPanelWidth >= 340;
 
 	const { registerLayer, unregisterLayer, updateLayerHandler } = useLayerStack();
 	const layerIdRef = useRef<string>();
@@ -1018,8 +1028,8 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 					)}
 					<span className="flex-shrink-0">
 						{isFolder
-							? getExplorerFolderIcon(node.name, isExpanded, theme)
-							: getExplorerFileIcon(node.name, theme, change?.type)}
+							? getExplorerFolderIcon(node.name, isExpanded, theme, fileExplorerIconTheme)
+							: getExplorerFileIcon(node.name, theme, change?.type, fileExplorerIconTheme)}
 					</span>
 					<span
 						className={`truncate min-w-0 flex-1 ${change ? 'font-medium' : ''}`}
@@ -1068,6 +1078,7 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 			setActiveFocus,
 			handleFileClick,
 			fileTreeFilter,
+			fileExplorerIconTheme,
 			handleContextMenu,
 		]
 	);
@@ -1090,15 +1101,143 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 				</div>
 			)}
 
-			{/* Header with CWD and controls */}
+			{/* Header with CWD */}
 			<div
-				className="sticky top-0 z-10 flex items-center justify-between gap-2 text-xs font-bold pt-4 pb-2 mb-2 min-w-0"
-				style={{
-					backgroundColor: theme.colors.bgSidebar,
-				}}
+				className="sticky top-0 z-10 text-xs font-bold pt-4 pb-2 mb-2"
+				style={{ backgroundColor: theme.colors.bgSidebar }}
 			>
-				<div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
-					{/* SSH Remote indicator */}
+				{/* Toolbar row — compact buttons */}
+				<div className="flex gap-1 mb-2">
+					{/* Find files */}
+					<button
+						onClick={() => {
+							if (fileTreeFilterOpen) {
+								fileTreeFilterInputRef?.current?.focus();
+							} else {
+								setFileTreeFilterOpen(true);
+								setTimeout(() => fileTreeFilterInputRef?.current?.focus(), 0);
+							}
+						}}
+						className="flex-1 flex items-center justify-center gap-1 py-0.5 px-2 rounded text-xs font-medium transition-colors hover:bg-white/10"
+						style={{
+							color: fileTreeFilterOpen ? theme.colors.accent : theme.colors.accent,
+							border: `1px solid ${theme.colors.accent}40`,
+							backgroundColor: fileTreeFilterOpen
+								? `${theme.colors.accent}25`
+								: `${theme.colors.accent}15`,
+						}}
+						title={`Find Files (${formatShortcutKeys(shortcuts.filterFiles?.keys ?? ['Meta', 'f'])})`}
+					>
+						<Search className="w-3 h-3" />
+						{showToolbarLabels && 'Find'}
+					</button>
+					{/* Open in file manager */}
+					{!session.sshRemote && (
+						<button
+							onClick={() =>
+								window.maestro?.shell?.openPath(session.fullPath || session.projectRoot)
+							}
+							className="flex-1 flex items-center justify-center gap-1 py-0.5 px-2 rounded text-xs font-medium transition-colors hover:bg-white/10"
+							style={{
+								color: theme.colors.accent,
+								border: `1px solid ${theme.colors.accent}40`,
+								backgroundColor: `${theme.colors.accent}15`,
+							}}
+							title={getOpenInLabel(window.maestro?.platform || 'darwin')}
+						>
+							<FolderOpen className="w-3 h-3" />
+							{showToolbarLabels && 'Open'}
+						</button>
+					)}
+					{/* Show/hide dotfiles */}
+					<button
+						onClick={() => setShowHiddenFiles(!showHiddenFiles)}
+						className="flex-1 flex items-center justify-center gap-1 py-0.5 px-2 rounded text-xs font-medium transition-colors hover:bg-white/10"
+						style={{
+							color: theme.colors.accent,
+							border: `1px solid ${theme.colors.accent}40`,
+							backgroundColor: showHiddenFiles
+								? `${theme.colors.accent}25`
+								: `${theme.colors.accent}15`,
+						}}
+						title={showHiddenFiles ? 'Hide dotfiles' : 'Show dotfiles'}
+					>
+						{showHiddenFiles ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+						{showToolbarLabels && (showHiddenFiles ? 'Hide' : 'Show')}
+					</button>
+					{/* Refresh */}
+					<button
+						ref={refreshButtonRef}
+						onClick={handleRefresh}
+						onMouseEnter={handleRefreshMouseEnter}
+						onMouseLeave={handleRefreshMouseLeave}
+						className="flex-1 flex items-center justify-center gap-1 py-0.5 px-2 rounded text-xs font-medium transition-colors hover:bg-white/10"
+						style={{
+							color: theme.colors.accent,
+							border: `1px solid ${theme.colors.accent}40`,
+							backgroundColor:
+								autoRefreshInterval > 0 ? `${theme.colors.accent}25` : `${theme.colors.accent}15`,
+						}}
+						title={
+							autoRefreshInterval > 0
+								? `Auto-refresh every ${autoRefreshInterval}s`
+								: 'Refresh file tree'
+						}
+					>
+						<RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+						{showToolbarLabels && 'Refresh'}
+					</button>
+					{/* Expand all */}
+					<button
+						onClick={() => expandAllFolders(session.id, session, setSessions)}
+						className="flex-1 flex items-center justify-center gap-1 py-0.5 px-2 rounded text-xs font-medium transition-colors hover:bg-white/10"
+						style={{
+							color: theme.colors.accent,
+							border: `1px solid ${theme.colors.accent}40`,
+							backgroundColor: `${theme.colors.accent}15`,
+						}}
+						title="Expand all folders"
+					>
+						<div className="flex flex-col items-center -space-y-1.5">
+							<ChevronUp className="w-3 h-3" />
+							<ChevronDown className="w-3 h-3" />
+						</div>
+					</button>
+					{/* Collapse all */}
+					<button
+						onClick={() => collapseAllFolders(session.id, setSessions)}
+						className="flex-1 flex items-center justify-center gap-1 py-0.5 px-2 rounded text-xs font-medium transition-colors hover:bg-white/10"
+						style={{
+							color: theme.colors.accent,
+							border: `1px solid ${theme.colors.accent}40`,
+							backgroundColor: `${theme.colors.accent}15`,
+						}}
+						title="Collapse all folders"
+					>
+						<div className="flex flex-col items-center -space-y-1.5">
+							<ChevronDown className="w-3 h-3" />
+							<ChevronUp className="w-3 h-3" />
+						</div>
+					</button>
+					{/* Document Graph */}
+					{lastGraphFocusFile && onOpenLastDocumentGraph && (
+						<button
+							onClick={onOpenLastDocumentGraph}
+							className="flex-1 flex items-center justify-center gap-1 py-0.5 px-2 rounded text-xs font-medium transition-colors hover:bg-white/10"
+							style={{
+								color: theme.colors.accent,
+								border: `1px solid ${theme.colors.accent}40`,
+								backgroundColor: `${theme.colors.accent}15`,
+							}}
+							title="Open Last Document Graph"
+						>
+							<GitBranch className="w-3 h-3" />
+							{showToolbarLabels && 'Graph'}
+						</button>
+					)}
+				</div>
+				{/* Path row — full width */}
+				<div className="flex items-center gap-1.5 min-w-0 overflow-hidden justify-center">
 					{session.sshRemote && (
 						<span
 							className="flex-shrink-0"
@@ -1109,11 +1248,22 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 						</span>
 					)}
 					<span
-						className="opacity-50 min-w-0 flex-1 overflow-hidden whitespace-nowrap cursor-pointer"
+						className="flex-shrink-0 cursor-pointer opacity-30 hover:opacity-70 transition-opacity"
+						style={{ color: theme.colors.accent }}
+						onClick={() => {
+							safeClipboardWrite(session.projectRoot);
+							onShowFlash?.('Path copied to clipboard');
+						}}
+						title="Copy path to clipboard"
+					>
+						<Copy className="w-3 h-3" />
+					</span>
+					<span
+						className="opacity-50 min-w-0 overflow-hidden whitespace-nowrap cursor-pointer"
 						style={{
 							direction: 'rtl',
 							textOverflow: 'ellipsis',
-							textAlign: 'left',
+							textAlign: 'center',
 						}}
 						title={
 							session.sshRemote
@@ -1127,83 +1277,6 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 					>
 						<bdi>{session.projectRoot}</bdi>
 					</span>
-				</div>
-				<div className="flex items-center gap-1 flex-shrink-0">
-					{/* Open working directory in system file manager */}
-					{!session.sshRemote && (
-						<button
-							onClick={() =>
-								window.maestro?.shell?.openPath(session.fullPath || session.projectRoot)
-							}
-							className="p-1 rounded hover:bg-white/10 transition-colors"
-							title={getOpenInLabel(window.maestro?.platform || 'darwin')}
-							style={{ color: theme.colors.textDim }}
-						>
-							<FolderOpen className="w-3.5 h-3.5" />
-						</button>
-					)}
-					{/* Last Document Graph indicator */}
-					{lastGraphFocusFile && onOpenLastDocumentGraph && (
-						<button
-							onClick={onOpenLastDocumentGraph}
-							className="p-1 rounded hover:bg-white/10 transition-colors"
-							title="Open Last Document Graph"
-							style={{ color: theme.colors.accent }}
-						>
-							<GitBranch className="w-3.5 h-3.5" />
-						</button>
-					)}
-					<button
-						onClick={() => setShowHiddenFiles(!showHiddenFiles)}
-						className="p-1 rounded hover:bg-white/10 transition-colors"
-						title={showHiddenFiles ? 'Hide dotfiles' : 'Show dotfiles'}
-						style={{
-							color: showHiddenFiles ? theme.colors.accent : theme.colors.textDim,
-							backgroundColor: showHiddenFiles ? `${theme.colors.accent}20` : 'transparent',
-						}}
-					>
-						{showHiddenFiles ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-					</button>
-					<button
-						ref={refreshButtonRef}
-						onClick={handleRefresh}
-						onMouseEnter={handleRefreshMouseEnter}
-						onMouseLeave={handleRefreshMouseLeave}
-						className="p-1 rounded hover:bg-white/10 transition-colors"
-						title={
-							autoRefreshInterval > 0
-								? `Auto-refresh every ${autoRefreshInterval}s`
-								: 'Refresh file tree'
-						}
-						style={{
-							color: autoRefreshInterval > 0 ? theme.colors.accent : theme.colors.textDim,
-							backgroundColor: autoRefreshInterval > 0 ? `${theme.colors.accent}20` : 'transparent',
-						}}
-					>
-						<RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-					</button>
-					<button
-						onClick={() => expandAllFolders(session.id, session, setSessions)}
-						className="p-1 rounded hover:bg-white/10 transition-colors"
-						title="Expand all folders"
-						style={{ color: theme.colors.textDim }}
-					>
-						<div className="flex flex-col items-center -space-y-1.5">
-							<ChevronUp className="w-3.5 h-3.5" />
-							<ChevronDown className="w-3.5 h-3.5" />
-						</div>
-					</button>
-					<button
-						onClick={() => collapseAllFolders(session.id, setSessions)}
-						className="p-1 rounded hover:bg-white/10 transition-colors"
-						title="Collapse all folders"
-						style={{ color: theme.colors.textDim }}
-					>
-						<div className="flex flex-col items-center -space-y-1.5">
-							<ChevronDown className="w-3.5 h-3.5" />
-							<ChevronUp className="w-3.5 h-3.5" />
-						</div>
-					</button>
 				</div>
 			</div>
 

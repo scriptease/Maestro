@@ -7,11 +7,13 @@ import { notifyToast } from '../stores/notificationStore';
 import { MODAL_PRIORITIES } from '../constants/modalPriorities';
 import { gitService } from '../services/git';
 import { formatShortcutKeys } from '../utils/shortcutFormatter';
+import { findNextUnreadSession } from '../utils/tabHelpers';
 import { safeClipboardWrite } from '../utils/clipboard';
 import { getOpenInLabel } from '../utils/platformUtils';
 import type { WizardStep } from './Wizard/WizardContext';
 import { useListNavigation } from '../hooks';
 import { useUIStore } from '../stores/uiStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import { useFileExplorerStore } from '../stores/fileExplorerStore';
 import { buildMaestroUrl } from '../utils/buildMaestroUrl';
 
@@ -51,6 +53,7 @@ interface QuickActionsModalProps {
 	setSettingsTab: (tab: SettingsTab) => void;
 	setShortcutsHelpOpen: (open: boolean) => void;
 	setAboutModalOpen: (open: boolean) => void;
+	setFeedbackModalOpen: (open: boolean) => void;
 	setLogViewerOpen: (open: boolean) => void;
 	setProcessMonitorOpen: (open: boolean) => void;
 	setUsageDashboardOpen?: (open: boolean) => void;
@@ -104,6 +107,7 @@ interface QuickActionsModalProps {
 	autoRunSelectedDocument?: string | null;
 	autoRunCompletedTaskCount?: number;
 	onAutoRunResetTasks?: () => void;
+	onClearActiveTerminal?: () => void;
 	// Tab close operations
 	onCloseAllTabs?: () => void;
 	onCloseOtherTabs?: () => void;
@@ -125,9 +129,6 @@ interface QuickActionsModalProps {
 	// Maestro Cue
 	onOpenMaestroCue?: () => void;
 	onConfigureCue?: (session: Session) => void;
-	// Auto-scroll
-	autoScrollAiMode?: boolean;
-	setAutoScrollAiMode?: (value: boolean) => void;
 }
 
 export const QuickActionsModal = memo(function QuickActionsModal(props: QuickActionsModalProps) {
@@ -159,6 +160,7 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 		setSettingsTab,
 		setShortcutsHelpOpen,
 		setAboutModalOpen,
+		setFeedbackModalOpen,
 		setLogViewerOpen,
 		setProcessMonitorOpen,
 		setUsageDashboardOpen,
@@ -201,6 +203,7 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 		autoRunSelectedDocument,
 		autoRunCompletedTaskCount,
 		onAutoRunResetTasks,
+		onClearActiveTerminal,
 		onCloseAllTabs,
 		onCloseOtherTabs,
 		onCloseTabsLeft,
@@ -215,8 +218,6 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 		onOpenDirectorNotes,
 		onOpenMaestroCue,
 		onConfigureCue,
-		autoScrollAiMode,
-		setAutoScrollAiMode,
 	} = props;
 
 	// UI store actions for search commands (avoid threading more props through 3-layer chain)
@@ -224,7 +225,10 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 	const storeSetSessionFilterOpen = useUIStore((s) => s.setSessionFilterOpen);
 	const storeSetOutputSearchOpen = useUIStore((s) => s.setOutputSearchOpen);
 	const storeSetFileTreeFilterOpen = useFileExplorerStore((s) => s.setFileTreeFilterOpen);
+	const audioFeedbackEnabled = useSettingsStore((s) => s.audioFeedbackEnabled);
+	const setAudioFeedbackEnabled = useSettingsStore((s) => s.setAudioFeedbackEnabled);
 	const storeSetHistorySearchFilterOpen = useUIStore((s) => s.setHistorySearchFilterOpen);
+	const setSuccessFlashNotification = useUIStore((s) => s.setSuccessFlashNotification);
 
 	const [search, setSearch] = useState('');
 	const [mode, setMode] = useState<'main' | 'move-to-group' | 'agents'>(initialMode);
@@ -467,6 +471,43 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 			shortcut: shortcuts.toggleRightPanel,
 			action: () => setRightPanelOpen((p) => !p),
 		},
+		{
+			id: 'nextUnreadTab',
+			label: 'Next Unread Tab',
+			shortcut: shortcuts.nextUnreadTab,
+			action: () => {
+				const result = findNextUnreadSession(sessions, activeSessionId);
+
+				if (result.clearedCurrent) {
+					setSessions((prev) =>
+						prev.map((s) => {
+							if (s.id !== activeSessionId) return s;
+							return {
+								...s,
+								aiTabs: s.aiTabs.map((t) => (t.hasUnread ? { ...t, hasUnread: false } : t)),
+							};
+						})
+					);
+				}
+
+				if (result.jumped && result.targetSessionId) {
+					setActiveSessionId(result.targetSessionId);
+					const targetTabId = result.targetTabId;
+					if (targetTabId) {
+						setSessions((prev) =>
+							prev.map((s) => {
+								if (s.id !== result.targetSessionId) return s;
+								return { ...s, activeTabId: targetTabId };
+							})
+						);
+					}
+				} else {
+					setSuccessFlashNotification('No unread tabs');
+					setTimeout(() => setSuccessFlashNotification(null), 2000);
+				}
+				setQuickActionOpen(false);
+			},
+		},
 		...(activeSession
 			? [
 					{
@@ -543,6 +584,17 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 					},
 				]
 			: []),
+		{
+			id: 'toggleCustomNotification',
+			label: audioFeedbackEnabled
+				? 'Turn Off Custom Notifications'
+				: 'Turn On Custom Notifications',
+			subtext: `Custom notifications: ${audioFeedbackEnabled ? 'enabled' : 'disabled'}`,
+			action: () => {
+				setAudioFeedbackEnabled(!audioFeedbackEnabled);
+				setQuickActionOpen(false);
+			},
+		},
 		// Tab close operations
 		...(isAiMode && activeSession?.aiTabs && activeSession.aiTabs.length > 0 && onCloseAllTabs
 			? [
@@ -614,15 +666,14 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 					},
 				]
 			: []),
-		...(activeSession
+		...(activeSession && activeSession.inputMode === 'terminal' && onClearActiveTerminal
 			? [
 					{
 						id: 'clearTerminal',
 						label: 'Clear Terminal History',
+						shortcut: shortcuts.clearTerminal,
 						action: () => {
-							setSessions((prev) =>
-								prev.map((s) => (s.id === activeSessionId ? { ...s, shellLogs: [] } : s))
-							);
+							onClearActiveTerminal();
 							setQuickActionOpen(false);
 						},
 					},
@@ -928,6 +979,15 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 			},
 		},
 		{
+			id: 'feedback',
+			label: 'Send Feedback',
+			subtext: 'Report a bug or suggest a feature via GitHub',
+			action: () => {
+				setFeedbackModalOpen(true);
+				setQuickActionOpen(false);
+			},
+		},
+		{
 			id: 'website',
 			label: 'Maestro Website',
 			subtext: 'Open the Maestro website',
@@ -1106,22 +1166,6 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 						subtext: 'Open YAML editor for event-driven automation',
 						action: () => {
 							onConfigureCue(activeSession);
-							setQuickActionOpen(false);
-						},
-					},
-				]
-			: []),
-		// Auto-scroll toggle
-		...(setAutoScrollAiMode
-			? [
-					{
-						id: 'toggleAutoScroll',
-						label: autoScrollAiMode
-							? 'Disable Auto-Scroll AI Output'
-							: 'Enable Auto-Scroll AI Output',
-						shortcut: shortcuts.toggleAutoScroll,
-						action: () => {
-							setAutoScrollAiMode(!autoScrollAiMode);
 							setQuickActionOpen(false);
 						},
 					},

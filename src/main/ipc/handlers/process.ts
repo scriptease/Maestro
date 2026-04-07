@@ -1,11 +1,14 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import Store from 'electron-store';
 import * as os from 'os';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ProcessManager } from '../../process-manager';
 import { AgentDetector } from '../../agents';
 import { logger } from '../../utils/logger';
 import { isWindows } from '../../../shared/platformDetection';
-import { addBreadcrumb } from '../../utils/sentry';
+import { getChildProcesses } from '../../process-manager/utils/childProcessInfo';
+import { addBreadcrumb, captureException } from '../../utils/sentry';
 import { isWebContentsAvailable } from '../../utils/safe-send';
 import {
 	buildAgentArgs,
@@ -26,6 +29,7 @@ import { buildExpandedEnv } from '../../../shared/pathUtils';
 import type { SshRemoteConfig } from '../../../shared/types';
 import { powerManager } from '../../power-manager';
 import { MaestroSettings } from './persistence';
+import { getDefaultShell } from '../../stores/defaults';
 
 const LOG_CONTEXT = '[ProcessManager]';
 
@@ -120,6 +124,7 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 				sessionCustomArgs?: string; // Session-specific custom args
 				sessionCustomEnvVars?: Record<string, string>; // Session-specific env vars
 				sessionCustomModel?: string; // Session-specific model selection
+				sessionCustomEffort?: string; // Session-specific effort/reasoning level
 				sessionCustomContextWindow?: number; // Session-specific context window size
 				// Per-session SSH remote config (takes precedence over agent-level SSH config)
 				sessionSshRemoteConfig?: {
@@ -127,6 +132,8 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 					remoteId: string | null;
 					workingDirOverride?: string;
 				};
+				// System prompt delivery (separate from user message for token efficiency)
+				appendSystemPrompt?: string; // System prompt to pass via --append-system-prompt or embed in prompt
 				// Stats tracking options
 				querySource?: 'user' | 'auto'; // Whether this query is user-initiated or from Auto Run
 				tabId?: string; // Tab ID for multi-tab tracking
@@ -189,6 +196,7 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 				const configResolution = applyAgentConfigOverrides(agent, finalArgs, {
 					agentConfigValues,
 					sessionCustomModel: config.sessionCustomModel,
+					sessionCustomEffort: config.sessionCustomEffort,
 					sessionCustomArgs: config.sessionCustomArgs,
 					sessionCustomEnvVars: config.sessionCustomEnvVars,
 				});
@@ -224,11 +232,91 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 					);
 				}
 
+				// ========================================================================
+				// System prompt delivery: use --append-system-prompt for supported agents,
+				// otherwise embed in the user prompt as fallback.
+				// On Windows local execution, use --append-system-prompt-file with a temp
+				// file to avoid exceeding the ~32K CreateProcess command-line length limit.
+				// SSH sessions are exempt (the command runs inside a stdin script, not the
+				// OS command line) and always use inline --append-system-prompt.
+				// ========================================================================
+				let effectivePrompt = config.prompt;
+				let systemPromptTempFile: string | undefined;
+				const isSshSession = config.sessionSshRemoteConfig?.enabled;
+				if (config.appendSystemPrompt) {
+					if (agent?.capabilities?.supportsAppendSystemPrompt) {
+						if (isWindows() && !isSshSession) {
+							// Windows local: write to temp file to avoid CLI length limits
+							const tmpDir = os.tmpdir();
+							systemPromptTempFile = path.join(
+								tmpDir,
+								`maestro-sysprompt-${config.sessionId}-${Date.now()}.txt`
+							);
+							fs.writeFileSync(systemPromptTempFile, config.appendSystemPrompt, 'utf-8');
+							// Schedule cleanup early so the file is removed even if spawn fails.
+							// 30s gives the agent plenty of time to read it after spawning.
+							const tempFileToClean = systemPromptTempFile;
+							setTimeout(() => {
+								try {
+									fs.unlinkSync(tempFileToClean);
+								} catch (cleanupErr: unknown) {
+									if ((cleanupErr as NodeJS.ErrnoException).code !== 'ENOENT') {
+										captureException(
+											cleanupErr instanceof Error ? cleanupErr : new Error(String(cleanupErr)),
+											{
+												context: 'systemPromptTempFile cleanup (safety)',
+												file: tempFileToClean,
+											}
+										);
+									}
+								}
+							}, 30_000);
+							finalArgs = [...finalArgs, '--append-system-prompt-file', systemPromptTempFile];
+							logger.debug(
+								'Using --append-system-prompt-file for system prompt delivery (Windows)',
+								LOG_CONTEXT,
+								{
+									agentId: agent?.id,
+									systemPromptLength: config.appendSystemPrompt.length,
+									tempFile: systemPromptTempFile,
+								}
+							);
+						} else {
+							// Non-Windows or SSH: pass inline (no command-line length concern)
+							finalArgs = [...finalArgs, '--append-system-prompt', config.appendSystemPrompt];
+							logger.debug('Using --append-system-prompt for system prompt delivery', LOG_CONTEXT, {
+								agentId: agent?.id,
+								systemPromptLength: config.appendSystemPrompt.length,
+							});
+						}
+					} else if (effectivePrompt) {
+						// Fallback: embed system prompt in user message
+						effectivePrompt = `${config.appendSystemPrompt}\n\n---\n\n# User Request\n\n${effectivePrompt}`;
+						logger.debug('Embedding system prompt in user message (fallback)', LOG_CONTEXT, {
+							agentId: agent?.id,
+							systemPromptLength: config.appendSystemPrompt.length,
+						});
+					} else {
+						// No user message to embed into - send system prompt as sole content
+						effectivePrompt = config.appendSystemPrompt;
+						logger.warn(
+							'appendSystemPrompt provided without a user prompt; using as sole prompt',
+							LOG_CONTEXT,
+							{
+								agentId: agent?.id,
+								systemPromptLength: config.appendSystemPrompt.length,
+							}
+						);
+					}
+				}
+
 				// If no shell is specified and this is a terminal session, use the default shell from settings
 				// For terminal sessions, we also load custom shell path, args, and env vars
 				let shellToUse =
 					config.shell ||
-					(config.toolType === 'terminal' ? settingsStore.get('defaultShell', 'zsh') : undefined);
+					(config.toolType === 'terminal'
+						? settingsStore.get('defaultShell', getDefaultShell())
+						: undefined);
 				let shellArgsStr: string | undefined;
 
 				// Load global shell environment variables for ALL process types (terminals and agents)
@@ -279,13 +367,24 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 							? finalArgs[sessionArgIndex + 1]
 							: config.agentSessionId;
 
+				// Redact system prompt content from logged args (can be large and sensitive)
+				const appendPromptIdx = finalArgs.indexOf('--append-system-prompt');
+				const argsToLog =
+					appendPromptIdx !== -1
+						? [
+								...finalArgs.slice(0, appendPromptIdx + 1),
+								`<${finalArgs[appendPromptIdx + 1]?.length ?? 0} chars>`,
+								...finalArgs.slice(appendPromptIdx + 2),
+							]
+						: finalArgs;
+
 				logger.info(`Spawning process: ${config.command}`, LOG_CONTEXT, {
 					sessionId: config.sessionId,
 					toolType: config.toolType,
 					cwd: config.cwd,
 					command: config.command,
-					fullCommand: `${config.command} ${finalArgs.join(' ')}`,
-					args: finalArgs,
+					fullCommand: `${config.command} ${argsToLog.join(' ')}`,
+					args: argsToLog,
 					requiresPty: agent?.requiresPty || false,
 					shell: shellToUse,
 					...(agentSessionId && { agentSessionId }),
@@ -295,6 +394,15 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 					...(config.prompt && {
 						prompt:
 							config.prompt.length > 500 ? config.prompt.substring(0, 500) + '...' : config.prompt,
+					}),
+					...(config.appendSystemPrompt && {
+						systemPromptDelivery: agent?.capabilities?.supportsAppendSystemPrompt
+							? systemPromptTempFile
+								? 'file'
+								: 'cli-arg'
+							: 'embedded',
+						...(systemPromptTempFile && { systemPromptFile: systemPromptTempFile }),
+						effectivePromptLength: effectivePrompt?.length ?? 0,
 					}),
 				});
 
@@ -427,11 +535,11 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 						//   (e.g., -i /tmp/image.png for Codex, -f /tmp/image.png for OpenCode).
 						const hasImages = config.images && config.images.length > 0;
 						let sshArgs = finalArgs;
-						let stdinInput: string | undefined = config.prompt;
+						let stdinInput: string | undefined = effectivePrompt;
 
-						if (hasImages && config.prompt && agent?.capabilities?.supportsStreamJsonInput) {
+						if (hasImages && effectivePrompt && agent?.capabilities?.supportsStreamJsonInput) {
 							// Stream-json agent (Claude Code): embed images in the stdin message
-							stdinInput = buildStreamJsonMessage(config.prompt, config.images!) + '\n';
+							stdinInput = buildStreamJsonMessage(effectivePrompt, config.images!) + '\n';
 							if (!sshArgs.includes('--input-format')) {
 								sshArgs = [...sshArgs, '--input-format', 'stream-json'];
 							}
@@ -530,8 +638,8 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 					// When using SSH, disable PTY (SSH provides its own terminal handling)
 					requiresPty: sshRemoteUsed ? false : agent?.requiresPty,
 					// For SSH, prompt is included in the stdin script, not passed separately
-					// For local execution, pass prompt as normal
-					prompt: sshRemoteUsed ? undefined : config.prompt,
+					// For local execution, pass prompt (with system prompt embedded for non-append-system-prompt agents)
+					prompt: sshRemoteUsed ? undefined : effectivePrompt,
 					shell: shellToUse,
 					runInShell: useShell,
 					shellArgs: shellArgsStr, // Shell-specific CLI args (for terminal sessions)
@@ -560,6 +668,9 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 						sshRemoteName: sshRemoteUsed.name,
 					}),
 				});
+
+				// Temp file cleanup is scheduled at creation time (30s safety net)
+				// so it's cleaned up even if spawn fails above.
 
 				// Add power block reason for AI sessions (not terminals)
 				// This prevents system sleep while AI is processing
@@ -650,17 +761,29 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 			const processManager = requireProcessManager(getProcessManager);
 			const processes = processManager.getAll();
 			// Return serializable process info (exclude non-serializable PTY/child process objects)
-			const result: Array<Record<string, unknown>> = processes.map((p) => ({
-				sessionId: p.sessionId,
-				toolType: p.toolType,
-				pid: p.pid,
-				cwd: p.cwd,
-				isTerminal: p.isTerminal,
-				isBatchMode: p.isBatchMode || false,
-				startTime: p.startTime,
-				command: p.command,
-				args: p.args,
-			}));
+			// For terminal processes, also fetch child processes to show what's running inside the shell
+			const result: Array<Record<string, unknown>> = await Promise.all(
+				processes.map(async (p) => {
+					const entry: Record<string, unknown> = {
+						sessionId: p.sessionId,
+						toolType: p.toolType,
+						pid: p.pid,
+						cwd: p.cwd,
+						isTerminal: p.isTerminal,
+						isBatchMode: p.isBatchMode || false,
+						startTime: p.startTime,
+						command: p.command,
+						args: p.args,
+					};
+					if (p.isTerminal && p.pid) {
+						const children = await getChildProcesses(p.pid);
+						if (children.length > 0) {
+							entry.childProcesses = children;
+						}
+					}
+					return entry;
+				})
+			);
 
 			// Append active Cue run processes if available
 			const cueProcesses = deps.getCueProcesses?.() ?? [];
@@ -703,6 +826,10 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 				shellEnvVars?: Record<string, string>;
 				cols?: number;
 				rows?: number;
+				// Agent type (e.g. 'claude-code') — used to resolve agent-level customEnvVars
+				toolType?: string;
+				// Session-level custom env vars (override agent-level)
+				sessionCustomEnvVars?: Record<string, string>;
 				// Per-session SSH remote config
 				sessionSshRemoteConfig?: {
 					enabled: boolean;
@@ -714,14 +841,30 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 
 				// Resolve shell: prefer config.shell, then settings default
 				const globalShellEnvVars = settingsStore.get('shellEnvVars', {}) as Record<string, string>;
-				let shellToUse = config.shell || settingsStore.get('defaultShell', 'zsh');
+				let shellToUse = config.shell || settingsStore.get('defaultShell', getDefaultShell());
 				const customShellPath = settingsStore.get('customShellPath', '');
 				if (customShellPath && (customShellPath as string).trim()) {
 					shellToUse = (customShellPath as string).trim();
 				}
 
-				// Merge global env vars with any per-invocation env vars (per-invocation takes precedence)
-				const mergedEnvVars = { ...globalShellEnvVars, ...(config.shellEnvVars || {}) };
+				// Resolve agent-level custom env vars from agent config store
+				let agentCustomEnvVars: Record<string, string> = {};
+				if (config.toolType) {
+					const allConfigs = agentConfigsStore.get('configs', {});
+					const agentConfig = allConfigs[config.toolType];
+					if (agentConfig?.customEnvVars) {
+						agentCustomEnvVars = agentConfig.customEnvVars;
+					}
+				}
+
+				// Merge env vars: global → agent-level → session-level → per-invocation
+				// Each layer takes precedence over the previous
+				const mergedEnvVars = {
+					...globalShellEnvVars,
+					...agentCustomEnvVars,
+					...(config.sessionCustomEnvVars || {}),
+					...(config.shellEnvVars || {}),
+				};
 
 				logger.info(`Spawning terminal tab: ${config.sessionId}`, LOG_CONTEXT, {
 					sessionId: config.sessionId,
@@ -824,7 +967,7 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 
 				// Get the shell from settings if not provided
 				// Custom shell path takes precedence over the selected shell ID
-				let shell = config.shell || settingsStore.get('defaultShell', 'zsh');
+				let shell = config.shell || settingsStore.get('defaultShell', getDefaultShell());
 				const customShellPath = settingsStore.get('customShellPath', '');
 				if (customShellPath && customShellPath.trim()) {
 					shell = customShellPath.trim();

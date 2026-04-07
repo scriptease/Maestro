@@ -1,12 +1,14 @@
-import React, { memo } from 'react';
+import { memo } from 'react';
 import type { Theme, Session, ToolType } from '../../types';
 
 // Session Management Modal Components
 import { NewInstanceModal, EditAgentModal } from '../NewInstanceModal';
+import { NewAgentChoiceModal } from '../NewAgentChoiceModal';
 import { RenameSessionModal } from '../RenameSessionModal';
 import { RenameTabModal } from '../RenameTabModal';
 import { TerminalTabRenameModal } from '../TerminalTabRenameModal';
 import { getTerminalTabDisplayName } from '../../utils/terminalTabHelpers';
+import { useModalStore, selectModalOpen } from '../../stores/modalStore';
 
 /**
  * Props for the AppSessionModals component
@@ -76,6 +78,12 @@ export interface AppSessionModalsProps {
 	renameTabInitialName: string;
 	onCloseRenameTabModal: () => void;
 	onRenameTab: (newName: string) => void;
+	onAutoNameTab: () => void;
+
+	// NewAgentChoiceModal
+	onOpenManualSetup: () => void;
+	onOpenWizardSetup: () => void;
+	wizardAvailable: boolean;
 }
 
 /**
@@ -117,6 +125,11 @@ export const AppSessionModals = memo(function AppSessionModals({
 	renameTabInitialName,
 	onCloseRenameTabModal,
 	onRenameTab,
+	onAutoNameTab,
+	// NewAgentChoiceModal
+	onOpenManualSetup,
+	onOpenWizardSetup,
+	wizardAvailable,
 }: AppSessionModalsProps) {
 	// Determine if the rename modal is for a terminal tab or an AI tab
 	const terminalTabs = activeSession?.terminalTabs ?? [];
@@ -125,8 +138,22 @@ export const AppSessionModals = memo(function AppSessionModals({
 		? terminalTabs.findIndex((t) => t.id === renameTabId)
 		: -1;
 
+	const newAgentChoiceOpen = useModalStore(selectModalOpen('newAgentChoice'));
+	const closeNewAgentChoice = () => useModalStore.getState().closeModal('newAgentChoice');
+
 	return (
 		<>
+			{/* --- NEW AGENT CHOICE MODAL --- */}
+			{newAgentChoiceOpen && (
+				<NewAgentChoiceModal
+					theme={theme}
+					onClose={closeNewAgentChoice}
+					onManualSetup={onOpenManualSetup}
+					onWizardSetup={onOpenWizardSetup}
+					wizardAvailable={wizardAvailable}
+				/>
+			)}
+
 			{/* --- NEW INSTANCE MODAL --- */}
 			{newInstanceModalOpen && (
 				<NewInstanceModal
@@ -174,6 +201,10 @@ export const AppSessionModals = memo(function AppSessionModals({
 					agentSessionId={activeSession?.aiTabs?.find((t) => t.id === renameTabId)?.agentSessionId}
 					onClose={onCloseRenameTabModal}
 					onRename={onRenameTab}
+					onAutoName={onAutoNameTab}
+					hasLogs={
+						(activeSession?.aiTabs?.find((t) => t.id === renameTabId)?.logs?.length ?? 0) > 0
+					}
 				/>
 			)}
 
