@@ -429,6 +429,7 @@ export const AGENT_CAPABILITIES: Record<string, AgentCapabilities> = {
 		supportsGroupChatModeration: true, // Group chat moderation uses the standard batch-mode orchestration path
 		usesJsonLineOutput: true, // --output-format json produces JSONL
 		usesCombinedContextWindow: false, // Default Copilot model is Claude Sonnet; model-specific behavior varies
+		supportsAppendSystemPrompt: false, // Not verified for Copilot CLI
 	},
 };
 
