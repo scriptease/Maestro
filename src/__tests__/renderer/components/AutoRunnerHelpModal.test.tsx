@@ -169,11 +169,34 @@ describe('AutoRunnerHelpModal', () => {
 			expect(screen.getByText(/continuously cycle through the document queue/)).toBeInTheDocument();
 		});
 
-		it('should render Playbooks section', () => {
+		it('should render Playbooks overview section', () => {
 			// Use getAllByText since "Playbooks" appears multiple times (heading + reference)
 			const playbooksElements = screen.getAllByText(/Playbooks/);
 			expect(playbooksElements.length).toBeGreaterThan(0);
-			expect(screen.getByText(/Save your batch run configurations/)).toBeInTheDocument();
+			expect(screen.getByText(/A single Auto Run document handles one phase/)).toBeInTheDocument();
+		});
+
+		it('should render Creating Playbooks section', () => {
+			expect(screen.getByText('Creating Playbooks')).toBeInTheDocument();
+			expect(screen.getByText(/There are several ways to create playbooks/)).toBeInTheDocument();
+		});
+
+		it('should render playbook creation methods', () => {
+			// Wizard
+			expect(
+				screen.getByText(/guided conversation that discovers your project/)
+			).toBeInTheDocument();
+			// Slash commands
+			expect(screen.getByText('/speckit')).toBeInTheDocument();
+			expect(screen.getByText('/openspec')).toBeInTheDocument();
+			expect(screen.getByText('/bmad')).toBeInTheDocument();
+			// Manual
+			expect(screen.getByText(/Write markdown documents directly/)).toBeInTheDocument();
+		});
+
+		it('should render Saving & Sharing Playbooks section', () => {
+			expect(screen.getByText('Saving & Sharing Playbooks')).toBeInTheDocument();
+			expect(screen.getByText(/Save your current batch configuration/)).toBeInTheDocument();
 		});
 
 		it('should render History & Tracking section', () => {
