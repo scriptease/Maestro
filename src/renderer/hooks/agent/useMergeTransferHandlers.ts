@@ -501,7 +501,6 @@ You are taking over this conversation. Based on the context above, provide a bri
 							groupId: targetSession.groupId,
 							activeTabId: newTabId,
 							conductorProfile,
-							readOnlyMode: false,
 						});
 					}
 

@@ -53,7 +53,6 @@ import { buildSessionDeepLink, buildGroupDeepLink } from './deep-link-urls';
  *
  * Maestro Variables:
  *   {{MAESTRO_CLI_PATH}}  - Platform-appropriate path to maestro-cli
- *   {{READ_ONLY_MODE}}    - "true" if agent is in read-only/plan mode, "false" otherwise
  *
  * Cue Variables (Cue automation only):
  *   {{CUE_EVENT_TYPE}}      - Cue event type (app.startup, time.heartbeat, time.scheduled, file.changed, agent.completed, github.*, task.pending)
@@ -161,8 +160,6 @@ export interface TemplateContext {
 	historyFilePath?: string;
 	// Conductor profile (user's About Me from settings)
 	conductorProfile?: string;
-	// Read-only / plan mode state
-	readOnlyMode?: boolean;
 	// Cue event context (for Cue automation prompts)
 	cue?: {
 		eventType?: string;
@@ -303,7 +300,6 @@ export const TEMPLATE_VARIABLES = [
 	},
 	{ variable: '{{MONTH}}', description: 'Month (01-12)' },
 	{ variable: '{{MAESTRO_CLI_PATH}}', description: 'Path to maestro-cli' },
-	{ variable: '{{READ_ONLY_MODE}}', description: 'Read-only/plan mode (true/false)' },
 	{ variable: '{{TAB_DEEP_LINK}}', description: 'Deep link to agent + active tab (maestro://)' },
 	{ variable: '{{TIME}}', description: 'Time (HH:MM:SS)' },
 	{ variable: '{{TIMESTAMP}}', description: 'Unix timestamp (ms)' },
@@ -334,7 +330,6 @@ export function substituteTemplateVariables(template: string, context: TemplateC
 		documentPath,
 		historyFilePath,
 		conductorProfile,
-		readOnlyMode,
 	} = context;
 	const now = new Date();
 
@@ -403,7 +398,6 @@ export function substituteTemplateVariables(template: string, context: TemplateC
 
 		// Maestro variables
 		MAESTRO_CLI_PATH: getMaestroCLIPath(),
-		READ_ONLY_MODE: String(readOnlyMode ?? false),
 
 		// Cue variables
 		CUE_EVENT_TYPE: context.cue?.eventType || '',
