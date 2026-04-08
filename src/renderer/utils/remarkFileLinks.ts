@@ -691,7 +691,30 @@ export function remarkFileLinks(options: RemarkFileLinksOptions) {
 			const decodedHref = decodeURIComponent(href);
 
 			// Try to resolve the reference as a file path
-			const resolvedPath = findClosestMatch(decodedHref, filenameIndex, allPaths, cwd);
+			let resolvedPath = findClosestMatch(decodedHref, filenameIndex, allPaths, cwd);
+
+			// If not found in file tree, try converting absolute paths to relative
+			// This handles links like [file.tsx](/Users/name/Project/src/file.tsx)
+			// which agents (e.g. Codex) emit as standard markdown links with absolute hrefs
+			if (!resolvedPath && projectRoot && decodedHref.startsWith('/')) {
+				const relativePath = toRelativePath(decodedHref);
+				if (relativePath) {
+					resolvedPath = relativePath;
+				}
+			}
+
+			// Also handle tilde paths in markdown links (e.g., [file](~/Projects/file.tsx))
+			if (!resolvedPath && homeDir && decodedHref.startsWith('~/')) {
+				const absolutePath = homeDir + decodedHref.slice(1);
+				const relativePath = toRelativePath(absolutePath);
+				if (relativePath) {
+					resolvedPath = relativePath;
+				} else {
+					// Outside projectRoot — use file:// URL
+					node.url = `file://${absolutePath}`;
+					return;
+				}
+			}
 
 			if (resolvedPath) {
 				// Convert to maestro-file:// protocol
