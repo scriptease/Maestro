@@ -15,6 +15,7 @@ You have permission to read and write files in:
 - The group chat shared folder: {{GROUP_CHAT_FOLDER}}
 
 The shared folder contains chat logs and can be used for collaborative file exchange between participants.
+{{AUTO_RUN_SECTION}}
 
 ## Recent Chat History:
 

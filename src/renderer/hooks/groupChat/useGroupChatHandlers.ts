@@ -317,7 +317,10 @@ export function useGroupChatHandlers(): GroupChatHandlersReturn {
 	// =======================================================================
 
 	useEffect(() => {
-		if (groupChatState === 'idle' && groupChatExecutionQueue.length > 0 && activeGroupChatId) {
+		// Drain the queue when the moderator is free — both 'idle' and 'agent-working'
+		// (during agent-working the moderator has finished its turn and can accept input).
+		const moderatorFree = groupChatState === 'idle' || groupChatState === 'agent-working';
+		if (moderatorFree && groupChatExecutionQueue.length > 0 && activeGroupChatId) {
 			const {
 				setGroupChatExecutionQueue,
 				setGroupChatState: setGCState,
@@ -624,8 +627,10 @@ export function useGroupChatHandlers(): GroupChatHandlersReturn {
 			} = useGroupChatStore.getState();
 			if (!activeGroupChatId) return;
 
-			// If group chat is busy, queue the message instead of sending immediately
-			if (groupChatState !== 'idle') {
+			// If the moderator is busy thinking, queue the message — it can't accept
+			// input right now. But if only participants are working, dispatch
+			// immediately so the chat feels conversational.
+			if (groupChatState === 'moderator-thinking') {
 				const queuedItem: QueuedItem = {
 					id: generateId(),
 					timestamp: Date.now(),

@@ -1276,11 +1276,16 @@ export async function routeModeratorResponse(
 			// Get the group chat folder path for file access permissions
 			const groupChatFolder = getGroupChatDir(groupChatId);
 
+			const autoRunSection = matchingSession?.autoRunFolderPath
+				? `\n## Auto Run Folder\n\nYour Auto Run folder is configured at: ${matchingSession.autoRunFolderPath}\nYou may reference, read, or write documents in this folder when relevant to the task.`
+				: '';
+
 			const participantPrompt = groupChatParticipantRequestPrompt
 				.replace(/\{\{PARTICIPANT_NAME\}\}/g, participantName)
 				.replace(/\{\{GROUP_CHAT_NAME\}\}/g, updatedChat.name)
 				.replace(/\{\{READ_ONLY_NOTE\}\}/g, readOnlyNote)
 				.replace(/\{\{GROUP_CHAT_FOLDER\}\}/g, groupChatFolder)
+				.replace(/\{\{AUTO_RUN_SECTION\}\}/g, autoRunSection)
 				.replace(/\{\{HISTORY_CONTEXT\}\}/g, historyContext)
 				.replace(/\{\{READ_ONLY_LABEL\}\}/g, readOnlyLabel)
 				.replace(/\{\{MESSAGE\}\}/g, message)
@@ -1918,11 +1923,16 @@ export async function respawnParticipantWithRecovery(
 	const groupChatFolder = getGroupChatDir(groupChatId);
 
 	// Build the recovery prompt - includes standard prompt plus recovery context
+	const autoRunSection = matchingSession?.autoRunFolderPath
+		? `\n## Auto Run Folder\n\nYour Auto Run folder is configured at: ${matchingSession.autoRunFolderPath}\nYou may reference, read, or write documents in this folder when relevant to the task.`
+		: '';
+
 	const basePrompt = groupChatParticipantRequestPrompt
 		.replace(/\{\{PARTICIPANT_NAME\}\}/g, participantName)
 		.replace(/\{\{GROUP_CHAT_NAME\}\}/g, chat.name)
 		.replace(/\{\{READ_ONLY_NOTE\}\}/g, readOnlyNote)
 		.replace(/\{\{GROUP_CHAT_FOLDER\}\}/g, groupChatFolder)
+		.replace(/\{\{AUTO_RUN_SECTION\}\}/g, autoRunSection)
 		.replace(/\{\{HISTORY_CONTEXT\}\}/g, historyContext)
 		.replace(/\{\{READ_ONLY_LABEL\}\}/g, readOnlyLabel)
 		.replace(
