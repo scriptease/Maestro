@@ -12,8 +12,10 @@ import {
 	Monitor,
 	Globe,
 	Users,
+	Play,
 } from 'lucide-react';
 import { useSettings } from '../../hooks';
+import { autorunDefaultPrompt } from '../../../prompts';
 import type { Theme, LLMProvider } from '../../types';
 import { useLayerStack } from '../../contexts/LayerStackContext';
 import { MODAL_PRIORITIES } from '../../constants/modalPriorities';
@@ -52,6 +54,7 @@ interface SettingsModalProps {
 		| 'notifications'
 		| 'aicommands'
 		| 'groupchat'
+		| 'autorun'
 		| 'ssh'
 		| 'environment'
 		| 'encore';
@@ -103,6 +106,9 @@ export const SettingsModal = memo(function SettingsModal(props: SettingsModalPro
 		// Group Chat settings
 		moderatorStandingInstructions,
 		setModeratorStandingInstructions,
+		// Auto Run settings
+		autoRunDefaultPromptOverride,
+		setAutoRunDefaultPromptOverride,
 	} = useSettings();
 
 	const [activeTab, setActiveTab] = useState<
@@ -114,6 +120,7 @@ export const SettingsModal = memo(function SettingsModal(props: SettingsModalPro
 		| 'notifications'
 		| 'aicommands'
 		| 'groupchat'
+		| 'autorun'
 		| 'ssh'
 		| 'environment'
 		| 'encore'
@@ -210,6 +217,7 @@ export const SettingsModal = memo(function SettingsModal(props: SettingsModalPro
 				| 'notifications'
 				| 'aicommands'
 				| 'groupchat'
+				| 'autorun'
 				| 'ssh'
 				| 'environment'
 				| 'encore'
@@ -223,6 +231,7 @@ export const SettingsModal = memo(function SettingsModal(props: SettingsModalPro
 						'notifications',
 						'aicommands',
 						'groupchat',
+						'autorun',
 						'ssh',
 						'environment',
 						'encore',
@@ -235,6 +244,7 @@ export const SettingsModal = memo(function SettingsModal(props: SettingsModalPro
 						'notifications',
 						'aicommands',
 						'groupchat',
+						'autorun',
 						'ssh',
 						'environment',
 						'encore',
@@ -385,6 +395,7 @@ export const SettingsModal = memo(function SettingsModal(props: SettingsModalPro
 		{ id: 'notifications', label: 'Notifications', icon: Bell },
 		{ id: 'aicommands', label: 'AI Commands', icon: Cpu },
 		{ id: 'groupchat', label: 'Group Chat', icon: Users },
+		{ id: 'autorun', label: 'Auto Run', icon: Play },
 		{ id: 'ssh', label: 'SSH Hosts', icon: Server },
 		{ id: 'environment', label: 'Environment', icon: Globe },
 		{ id: 'encore', label: 'Encore Features', icon: FlaskConical },
@@ -664,6 +675,65 @@ export const SettingsModal = memo(function SettingsModal(props: SettingsModalPro
 									<div className="text-xs mt-1 text-right" style={{ color: theme.colors.textDim }}>
 										{moderatorStandingInstructions.length} / 2000
 									</div>
+								</div>
+							</div>
+						)}
+
+						{activeTab === 'autorun' && (
+							<div className="space-y-5">
+								<div>
+									<div className="flex items-center justify-between mb-1">
+										<h3
+											className="text-sm font-bold uppercase tracking-wider"
+											style={{ color: theme.colors.textMain }}
+										>
+											Custom Default Prompt
+										</h3>
+										<button
+											onClick={() => {
+												if (autoRunDefaultPromptOverride) {
+													setAutoRunDefaultPromptOverride('');
+												} else {
+													setAutoRunDefaultPromptOverride(autorunDefaultPrompt);
+												}
+											}}
+											className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0"
+											style={{
+												backgroundColor: autoRunDefaultPromptOverride
+													? theme.colors.accent
+													: theme.colors.bgActivity,
+											}}
+											role="switch"
+											aria-checked={!!autoRunDefaultPromptOverride}
+											aria-label="Override default Auto Run prompt"
+										>
+											<span
+												className={`absolute left-0 top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+													autoRunDefaultPromptOverride ? 'translate-x-5' : 'translate-x-0.5'
+												}`}
+											/>
+										</button>
+									</div>
+									<p className="text-xs mb-3" style={{ color: theme.colors.textDim }}>
+										{autoRunDefaultPromptOverride
+											? "Your custom prompt is active for all Auto Run / Playbook executions that don't have a per-playbook prompt. Turn off to revert to the built-in default."
+											: 'The built-in default prompt is shown below (read-only). Turn on to customize it globally for all Auto Run / Playbook executions.'}
+									</p>
+									<textarea
+										value={autoRunDefaultPromptOverride || autorunDefaultPrompt}
+										onChange={(e) => setAutoRunDefaultPromptOverride(e.target.value)}
+										readOnly={!autoRunDefaultPromptOverride}
+										className="w-full p-3 rounded border bg-transparent outline-none resize-vertical text-sm font-mono"
+										style={{
+											borderColor: theme.colors.border,
+											color: autoRunDefaultPromptOverride
+												? theme.colors.textMain
+												: theme.colors.textDim,
+											minHeight: '300px',
+											opacity: autoRunDefaultPromptOverride ? 1 : 0.7,
+										}}
+										rows={16}
+									/>
 								</div>
 							</div>
 						)}

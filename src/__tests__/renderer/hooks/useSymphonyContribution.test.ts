@@ -58,9 +58,13 @@ vi.mock('../../../renderer/stores/modalStore', async () => {
 	};
 });
 
-vi.mock('../../../renderer/components/BatchRunnerModal', () => ({
-	DEFAULT_BATCH_PROMPT: 'mock-default-batch-prompt',
-}));
+vi.mock('../../../renderer/hooks/batch/batchUtils', async () => {
+	const actual = await vi.importActual('../../../renderer/hooks/batch/batchUtils');
+	return {
+		...actual,
+		getEffectiveAutoRunPrompt: () => 'mock-default-batch-prompt',
+	};
+});
 
 // ============================================================================
 // Imports (after mocks)

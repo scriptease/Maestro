@@ -70,9 +70,13 @@ vi.mock('../../../renderer/components/Wizard', () => ({
 	AUTO_RUN_FOLDER_NAME: '.maestro/playbooks',
 }));
 
-vi.mock('../../../renderer/components/BatchRunnerModal', () => ({
-	DEFAULT_BATCH_PROMPT: 'Run each task sequentially.',
-}));
+vi.mock('../../../renderer/hooks/batch/batchUtils', async () => {
+	const actual = await vi.importActual('../../../renderer/hooks/batch/batchUtils');
+	return {
+		...actual,
+		getEffectiveAutoRunPrompt: () => 'Run each task sequentially.',
+	};
+});
 
 import { useWizardHandlers } from '../../../renderer/hooks/wizard/useWizardHandlers';
 import type { UseWizardHandlersDeps } from '../../../renderer/hooks/wizard/useWizardHandlers';

@@ -11,6 +11,7 @@ export {
 	countCheckedTasks,
 	uncheckAllTasks,
 	DEFAULT_BATCH_PROMPT,
+	getEffectiveAutoRunPrompt,
 	validateAgentPromptHasTaskReference,
 } from './batchUtils';
 

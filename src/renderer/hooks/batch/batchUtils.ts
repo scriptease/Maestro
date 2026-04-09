@@ -4,9 +4,19 @@
  */
 
 import { autorunDefaultPrompt } from '../../../prompts';
+import { useSettingsStore } from '../../stores/settingsStore';
 
-// Default batch processing prompt (exported for use by BatchRunnerModal and playbook management)
+// Built-in default prompt (used for comparison / reset)
 export const DEFAULT_BATCH_PROMPT = autorunDefaultPrompt;
+
+/**
+ * Returns the effective Auto Run prompt — the user's global override from
+ * Settings if one exists, otherwise the built-in default.
+ */
+export function getEffectiveAutoRunPrompt(): string {
+	const override = useSettingsStore.getState().autoRunDefaultPromptOverride;
+	return override || autorunDefaultPrompt;
+}
 
 // Regex to count unchecked markdown checkboxes: - [ ] task (also * [ ])
 const UNCHECKED_TASK_REGEX = /^[\s]*[-*]\s*\[\s*\]\s*.+$/gm;

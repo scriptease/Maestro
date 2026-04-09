@@ -321,6 +321,10 @@ export interface UseSettingsReturn {
 	// Group Chat settings
 	moderatorStandingInstructions: string;
 	setModeratorStandingInstructions: (value: string) => void;
+
+	// Auto Run settings
+	autoRunDefaultPromptOverride: string;
+	setAutoRunDefaultPromptOverride: (value: string) => void;
 }
 
 export function useSettings(): UseSettingsReturn {

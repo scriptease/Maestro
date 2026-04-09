@@ -22,7 +22,7 @@ import { generateId } from '../../utils/ids';
 import { validateNewSession } from '../../utils/sessionValidation';
 import { gitService } from '../../services/git';
 import { notifyToast } from '../../stores/notificationStore';
-import { DEFAULT_BATCH_PROMPT } from '../../components/BatchRunnerModal';
+import { getEffectiveAutoRunPrompt } from '../../hooks/batch/batchUtils';
 
 // ============================================================================
 // Dependencies interface
@@ -244,7 +244,7 @@ export function useSymphonyContribution(
 						resetOnCompletion: false,
 						isDuplicate: false,
 					})),
-					prompt: DEFAULT_BATCH_PROMPT,
+					prompt: getEffectiveAutoRunPrompt(),
 					loopEnabled: false,
 				};
 
