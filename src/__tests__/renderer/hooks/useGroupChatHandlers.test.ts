@@ -530,7 +530,7 @@ describe('useGroupChatHandlers', () => {
 			expect(queue[0].text).toBe('Queued message');
 		});
 
-		it('queued item has correct structure', async () => {
+		it('dispatches immediately when participants are working (agent-working)', async () => {
 			useGroupChatStore.setState({
 				activeGroupChatId: 'gc-1',
 				groupChatState: 'agent-working',
@@ -542,19 +542,9 @@ describe('useGroupChatHandlers', () => {
 				await result.current.handleSendGroupChatMessage('msg', ['img.png'], true);
 			});
 
+			expect(mockGroupChat.sendToModerator).toHaveBeenCalledWith('gc-1', 'msg', ['img.png'], true);
 			const queue = useGroupChatStore.getState().groupChatExecutionQueue;
-			expect(queue[0]).toEqual(
-				expect.objectContaining({
-					text: 'msg',
-					images: ['img.png'],
-					readOnlyMode: true,
-					tabId: 'gc-1',
-					tabName: 'My Chat',
-					type: 'message',
-				})
-			);
-			expect(queue[0].id).toBeDefined();
-			expect(queue[0].timestamp).toBeDefined();
+			expect(queue.length).toBe(0);
 		});
 
 		it('does nothing when no active group chat', async () => {
