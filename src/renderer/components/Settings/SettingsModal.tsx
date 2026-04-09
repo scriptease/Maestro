@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useSettings } from '../../hooks';
 import { autorunDefaultPrompt } from '../../../prompts';
+import { validateAgentPromptHasTaskReference } from '../../hooks/batch/batchUtils';
 import type { Theme, LLMProvider } from '../../types';
 import { useLayerStack } from '../../contexts/LayerStackContext';
 import { MODAL_PRIORITIES } from '../../constants/modalPriorities';
@@ -679,64 +680,73 @@ export const SettingsModal = memo(function SettingsModal(props: SettingsModalPro
 							</div>
 						)}
 
-						{activeTab === 'autorun' && (
-							<div className="space-y-5">
-								<div>
-									<div className="flex items-center justify-between mb-1">
-										<h3
-											className="text-sm font-bold uppercase tracking-wider"
-											style={{ color: theme.colors.textMain }}
-										>
-											Custom Default Prompt
-										</h3>
-										<button
-											onClick={() => {
-												if (autoRunDefaultPromptOverride) {
-													setAutoRunDefaultPromptOverride('');
-												} else {
-													setAutoRunDefaultPromptOverride(autorunDefaultPrompt);
-												}
-											}}
-											className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0"
-											style={{
-												backgroundColor: autoRunDefaultPromptOverride
-													? theme.colors.accent
-													: theme.colors.bgActivity,
-											}}
-											role="switch"
-											aria-checked={!!autoRunDefaultPromptOverride}
-											aria-label="Override default Auto Run prompt"
-										>
-											<span
-												className={`absolute left-0 top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-													autoRunDefaultPromptOverride ? 'translate-x-5' : 'translate-x-0.5'
-												}`}
+						{activeTab === 'autorun' &&
+							(() => {
+								const hasOverride = !!autoRunDefaultPromptOverride?.trim();
+								return (
+									<div className="space-y-5">
+										<div>
+											<div className="flex items-center justify-between mb-1">
+												<h3
+													className="text-sm font-bold uppercase tracking-wider"
+													style={{ color: theme.colors.textMain }}
+												>
+													Custom Default Prompt
+												</h3>
+												<button
+													onClick={() => {
+														if (hasOverride) {
+															setAutoRunDefaultPromptOverride('');
+														} else {
+															setAutoRunDefaultPromptOverride(autorunDefaultPrompt);
+														}
+													}}
+													className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0"
+													style={{
+														backgroundColor: hasOverride
+															? theme.colors.accent
+															: theme.colors.bgActivity,
+													}}
+													role="switch"
+													aria-checked={hasOverride}
+													aria-label="Override default Auto Run prompt"
+												>
+													<span
+														className={`absolute left-0 top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+															hasOverride ? 'translate-x-5' : 'translate-x-0.5'
+														}`}
+													/>
+												</button>
+											</div>
+											<p className="text-xs mb-3" style={{ color: theme.colors.textDim }}>
+												{hasOverride
+													? "Your custom prompt is active for all Auto Run / Playbook executions that don't have a per-playbook prompt. Turn off to revert to the built-in default."
+													: 'The built-in default prompt is shown below (read-only). Turn on to customize it globally for all Auto Run / Playbook executions.'}
+											</p>
+											<textarea
+												value={hasOverride ? autoRunDefaultPromptOverride : autorunDefaultPrompt}
+												onChange={(e) => setAutoRunDefaultPromptOverride(e.target.value)}
+												readOnly={!hasOverride}
+												className="w-full p-3 rounded border bg-transparent outline-none resize-vertical text-sm font-mono"
+												style={{
+													borderColor: theme.colors.border,
+													color: hasOverride ? theme.colors.textMain : theme.colors.textDim,
+													minHeight: '300px',
+													opacity: hasOverride ? 1 : 0.7,
+												}}
+												rows={16}
 											/>
-										</button>
+											{hasOverride &&
+												!validateAgentPromptHasTaskReference(autoRunDefaultPromptOverride) && (
+													<p className="text-xs mt-1" style={{ color: theme.colors.error }}>
+														Warning: prompt does not reference Markdown tasks. Auto Run will be
+														disabled until checkbox syntax (e.g. - [ ]) is added.
+													</p>
+												)}
+										</div>
 									</div>
-									<p className="text-xs mb-3" style={{ color: theme.colors.textDim }}>
-										{autoRunDefaultPromptOverride
-											? "Your custom prompt is active for all Auto Run / Playbook executions that don't have a per-playbook prompt. Turn off to revert to the built-in default."
-											: 'The built-in default prompt is shown below (read-only). Turn on to customize it globally for all Auto Run / Playbook executions.'}
-									</p>
-									<textarea
-										value={autoRunDefaultPromptOverride || autorunDefaultPrompt}
-										onChange={(e) => setAutoRunDefaultPromptOverride(e.target.value)}
-										readOnly={!autoRunDefaultPromptOverride}
-										className="w-full p-3 rounded border bg-transparent outline-none resize-vertical text-sm font-mono"
-										style={{
-											borderColor: theme.colors.border,
-											color: autoRunDefaultPromptOverride
-												? theme.colors.textMain
-												: theme.colors.textDim,
-											minHeight: '300px',
-											opacity: autoRunDefaultPromptOverride ? 1 : 0.7,
-										}}
-										rows={16}
-									/>
-								</div>
-							</div>
-						)}
+								);
+							})()}
 
 						{activeTab === 'ssh' && (
 							<div className="space-y-5">

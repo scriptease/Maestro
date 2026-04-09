@@ -14,7 +14,7 @@ export const DEFAULT_BATCH_PROMPT = autorunDefaultPrompt;
  * Settings if one exists, otherwise the built-in default.
  */
 export function getEffectiveAutoRunPrompt(): string {
-	const override = useSettingsStore.getState().autoRunDefaultPromptOverride;
+	const override = useSettingsStore.getState().autoRunDefaultPromptOverride?.trim();
 	return override || autorunDefaultPrompt;
 }
 
