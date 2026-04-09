@@ -236,7 +236,8 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 				const agentSlashCommands = await window.maestro.agents.discoverSlashCommands(
 					currentSession.toolType,
 					currentSession.cwd,
-					currentSession.customPath
+					currentSession.customPath,
+					currentSession.sshRemote?.id
 				);
 				if (cancelled) return;
 
