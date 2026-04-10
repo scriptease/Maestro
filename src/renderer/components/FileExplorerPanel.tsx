@@ -341,7 +341,7 @@ interface FileExplorerPanelProps {
 		activeSessionId: string,
 		setSessions: React.Dispatch<React.SetStateAction<Session[]>>
 	) => void;
-	handleFileClick: (node: any, path: string, activeSession: Session) => Promise<void>;
+	handleFileClick: (node: FileNode, path: string, activeSession: Session) => Promise<void>;
 	expandAllFolders: (
 		activeSessionId: string,
 		activeSession: Session,

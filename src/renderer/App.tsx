@@ -1250,6 +1250,7 @@ function MaestroConsoleInner() {
 			rightPanelRef,
 			defaultSaveToHistory,
 			defaultShowThinking,
+			showFlash: showSuccessFlash,
 		});
 
 	// handleDirectorNotesResumeSession — extracted to useModalHandlers (Tier 3C)
