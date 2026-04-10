@@ -85,7 +85,6 @@ export interface UseRightPanelPropsDeps {
 
 	// Document Graph handlers
 	handleFocusFileInGraph: (relativePath: string) => void;
-	handleOpenLastDocumentGraph: () => void;
 }
 
 /**
@@ -146,7 +145,6 @@ export function useRightPanelProps(deps: UseRightPanelPropsDeps) {
 
 			// Document Graph
 			onFocusFileInGraph: deps.handleFocusFileInGraph,
-			onOpenLastDocumentGraph: deps.handleOpenLastDocumentGraph,
 		}),
 		[
 			deps.theme,
@@ -181,7 +179,6 @@ export function useRightPanelProps(deps: UseRightPanelPropsDeps) {
 			deps.handleLaunchWizardTab,
 			deps.handleMainPanelFileClick,
 			deps.handleFocusFileInGraph,
-			deps.handleOpenLastDocumentGraph,
 			// Refs (stable)
 			deps.fileTreeContainerRef,
 			deps.fileTreeFilterInputRef,

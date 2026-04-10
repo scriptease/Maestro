@@ -110,7 +110,6 @@ interface RightPanelProps {
 
 	// Document Graph handlers
 	onFocusFileInGraph?: (relativePath: string) => void;
-	onOpenLastDocumentGraph?: () => void;
 }
 
 export const RightPanel = memo(
@@ -138,7 +137,6 @@ export const RightPanel = memo(
 		const fileTreeFilterOpen = useFileExplorerStore((s) => s.fileTreeFilterOpen);
 		const filteredFileTree = useFileExplorerStore((s) => s.filteredFileTree);
 		const selectedFileIndex = useFileExplorerStore((s) => s.selectedFileIndex);
-		const lastGraphFocusFile = useFileExplorerStore((s) => s.lastGraphFocusFilePath);
 		const setFileTreeFilter = useFileExplorerStore((s) => s.setFileTreeFilter);
 		const setFileTreeFilterOpen = useFileExplorerStore((s) => s.setFileTreeFilterOpen);
 		const setSelectedFileIndex = useFileExplorerStore((s) => s.setSelectedFileIndex);
@@ -194,7 +192,6 @@ export const RightPanel = memo(
 			onOpenMarketplace,
 			onLaunchWizard,
 			onFocusFileInGraph,
-			onOpenLastDocumentGraph,
 		} = props;
 
 		// === Values derived from session ===
@@ -527,8 +524,6 @@ export const RightPanel = memo(
 							fileExplorerIconTheme={fileExplorerIconTheme}
 							setShowHiddenFiles={setShowHiddenFiles}
 							onFocusFileInGraph={onFocusFileInGraph}
-							lastGraphFocusFile={lastGraphFocusFile}
-							onOpenLastDocumentGraph={onOpenLastDocumentGraph}
 						/>
 					</div>
 

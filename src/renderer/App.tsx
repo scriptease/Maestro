@@ -2423,7 +2423,6 @@ function MaestroConsoleInner() {
 
 		// Document Graph handlers
 		handleFocusFileInGraph,
-		handleOpenLastDocumentGraph,
 	});
 
 	return (
