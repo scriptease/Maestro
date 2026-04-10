@@ -1,10 +1,11 @@
 import React, { useState, useRef, useCallback, useEffect, memo, useMemo } from 'react';
-import { Bell, Globe, X } from 'lucide-react';
+import { Bell } from 'lucide-react';
 import type { AITab } from '../../types';
 import { hasDraft } from '../../utils/tabHelpers';
 import { formatShortcutKeys } from '../../utils/shortcutFormatter';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { AITab as AITabComponent } from './AITab';
+import { BrowserTabItem } from './BrowserTabItem';
 import { FileTab } from './FileTab';
 import { TerminalTabItem } from './TerminalTabItem';
 import { NewTabPopover } from './NewTabPopover';
@@ -16,9 +17,8 @@ import type { TabBarProps } from './types';
 const STICKY_RIGHT_WIDTH = 48;
 
 /**
- * TabBar component for displaying AI session tabs.
- * Shows tabs for each Claude Code conversation within a Maestro session.
- * Appears only in AI mode (hidden in terminal mode).
+ * TabBar component for displaying the unified tab strip.
+ * Shows AI, file, browser, and terminal tabs within a Maestro session.
  */
 function TabBarInner({
 	tabs,
@@ -539,40 +539,32 @@ function TabBarInner({
 							return (
 								<React.Fragment key={unifiedTab.id}>
 									{showSeparator && separator}
-									<div
-										ref={(el) => registerTabRef(browserTab.id, el)}
-										data-tab-id={browserTab.id}
-										draggable
-										onDragStart={(e) => handleDragStart(browserTab.id, e)}
-										onDragOver={(e) => handleDragOver(browserTab.id, e)}
+									<BrowserTabItem
+										tab={browserTab}
+										isActive={isActive}
+										theme={theme}
+										onSelect={onBrowserTabSelect || (() => {})}
+										onClose={onBrowserTabClose || (() => {})}
+										onDragStart={handleDragStart}
+										onDragOver={handleDragOver}
 										onDragEnd={handleDragEnd}
-										onDrop={(e) => handleDrop(browserTab.id, e)}
-										onClick={() => onBrowserTabSelect?.(browserTab.id)}
-										className="group flex items-center gap-2 min-w-0 max-w-[220px] px-3 py-2 rounded-t-lg border border-b-0 cursor-pointer transition-colors"
-										style={{
-											backgroundColor: isActive ? theme.colors.bgMain : theme.colors.bgSidebar,
-											borderColor: theme.colors.border,
-											color: isActive ? theme.colors.textMain : theme.colors.textDim,
-											opacity: draggingTabId === browserTab.id ? 0.5 : 1,
-										}}
-									>
-										<Globe className="w-3.5 h-3.5 shrink-0" />
-										<span className="truncate text-sm">
-											{browserTab.title || browserTab.url || 'Browser'}
-										</span>
-										<button
-											type="button"
-											onClick={(e) => {
-												e.stopPropagation();
-												onBrowserTabClose?.(browserTab.id);
-											}}
-											className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-											style={{ color: theme.colors.textDim }}
-											title="Close browser tab"
-										>
-											<X className="w-3.5 h-3.5" />
-										</button>
-									</div>
+										onDrop={handleDrop}
+										isDragging={draggingTabId === browserTab.id}
+										isDragOver={dragOverTabId === browserTab.id}
+										registerRef={(el) => registerTabRef(browserTab.id, el)}
+										onMoveToFirst={
+											!isFirstTab && onUnifiedTabReorder ? handleMoveToFirst : undefined
+										}
+										onMoveToLast={!isLastTab && onUnifiedTabReorder ? handleMoveToLast : undefined}
+										isFirstTab={isFirstTab}
+										isLastTab={isLastTab}
+										onCloseOtherTabs={onCloseOtherTabs ? handleTabCloseOther : undefined}
+										onCloseTabsLeft={onCloseTabsLeft ? handleTabCloseLeft : undefined}
+										onCloseTabsRight={onCloseTabsRight ? handleTabCloseRight : undefined}
+										totalTabs={allTabs.length}
+										tabIndex={originalIndex}
+										shortcutHint={shortcutHint}
+									/>
 								</React.Fragment>
 							);
 						}

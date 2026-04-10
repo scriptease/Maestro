@@ -11,7 +11,7 @@ import { useTabHandlers } from '../../../renderer/hooks/tabs/useTabHandlers';
 import { useSessionStore } from '../../../renderer/stores/sessionStore';
 import { useModalStore } from '../../../renderer/stores/modalStore';
 import { useSettingsStore } from '../../../renderer/stores/settingsStore';
-import type { Session, AITab, FilePreviewTab } from '../../../renderer/types';
+import type { Session, AITab, BrowserTab, FilePreviewTab } from '../../../renderer/types';
 
 // ============================================================================
 // window.maestro is mocked globally in src/__tests__/setup.ts
@@ -57,6 +57,21 @@ function createMockFileTab(overrides: Partial<FilePreviewTab> = {}): FilePreview
 		isLoading: false,
 		...overrides,
 	} as FilePreviewTab;
+}
+
+function createMockBrowserTab(overrides: Partial<BrowserTab> = {}): BrowserTab {
+	const id = overrides.id ?? `browser-${Math.random().toString(36).slice(2, 8)}`;
+	return {
+		id,
+		url: overrides.url ?? 'https://example.com/',
+		title: overrides.title ?? 'Example',
+		createdAt: Date.now(),
+		canGoBack: false,
+		canGoForward: false,
+		isLoading: false,
+		favicon: null,
+		...overrides,
+	};
 }
 
 function createMockSession(overrides: Partial<Session> = {}): Session {
@@ -663,6 +678,37 @@ describe('useTabHandlers', () => {
 
 			expect(closeResult.type).toBe('file');
 			expect(closeResult.tabId).toBe('file-1');
+		});
+
+		it('handleCloseCurrentTab returns browser type for active browser tab', () => {
+			const aiTab = createMockAITab({ id: 'ai-1' });
+			const browserTab = createMockBrowserTab({ id: 'browser-1' });
+			const sessionId = 'test-session';
+			const session = createMockSession({
+				id: sessionId,
+				aiTabs: [aiTab],
+				activeTabId: 'ai-1',
+				browserTabs: [browserTab],
+				activeBrowserTabId: 'browser-1',
+				unifiedTabOrder: [
+					{ type: 'ai', id: 'ai-1' },
+					{ type: 'browser', id: 'browser-1' },
+				],
+			});
+
+			useSessionStore.setState({
+				sessions: [session],
+				activeSessionId: sessionId,
+			});
+
+			const { result } = renderHook(() => useTabHandlers());
+			let closeResult: any;
+			act(() => {
+				closeResult = result.current.handleCloseCurrentTab();
+			});
+
+			expect(closeResult.type).toBe('browser');
+			expect(closeResult.tabId).toBe('browser-1');
 		});
 
 		it('handleCloseCurrentTab returns ai type for active AI tab', () => {
