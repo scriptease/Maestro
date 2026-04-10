@@ -80,6 +80,22 @@ async function navigateBrowser(window: Page, value: string): Promise<void> {
 	await address.press('Enter');
 }
 
+async function executeInActiveWebview<T>(window: Page, source: string): Promise<T> {
+	return window.evaluate(async (script) => {
+		const webview = document.querySelector('webview') as
+			| (HTMLElement & {
+					executeJavaScript?: (code: string, userGesture?: boolean) => Promise<unknown>;
+			  })
+			| null;
+
+		if (!webview?.executeJavaScript) {
+			throw new Error('Active browser tab webview is not available');
+		}
+
+		return (await webview.executeJavaScript(script, true)) as T;
+	}, source);
+}
+
 function getVisibleAddressInput(window: Page): Locator {
 	return window.locator('input[placeholder="Enter a URL or search term"]:visible').first();
 }
@@ -182,6 +198,93 @@ test.describe('Browser Tab Prototype', () => {
 			}
 			if (secondApp) {
 				await secondApp.close().catch(() => {});
+			}
+		}
+	});
+
+	test('blocks popup and permission edge cases while preserving browser tab usability', async ({
+		appPath,
+		testDataDir,
+	}) => {
+		const server = await createLocalTestServer();
+		let app: ElectronApplication | null = null;
+
+		try {
+			const launch = await launchApp(appPath, testDataDir);
+			app = launch.app;
+			const window = launch.window;
+
+			await expect(window.getByText('Something went wrong')).toHaveCount(0);
+
+			await createBrowserTab(window);
+			await navigateBrowser(window, `127.0.0.1:${LOCAL_TEST_PORT}`);
+			await expect(getTabByTitle(window, LOCAL_TEST_TITLE)).toBeVisible({ timeout: 15000 });
+
+			await window.evaluate(() => {
+				const shellApi = window.maestro.shell as typeof window.maestro.shell & {
+					__openExternalCalls?: string[];
+				};
+				shellApi.__openExternalCalls = [];
+				shellApi.openExternal = async (url: string) => {
+					shellApi.__openExternalCalls?.push(url);
+				};
+			});
+
+			await executeInActiveWebview(window, 'window.open("https://popup.example.com/", "_blank");');
+			await window.waitForTimeout(500);
+			await expect
+				.poll(() =>
+					window.evaluate(() =>
+						(
+							(
+								window.maestro.shell as typeof window.maestro.shell & {
+									__openExternalCalls?: string[];
+								}
+							).__openExternalCalls || []
+						).slice()
+					)
+				)
+				.toEqual([]);
+
+			const permissionResult = await executeInActiveWebview<string>(
+				window,
+				`
+					(async () => {
+						if (!navigator.clipboard?.readText) {
+							return 'unsupported';
+						}
+						try {
+							await navigator.clipboard.readText();
+							return 'granted';
+						} catch (error) {
+							return error instanceof Error ? error.name : String(error);
+						}
+					})()
+				`
+			);
+			expect(['NotAllowedError', 'SecurityError', 'unsupported']).toContain(permissionResult);
+
+			await navigateBrowser(window, 'javascript:alert(1)');
+			await expect(window.getByRole('alert')).toContainText(
+				'Protocol not allowed in browser tabs: javascript:'
+			);
+			await expect(getVisibleAddressInput(window)).toHaveValue('javascript:alert(1)');
+			await expect(getTabByTitle(window, LOCAL_TEST_TITLE)).toBeVisible();
+
+			await navigateBrowser(window, 'http://127.0.0.1:9/');
+			await expect(getVisibleAddressInput(window)).toHaveValue('http://127.0.0.1:9/');
+			await expect(window.getByTestId('browser-tab-view')).toBeVisible();
+			await expect(window.getByText('Something went wrong')).toHaveCount(0);
+
+			await createTerminalTab(window);
+			await selectTab(window, 'Terminal 1');
+			await expect(getVisibleAddressInput(window)).toHaveCount(0);
+			await selectTab(window, '127.0.0.1:9');
+			await expect(getVisibleAddressInput(window)).toHaveValue('http://127.0.0.1:9/');
+		} finally {
+			server.close();
+			if (app) {
+				await app.close().catch(() => {});
 			}
 		}
 	});

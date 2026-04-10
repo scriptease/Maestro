@@ -181,13 +181,6 @@ export const BrowserTabView = React.memo(function BrowserTabView({
 			syncWebviewLayout(webview);
 			updateNavigationState();
 		};
-		const handleNewWindow = (event: Event) => {
-			const url = (event as Event & { url?: string }).url;
-			if (!url) return;
-			event.preventDefault?.();
-			void window.maestro.shell.openExternal(url);
-		};
-
 		webview.addEventListener('did-start-loading', handleStartLoading);
 		webview.addEventListener('did-stop-loading', handleStopLoading);
 		webview.addEventListener('did-start-navigation', handleNavigationStart);
@@ -199,7 +192,6 @@ export const BrowserTabView = React.memo(function BrowserTabView({
 		webview.addEventListener('page-title-updated', handleTitleUpdated);
 		webview.addEventListener('page-favicon-updated', handleFaviconUpdated);
 		webview.addEventListener('dom-ready', handleDomReady);
-		webview.addEventListener('new-window', handleNewWindow);
 
 		const resizeObserver =
 			typeof ResizeObserver === 'undefined'
@@ -225,7 +217,6 @@ export const BrowserTabView = React.memo(function BrowserTabView({
 			webview.removeEventListener('page-title-updated', handleTitleUpdated);
 			webview.removeEventListener('page-favicon-updated', handleFaviconUpdated);
 			webview.removeEventListener('dom-ready', handleDomReady);
-			webview.removeEventListener('new-window', handleNewWindow);
 		};
 	}, [onUpdateTab, tab.id, tab.title, tab.url]);
 

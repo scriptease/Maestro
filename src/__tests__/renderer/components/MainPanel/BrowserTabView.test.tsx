@@ -297,6 +297,28 @@ describe('BrowserTabView', () => {
 		expect(input).toHaveValue('data:text/plain,hello');
 	});
 
+	it('ignores guest popup events instead of opening an external browser', async () => {
+		const onUpdateTab = vi.fn();
+
+		render(<BrowserTabView tab={mockTab} theme={mockTheme} onUpdateTab={onUpdateTab} />);
+
+		const webview = getWebview();
+		const preventDefault = vi.fn();
+
+		await act(async () => {
+			webview.dispatchEvent(
+				Object.assign(new Event('new-window'), {
+					url: 'https://popup.example.com/',
+					preventDefault,
+				})
+			);
+		});
+
+		expect(window.maestro.shell.openExternal).not.toHaveBeenCalled();
+		expect(preventDefault).not.toHaveBeenCalled();
+		expect(onUpdateTab).not.toHaveBeenCalled();
+	});
+
 	it('keeps typed input separate from navigation updates until submitted', async () => {
 		const onUpdateTab = vi.fn();
 
