@@ -197,6 +197,7 @@ export interface UseMainPanelPropsDeps {
 	handleBrowserTabSelect: (tabId: string) => void;
 	handleBrowserTabClose: (tabId: string) => void;
 	handleBrowserTabUpdate: (
+		sessionId: string,
 		tabId: string,
 		updates: Partial<import('../../types').BrowserTab>
 	) => void;

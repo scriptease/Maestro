@@ -232,6 +232,55 @@ describe('restoreSession — Migration logic', () => {
 		expect(restored!.browserTabs[0].isLoading).toBe(false);
 	});
 
+	it('clears stale active browser references when the restored browser tab is missing', async () => {
+		const session = createMockSession({
+			activeBrowserTabId: 'browser-missing',
+			unifiedTabOrder: [
+				{ type: 'ai' as const, id: 'tab-1' },
+				{ type: 'browser' as const, id: 'browser-missing' },
+			],
+		});
+		const { result } = renderHook(() => useSessionRestoration());
+
+		let restored: Session;
+		await act(async () => {
+			restored = await result.current.restoreSession(session);
+		});
+
+		expect(restored!.activeBrowserTabId).toBeNull();
+		expect(restored!.unifiedTabOrder).toEqual([{ type: 'ai', id: 'tab-1' }]);
+	});
+
+	it('repairs unified tab order for restored browser tabs without changing active AI focus', async () => {
+		const session = createMockSession({
+			browserTabs: [
+				{
+					id: 'browser-1',
+					url: 'https://example.com',
+					title: 'Example',
+					createdAt: 1,
+					canGoBack: false,
+					canGoForward: false,
+					isLoading: false,
+				},
+			] as any,
+			unifiedTabOrder: [{ type: 'ai' as const, id: 'tab-1' }],
+		});
+		const { result } = renderHook(() => useSessionRestoration());
+
+		let restored: Session;
+		await act(async () => {
+			restored = await result.current.restoreSession(session);
+		});
+
+		expect(restored!.activeTabId).toBe('tab-1');
+		expect(restored!.activeBrowserTabId).toBeNull();
+		expect(restored!.unifiedTabOrder).toEqual([
+			{ type: 'ai', id: 'tab-1' },
+			{ type: 'browser', id: 'browser-1' },
+		]);
+	});
+
 	it('migrates toolType terminal to claude-code', async () => {
 		const session = createMockSession({ toolType: 'terminal' as any });
 		const { result } = renderHook(() => useSessionRestoration());

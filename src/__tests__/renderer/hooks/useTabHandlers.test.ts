@@ -711,6 +711,52 @@ describe('useTabHandlers', () => {
 			expect(closeResult.tabId).toBe('browser-1');
 		});
 
+		it('handleUpdateBrowserTab updates the owning session even after active session changes', () => {
+			const sessionOne = createMockSession({
+				id: 'session-1',
+				aiTabs: [createMockAITab({ id: 'ai-1' })],
+				activeTabId: 'ai-1',
+				browserTabs: [createMockBrowserTab({ id: 'browser-1', title: 'Original' })],
+				unifiedTabOrder: [
+					{ type: 'ai', id: 'ai-1' },
+					{ type: 'browser', id: 'browser-1' },
+				],
+			});
+			const sessionTwo = createMockSession({
+				id: 'session-2',
+				aiTabs: [createMockAITab({ id: 'ai-2' })],
+				activeTabId: 'ai-2',
+				browserTabs: [createMockBrowserTab({ id: 'browser-2', title: 'Second' })],
+				unifiedTabOrder: [
+					{ type: 'ai', id: 'ai-2' },
+					{ type: 'browser', id: 'browser-2' },
+				],
+			});
+
+			useSessionStore.setState({
+				sessions: [sessionOne, sessionTwo],
+				activeSessionId: 'session-2',
+			});
+
+			const { result } = renderHook(() => useTabHandlers());
+			act(() => {
+				result.current.handleUpdateBrowserTab('session-1', 'browser-1', {
+					title: 'Updated Title',
+					url: 'https://updated.example.com',
+				});
+			});
+
+			const sessions = useSessionStore.getState().sessions;
+			expect(sessions.find((session) => session.id === 'session-1')?.browserTabs[0]).toMatchObject({
+				title: 'Updated Title',
+				url: 'https://updated.example.com/',
+			});
+			expect(sessions.find((session) => session.id === 'session-2')?.browserTabs[0]).toMatchObject({
+				title: 'Second',
+				url: 'https://example.com/',
+			});
+		});
+
 		it('handleCloseCurrentTab returns ai type for active AI tab', () => {
 			const tab1 = createMockAITab({ id: 'tab-1' });
 			const tab2 = createMockAITab({ id: 'tab-2' });

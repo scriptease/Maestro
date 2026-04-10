@@ -55,7 +55,7 @@ export interface MainPanelContentProps {
 	handleFilePreviewScrollPositionChange: (scrollTop: number) => void;
 	handleFilePreviewSearchQueryChange: (searchQuery: string) => void;
 	handleFilePreviewReload: () => void;
-	handleBrowserTabUpdate?: (tabId: string, updates: Partial<BrowserTab>) => void;
+	handleBrowserTabUpdate?: (sessionId: string, tabId: string, updates: Partial<BrowserTab>) => void;
 
 	// Terminal mounting props
 	terminalViewRefs: React.MutableRefObject<
@@ -392,7 +392,9 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 				<BrowserTabView
 					tab={activeBrowserTab}
 					theme={theme}
-					onUpdateTab={(tabId, updates) => handleBrowserTabUpdate?.(tabId, updates)}
+					onUpdateTab={(tabId, updates) =>
+						handleBrowserTabUpdate?.(activeSession.id, tabId, updates)
+					}
 				/>
 			) : activeSession.inputMode === 'ai' &&
 			  ((filePreviewLoading && !activeFileTabId) || activeFileTab?.isLoading) ? (

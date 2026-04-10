@@ -141,7 +141,7 @@ export interface TabHandlersReturn {
 	handleNewBrowserTab: () => void;
 	handleSelectBrowserTab: (tabId: string) => void;
 	handleCloseBrowserTab: (tabId: string) => void;
-	handleUpdateBrowserTab: (tabId: string, updates: Partial<BrowserTab>) => void;
+	handleUpdateBrowserTab: (sessionId: string, tabId: string, updates: Partial<BrowserTab>) => void;
 
 	// Scroll/log handlers
 	handleScrollPositionChange: (scrollTop: number) => void;
@@ -737,28 +737,31 @@ export function useTabHandlers(): TabHandlersReturn {
 		[forceCloseBrowserTab]
 	);
 
-	const handleUpdateBrowserTab = useCallback((tabId: string, updates: Partial<BrowserTab>) => {
-		const { setSessions, activeSessionId } = useSessionStore.getState();
-		setSessions((prev: Session[]) =>
-			prev.map((s) => {
-				if (s.id !== activeSessionId) return s;
-				return {
-					...s,
-					browserTabs: (s.browserTabs || []).map((tab) => {
-						if (tab.id !== tabId) return tab;
-						const nextUrl =
-							typeof updates.url === 'string' ? normalizeBrowserTabUrl(updates.url) : tab.url;
-						return {
-							...tab,
-							...updates,
-							url: nextUrl,
-							title: getBrowserTabTitle(nextUrl, updates.title ?? tab.title),
-						};
-					}),
-				};
-			})
-		);
-	}, []);
+	const handleUpdateBrowserTab = useCallback(
+		(sessionId: string, tabId: string, updates: Partial<BrowserTab>) => {
+			const { setSessions } = useSessionStore.getState();
+			setSessions((prev: Session[]) =>
+				prev.map((s) => {
+					if (s.id !== sessionId) return s;
+					return {
+						...s,
+						browserTabs: (s.browserTabs || []).map((tab) => {
+							if (tab.id !== tabId) return tab;
+							const nextUrl =
+								typeof updates.url === 'string' ? normalizeBrowserTabUrl(updates.url) : tab.url;
+							return {
+								...tab,
+								...updates,
+								url: nextUrl,
+								title: getBrowserTabTitle(nextUrl, updates.title ?? tab.title),
+							};
+						}),
+					};
+				})
+			);
+		},
+		[]
+	);
 
 	const handleUnifiedTabReorder = useCallback((fromIndex: number, toIndex: number) => {
 		const { setSessions, activeSessionId } = useSessionStore.getState();
