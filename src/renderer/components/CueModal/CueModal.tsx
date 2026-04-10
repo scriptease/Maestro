@@ -83,8 +83,18 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 
 	const handleSwitchToSession = useCallback(
 		(id: string) => {
-			setActiveSessionId(id);
-			onClose();
+			const doSwitch = () => {
+				setActiveSessionId(id);
+				onClose();
+			};
+			if (pipelineDirtyRef.current) {
+				getModalActions().showConfirmation(
+					'You have unsaved changes in the pipeline editor. Discard and close?',
+					doSwitch
+				);
+				return;
+			}
+			doSwitch();
 		},
 		[setActiveSessionId, onClose]
 	);
