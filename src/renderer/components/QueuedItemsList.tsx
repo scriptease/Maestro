@@ -193,16 +193,14 @@ export const QueuedItemsList = memo(
 										>
 											{item.command}
 										</span>
-										{(item.commandArgs || item.commandDescription) && (
-											<span
-												className="truncate"
-												style={{
-													color: item.commandArgs ? theme.colors.textMain : theme.colors.textDim,
-												}}
-											>
-												{item.commandArgs || item.commandDescription}
-											</span>
-										)}
+										<span
+											className="truncate min-w-0"
+											style={{
+												color: item.commandArgs ? theme.colors.textMain : theme.colors.textDim,
+											}}
+										>
+											{item.commandArgs || item.commandDescription}
+										</span>
 									</span>
 								)}
 								{item.type === 'message' &&
