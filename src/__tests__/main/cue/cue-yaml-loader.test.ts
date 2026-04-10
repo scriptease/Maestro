@@ -349,7 +349,9 @@ subscriptions:
 			expect(result.ok).toBe(false);
 			if (!result.ok && result.reason === 'invalid') {
 				expect(result.errors.length).toBeGreaterThan(0);
-				expect(result.errors[0]).toMatch(/interval_minutes/);
+				expect(result.errors).toEqual(
+					expect.arrayContaining([expect.stringMatching(/interval_minutes/)])
+				);
 			}
 		});
 

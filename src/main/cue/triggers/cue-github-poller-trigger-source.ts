@@ -20,6 +20,10 @@ export function createCueGitHubPollerTriggerSource(
 		return null;
 	}
 
+	if (!ctx.subscription.repo) {
+		return null;
+	}
+
 	let cleanup: (() => void) | null = null;
 
 	return {

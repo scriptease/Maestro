@@ -127,6 +127,11 @@ export function createCueSessionRuntimeService(
 			deps.onRefreshRequested(session.id, session.projectRoot);
 		});
 
+		// Register the session before starting any trigger sources or firing
+		// app.startup so that other components (e.g. CueRunManager via registry.get)
+		// see a fully-initialised session from the moment execution begins.
+		registry.register(session.id, state);
+
 		// Wire each subscription up to its trigger source. Each source owns its
 		// own timer/watcher/poller and emits events through the `emit` callback,
 		// which centralizes the dispatch path: passesFilter → state.lastTriggered
@@ -175,8 +180,6 @@ export function createCueSessionRuntimeService(
 				deps.dispatchSubscription(session.id, sub, event, session.name);
 			}
 		}
-
-		registry.register(session.id, state);
 
 		state.sleepPrevented = hasTimeBasedSubscriptions(config, session.id);
 		if (state.sleepPrevented) {

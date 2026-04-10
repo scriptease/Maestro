@@ -1081,6 +1081,7 @@ describe('CueEngine', () => {
 						event: 'github.issue',
 						enabled: true,
 						prompt: 'triage issue',
+						repo: 'owner/repo',
 					},
 				],
 			});
@@ -1108,6 +1109,7 @@ describe('CueEngine', () => {
 						event: 'github.pull_request',
 						enabled: true,
 						prompt: 'review',
+						repo: 'owner/repo',
 					},
 				],
 			});
@@ -1129,6 +1131,7 @@ describe('CueEngine', () => {
 						enabled: true,
 						prompt: 'review merged PR',
 						gh_state: 'merged',
+						repo: 'owner/repo',
 					},
 				],
 			});
@@ -1768,12 +1771,9 @@ describe('CueEngine', () => {
 		it('returns null for invalid time strings', () => {
 			vi.setSystemTime(new Date('2026-03-09T08:00:00'));
 			const result = calculateNextScheduledTime(['25:99']);
-			// Invalid hours/minutes — parseInt yields 25 and 99, but the resulting
-			// Date will roll over. The function still produces a candidate because
-			// Date constructor handles overflow. Check it doesn't crash.
-			// With hour=25, the date rolls to next day 01:XX — still a valid timestamp.
-			// This is acceptable behavior (no crash), but let's verify it returns something.
-			expect(typeof result === 'number' || result === null).toBe(true);
+			// Out-of-bounds hour (25) and minute (99) must be rejected — the function
+			// validates bounds before calling setHours, so no Date rollover occurs.
+			expect(result).toBeNull();
 		});
 
 		it('handles midnight crossing', () => {
@@ -1848,8 +1848,9 @@ describe('CueEngine', () => {
 		});
 
 		it('does not fire when current time does not match', async () => {
-			// Set to Monday 2026-03-09 at 09:00:30 — interval fires at 09:01
-			vi.setSystemTime(new Date('2026-03-09T09:00:30'));
+			// Set to Monday 2026-03-09 at 09:01:30 — neither the immediate check nor
+			// the first interval tick (at 09:02:30) matches the '09:00' schedule slot.
+			vi.setSystemTime(new Date('2026-03-09T09:01:30'));
 
 			const config = createMockConfig({
 				subscriptions: [

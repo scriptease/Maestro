@@ -325,10 +325,10 @@ describe('CueEngine session lifecycle', () => {
 
 	it('refreshSession does not double-count active runs', async () => {
 		// Setup: heartbeat, max_concurrent=2, controllable onCueRun (never resolves).
-		// During initSession, the immediate heartbeat fire reads maxConcurrent from
-		// this.sessions.get(sessionId), which is not yet set (happens after the
-		// subscription setup loop), so it defaults to 1. With activeRunCount=1
-		// from the orphaned in-flight run, the immediate fire goes into the queue.
+		// During initSession, the session is registered in the registry BEFORE trigger
+		// sources start, so the immediate heartbeat fire reads maxConcurrent=2 correctly.
+		// With activeRunCount=1 from the orphaned in-flight run and maxConcurrent=2,
+		// the immediate fire during refresh dispatches directly (1 < 2).
 		const config = createMockConfig({
 			subscriptions: [
 				{
@@ -364,13 +364,13 @@ describe('CueEngine session lifecycle', () => {
 		// Refresh the session (tears down old timers, re-inits)
 		engine.refreshSession('session-1', '/projects/test');
 
-		// The immediate heartbeat during refresh was queued (not dispatched),
-		// because activeRunCount=1 and the session state isn't in the map yet
-		// during setupHeartbeatSubscription, so maxConcurrent defaults to 1.
-		expect(onCueRun).toHaveBeenCalledTimes(1);
+		// The immediate heartbeat during refresh is dispatched directly because
+		// the session is registered before trigger sources start, so maxConcurrent=2
+		// is read and activeRunCount=1 < 2 allows immediate dispatch.
+		expect(onCueRun).toHaveBeenCalledTimes(2);
 
-		// The queue should have exactly 1 entry from the refresh's immediate fire
-		expect(engine.getQueueStatus().get('session-1')).toBe(1);
+		// Nothing in the queue — the heartbeat was dispatched, not queued
+		expect(engine.getQueueStatus().get('session-1') ?? 0).toBe(0);
 
 		// Advance timer to trigger the interval heartbeat (60 min).
 		// Now the session state IS in the map, so max_concurrent=2 is read.
@@ -596,6 +596,12 @@ describe('CueEngine session lifecycle', () => {
 			// A user-toggle still does not fire it.
 			engine.refreshSession('session-1', '/projects/test');
 			expect(deps.onCueRun).toHaveBeenCalledTimes(1);
+
+			// A subsequent real boot (new process lifecycle) must re-trigger startup.
+			// stop() first so start() isn't skipped by the enabled guard.
+			engine.stop();
+			engine.start('system-boot');
+			expect(deps.onCueRun).toHaveBeenCalledTimes(2);
 
 			engine.stop();
 		});

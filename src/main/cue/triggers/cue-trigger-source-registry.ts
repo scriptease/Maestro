@@ -46,5 +46,10 @@ export function createTriggerSource(
 			// These are not timer/watcher-driven — the runtime handles them
 			// directly via the completion service / startup loop.
 			return null;
+		default: {
+			const unsupported: never = eventType;
+			console.warn(`[CUE] createTriggerSource: unsupported event type "${unsupported}"`);
+			return null;
+		}
 	}
 }

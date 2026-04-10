@@ -192,11 +192,12 @@ describe('cue-config-repository', () => {
 		it('creates parent directories for nested prompt paths', () => {
 			const nested = '.maestro/prompts/nested/dir/sub.md';
 			const expectedParent = path.join(PROJECT_ROOT, '.maestro/prompts/nested/dir');
-			mockExistsSync.mockImplementation((p: string) => p !== expectedParent && p !== PROMPTS_DIR);
+			mockExistsSync.mockImplementation((p: string) => p !== expectedParent);
 
 			writeCuePromptFile(PROJECT_ROOT, nested, 'nested body');
 
-			expect(mockMkdirSync).toHaveBeenCalledWith(PROMPTS_DIR, { recursive: true });
+			// The parent dir is created with { recursive: true } which covers all
+			// intermediate directories (including .maestro/prompts) in one call.
 			expect(mockMkdirSync).toHaveBeenCalledWith(expectedParent, { recursive: true });
 			expect(mockWriteFileSync).toHaveBeenCalledWith(
 				path.join(PROJECT_ROOT, nested),

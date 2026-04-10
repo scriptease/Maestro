@@ -12,6 +12,7 @@
  */
 
 import { ipcMain } from 'electron';
+import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { withIpcErrorLogging, type CreateHandlerOptions } from '../../utils/ipcHandler';
 import { validateCueConfig } from '../../cue/cue-yaml-loader';
@@ -216,13 +217,25 @@ export function registerCueHandlers(deps: CueHandlerDependencies): void {
 				content: string;
 				promptFiles?: Record<string, string>;
 			}): Promise<void> => {
-				writeCueConfigFile(options.projectRoot, options.content);
-
 				if (options.promptFiles) {
+					const promptsBase = path.resolve(options.projectRoot, '.maestro/prompts');
 					for (const [relativePath, content] of Object.entries(options.promptFiles)) {
+						if (path.isAbsolute(relativePath)) {
+							throw new Error(
+								`cue:writeYaml: promptFiles key must be a relative path, got "${relativePath}"`
+							);
+						}
+						const target = path.resolve(options.projectRoot, relativePath);
+						if (!target.startsWith(promptsBase + path.sep) && target !== promptsBase) {
+							throw new Error(
+								`cue:writeYaml: promptFiles key "${relativePath}" resolves outside the .maestro/prompts directory`
+							);
+						}
 						writeCuePromptFile(options.projectRoot, relativePath, content);
 					}
 				}
+
+				writeCueConfigFile(options.projectRoot, options.content);
 			}
 		)
 	);

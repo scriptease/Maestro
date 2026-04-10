@@ -75,6 +75,9 @@ export function createCueScheduledTriggerSource(
 	return {
 		start() {
 			if (timer) return; // idempotent
+			// Check the current minute immediately so an occurrence that falls within
+			// the same minute as start() is not missed waiting for the first interval tick.
+			checkAndFire();
 			timer = setInterval(checkAndFire, POLL_INTERVAL_MS);
 			recomputeNextFire();
 		},

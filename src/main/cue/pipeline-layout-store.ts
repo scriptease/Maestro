@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
 import type { PipelineLayoutState } from '../../shared/cue-pipeline-types';
+import { captureException } from '../utils/sentry';
 
 let cachedLayoutFilePath: string | null = null;
 
@@ -31,6 +32,12 @@ export function loadPipelineLayout(): PipelineLayoutState | null {
 	if (!fs.existsSync(filePath)) {
 		return null;
 	}
-	const content = fs.readFileSync(filePath, 'utf-8');
-	return JSON.parse(content) as PipelineLayoutState;
+	try {
+		const content = fs.readFileSync(filePath, 'utf-8');
+		return JSON.parse(content) as PipelineLayoutState;
+	} catch (error) {
+		const err = error instanceof Error ? error : new Error(String(error));
+		captureException(err, { extra: { filePath, operation: 'cue.loadPipelineLayout' } });
+		return null;
+	}
 }

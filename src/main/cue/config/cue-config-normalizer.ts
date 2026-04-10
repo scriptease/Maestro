@@ -192,12 +192,12 @@ export function materializeCueConfig(document: CueConfigDocument): MaterializedC
 		// in the YAML but readPromptFile() returned undefined / empty.
 		if (sub.promptSpec.file && !sub.promptSpec.inline && !sub.prompt) {
 			warnings.push(
-				`"${sub.name}" has prompt_file "${sub.promptSpec.file}" but the file was not found — subscription will fail on trigger`
+				`"${sub.name}" has prompt_file "${sub.promptSpec.file}" but the file was not found or resolved to empty/unreadable content — subscription will fail on trigger`
 			);
 		}
 		if (sub.outputPromptSpec?.file && !sub.outputPromptSpec.inline && sub.output_prompt == null) {
 			warnings.push(
-				`"${sub.name}" has output_prompt_file "${sub.outputPromptSpec.file}" but the file was not found`
+				`"${sub.name}" has output_prompt_file "${sub.outputPromptSpec.file}" but the file was not found or resolved to empty/unreadable content`
 			);
 		}
 

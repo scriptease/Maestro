@@ -42,6 +42,8 @@ export function calculateNextScheduledTime(times: string[], days?: string[]): nu
 			const hour = parseInt(hourStr, 10);
 			const min = parseInt(minStr, 10);
 			if (isNaN(hour) || isNaN(min)) continue;
+			if (!Number.isInteger(hour) || hour < 0 || hour > 23) continue;
+			if (!Number.isInteger(min) || min < 0 || min > 59) continue;
 
 			const target = new Date(candidate);
 			target.setHours(hour, min, 0, 0);

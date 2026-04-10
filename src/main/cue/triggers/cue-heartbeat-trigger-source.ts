@@ -28,10 +28,13 @@ export function createCueHeartbeatTriggerSource(
 			interval_minutes: intervalMinutes,
 		});
 
+		// Always advance nextFireMs so nextTriggerAt() stays current even when the
+		// filter rejects the event and ctx.emit is skipped.
+		nextFireMs = Date.now() + intervalMs;
+
 		if (!passesFilter(ctx.subscription, event, ctx.onLog)) return;
 
 		ctx.onLog('cue', `[CUE] "${ctx.subscription.name}" triggered (${label})`);
-		nextFireMs = Date.now() + intervalMs;
 		ctx.emit(event);
 	}
 
@@ -50,10 +53,6 @@ export function createCueHeartbeatTriggerSource(
 				if (!ctx.enabled()) return;
 				fire('time.heartbeat');
 			}, intervalMs);
-
-			// In case the immediate fire was skipped by a filter, still set the
-			// next-trigger time so the UI shows when the next attempt will be.
-			nextFireMs = Date.now() + intervalMs;
 		},
 
 		stop() {

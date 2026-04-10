@@ -101,15 +101,19 @@ export function createCueRecoveryService(deps: CueRecoveryServiceDeps): CueRecov
 				},
 			});
 		} catch (error) {
-			deps.onLog('warn', `[CUE] Sleep detection failed: ${error}`);
+			const err = error instanceof Error ? error : new Error(String(error));
+			deps.onLog('warn', `[CUE] Sleep detection failed: ${err.message}`);
+			captureException(err, { extra: { operation: 'cue.sleepDetection' } });
 		}
 	}
 
 	function shutdown(): void {
 		try {
 			closeCueDb();
-		} catch {
-			// Non-fatal — database may not have been initialized
+		} catch (error) {
+			const err = error instanceof Error ? error : new Error(String(error));
+			deps.onLog('error', `[CUE] Shutdown/closeCueDb failed: ${err.message}`);
+			captureException(err, { extra: { operation: 'cue.shutdown.closeCueDb' } });
 		}
 	}
 

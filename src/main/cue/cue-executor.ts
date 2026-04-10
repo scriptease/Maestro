@@ -139,7 +139,8 @@ export async function executeCuePrompt(config: CueExecutionConfig): Promise<CueR
 	// prompt content (or empty string if the prompt_file failed to load — surfaced as
 	// a warning at session init time in cue-session-runtime-service.ts).
 	const promptContent = promptPath;
-	if (!promptContent) {
+	const trimmedPrompt = promptContent?.trim();
+	if (!trimmedPrompt) {
 		const message = `Cue subscription "${subscription.name}" has no prompt content (prompt_file may have failed to load at config time)`;
 		onLog('error', message);
 		return {

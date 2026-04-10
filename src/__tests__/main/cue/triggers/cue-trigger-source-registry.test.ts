@@ -116,12 +116,25 @@ describe('createTriggerSource', () => {
 		expect(source).not.toBeNull();
 	});
 
+	it('returns null for github.pull_request missing repo', () => {
+		const source = createTriggerSource(
+			'github.pull_request',
+			makeCtx(baseSub('github.pull_request', {}))
+		);
+		expect(source).toBeNull();
+	});
+
 	it('returns a source for github.issue', () => {
 		const source = createTriggerSource(
 			'github.issue',
 			makeCtx(baseSub('github.issue', { repo: 'foo/bar' }))
 		);
 		expect(source).not.toBeNull();
+	});
+
+	it('returns null for github.issue missing repo', () => {
+		const source = createTriggerSource('github.issue', makeCtx(baseSub('github.issue', {})));
+		expect(source).toBeNull();
 	});
 
 	it('returns null for app.startup (handled by the runtime, not a trigger source)', () => {

@@ -88,11 +88,16 @@ export function writeCuePromptFile(
 	relativePath: string,
 	content: string
 ): string {
-	const promptsDir = path.join(projectRoot, CUE_PROMPTS_DIR);
-	if (!fs.existsSync(promptsDir)) {
-		fs.mkdirSync(promptsDir, { recursive: true });
+	if (path.isAbsolute(relativePath)) {
+		throw new Error(`writeCuePromptFile: relativePath must be relative, got "${relativePath}"`);
 	}
-	const absPath = path.join(projectRoot, relativePath);
+	const promptsDir = path.resolve(path.join(projectRoot, CUE_PROMPTS_DIR));
+	const absPath = path.resolve(path.join(projectRoot, relativePath));
+	if (!absPath.startsWith(promptsDir + path.sep) && absPath !== promptsDir) {
+		throw new Error(
+			`writeCuePromptFile: path "${relativePath}" resolves outside the prompts directory`
+		);
+	}
 	const dir = path.dirname(absPath);
 	if (!fs.existsSync(dir)) {
 		fs.mkdirSync(dir, { recursive: true });
