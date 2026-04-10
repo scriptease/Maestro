@@ -892,10 +892,6 @@ export function useRemoteIntegration(deps: UseRemoteIntegrationDeps): UseRemoteI
 					window.maestro.process.sendRemoteTriggerCueSubscriptionResponse(responseChannel, result);
 				} catch (error) {
 					console.error('[Remote Cue Trigger] Failed:', subscriptionName, error);
-					// Never send the raw prompt to telemetry — remote-triggered
-					// Cue prompts can carry user-authored content with PII or
-					// secrets. Send length/presence so we can correlate failures
-					// against payload size without leaking the body.
 					captureException(error, {
 						extra: {
 							context: 'remoteTriggerCueSubscription',
