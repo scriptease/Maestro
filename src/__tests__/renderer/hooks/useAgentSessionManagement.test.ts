@@ -411,6 +411,71 @@ describe('useAgentSessionManagement', () => {
 		expect(updatedSession.inputMode).toBe('ai');
 	});
 
+	it('preserves text content from messages that include tool use', async () => {
+		const activeSession = createMockSession({
+			projectRoot: '/test/project',
+		});
+		const setSessions = vi.fn();
+		const setActiveAgentSessionId = vi.fn();
+
+		const messages = [
+			{
+				type: 'user',
+				content: 'Read file.ts',
+				timestamp: '2024-01-01T00:00:00.000Z',
+				uuid: 'msg-1',
+			},
+			{
+				type: 'assistant',
+				content: 'Let me read that file',
+				timestamp: '2024-01-01T00:00:01.000Z',
+				uuid: 'msg-2',
+				toolUse: [{ type: 'tool_use', name: 'Read', input: { path: 'file.ts' } }],
+			},
+			{
+				type: 'assistant',
+				content: 'Here is the content',
+				timestamp: '2024-01-01T00:00:02.000Z',
+				uuid: 'msg-3',
+			},
+		];
+
+		window.maestro.agentSessions.read = vi.fn().mockResolvedValue({
+			messages,
+			total: messages.length,
+			hasMore: false,
+		});
+
+		window.maestro.claude.getSessionOrigins = vi.fn().mockResolvedValue({});
+
+		const { result } = renderHook(() =>
+			useAgentSessionManagement({
+				activeSession,
+				setSessions,
+				setActiveAgentSessionId,
+				setAgentSessionsOpen: vi.fn(),
+				rightPanelRef: createRightPanelRef(),
+				defaultSaveToHistory: true,
+			})
+		);
+
+		await act(async () => {
+			await result.current.handleResumeSession('agent-tool');
+		});
+
+		const updateFn = setSessions.mock.calls[0][0];
+		const [updatedSession] = updateFn([activeSession]);
+		const resumedTab = updatedSession.aiTabs.find(
+			(tab: AITab) => tab.agentSessionId === 'agent-tool'
+		);
+
+		// All 3 messages should be preserved - including the one with toolUse
+		expect(resumedTab?.logs).toHaveLength(3);
+		expect(resumedTab?.logs[0].text).toBe('Read file.ts');
+		expect(resumedTab?.logs[1].text).toBe('Let me read that file');
+		expect(resumedTab?.logs[2].text).toBe('Here is the content');
+	});
+
 	it('skips message fetch when messages are already provided', async () => {
 		const activeSession = createMockSession({ projectRoot: '/test/project' });
 		const setSessions = vi.fn();
