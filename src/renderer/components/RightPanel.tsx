@@ -594,7 +594,7 @@ export const RightPanel = memo(
 										className="text-xs font-bold uppercase"
 										style={{ color: theme.colors.textMain }}
 									>
-										{currentSessionBatchState.isStopping ? 'Stopping...' : 'Auto Run Active'}
+										{currentSessionBatchState.isStopping ? 'Stopping' : 'Auto Run Active'}
 									</span>
 								)}
 								{currentSessionBatchState.worktreeActive && (

@@ -239,7 +239,9 @@ describe('PromptComposerModal', () => {
 				/>
 			);
 
-			expect(screen.getByPlaceholderText('Write your prompt here...')).toBeInTheDocument();
+			expect(
+				screen.getByPlaceholderText('Write your prompt here... (@ to reference files)')
+			).toBeInTheDocument();
 		});
 
 		it('should render textarea with initial value', () => {
@@ -255,7 +257,7 @@ describe('PromptComposerModal', () => {
 			);
 
 			const textarea = screen.getByPlaceholderText(
-				'Write your prompt here...'
+				'Write your prompt here... (@ to reference files)'
 			) as HTMLTextAreaElement;
 			expect(textarea.value).toBe('Initial prompt text');
 		});
@@ -450,7 +452,9 @@ describe('PromptComposerModal', () => {
 				/>
 			);
 
-			const textarea = screen.getByPlaceholderText('Write your prompt here...');
+			const textarea = screen.getByPlaceholderText(
+				'Write your prompt here... (@ to reference files)'
+			);
 			fireEvent.change(textarea, { target: { value: 'Hello' } });
 
 			expect(screen.getByText('5 characters')).toBeInTheDocument();
@@ -471,7 +475,9 @@ describe('PromptComposerModal', () => {
 				/>
 			);
 
-			const textarea = screen.getByPlaceholderText('Write your prompt here...');
+			const textarea = screen.getByPlaceholderText(
+				'Write your prompt here... (@ to reference files)'
+			);
 			expect(document.activeElement).toBe(textarea);
 		});
 
@@ -488,7 +494,7 @@ describe('PromptComposerModal', () => {
 			);
 
 			const textarea = screen.getByPlaceholderText(
-				'Write your prompt here...'
+				'Write your prompt here... (@ to reference files)'
 			) as HTMLTextAreaElement;
 			expect(textarea.selectionStart).toBe(11);
 			expect(textarea.selectionEnd).toBe(11);
@@ -523,7 +529,7 @@ describe('PromptComposerModal', () => {
 			);
 
 			const textarea = screen.getByPlaceholderText(
-				'Write your prompt here...'
+				'Write your prompt here... (@ to reference files)'
 			) as HTMLTextAreaElement;
 			expect(textarea.value).toBe('New value');
 		});
@@ -554,7 +560,7 @@ describe('PromptComposerModal', () => {
 			);
 
 			const textarea = screen.getByPlaceholderText(
-				'Write your prompt here...'
+				'Write your prompt here... (@ to reference files)'
 			) as HTMLTextAreaElement;
 			expect(textarea.value).toBe('Second');
 		});
@@ -660,7 +666,9 @@ describe('PromptComposerModal', () => {
 				/>
 			);
 
-			const textarea = screen.getByPlaceholderText('Write your prompt here...');
+			const textarea = screen.getByPlaceholderText(
+				'Write your prompt here... (@ to reference files)'
+			);
 			fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true });
 
 			expect(onSend).toHaveBeenCalledWith('Test message');
@@ -679,7 +687,9 @@ describe('PromptComposerModal', () => {
 				/>
 			);
 
-			const textarea = screen.getByPlaceholderText('Write your prompt here...');
+			const textarea = screen.getByPlaceholderText(
+				'Write your prompt here... (@ to reference files)'
+			);
 			fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
 
 			expect(onSend).toHaveBeenCalledWith('Test message');
@@ -698,7 +708,9 @@ describe('PromptComposerModal', () => {
 				/>
 			);
 
-			const textarea = screen.getByPlaceholderText('Write your prompt here...');
+			const textarea = screen.getByPlaceholderText(
+				'Write your prompt here... (@ to reference files)'
+			);
 			fireEvent.keyDown(textarea, { key: 'Enter' });
 
 			expect(onSend).not.toHaveBeenCalled();
@@ -716,7 +728,9 @@ describe('PromptComposerModal', () => {
 				/>
 			);
 
-			const textarea = screen.getByPlaceholderText('Write your prompt here...');
+			const textarea = screen.getByPlaceholderText(
+				'Write your prompt here... (@ to reference files)'
+			);
 			fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true });
 
 			expect(onSend).not.toHaveBeenCalled();
@@ -734,7 +748,9 @@ describe('PromptComposerModal', () => {
 				/>
 			);
 
-			const textarea = screen.getByPlaceholderText('Write your prompt here...');
+			const textarea = screen.getByPlaceholderText(
+				'Write your prompt here... (@ to reference files)'
+			);
 			fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true });
 
 			expect(onSend).not.toHaveBeenCalled();
@@ -773,7 +789,9 @@ describe('PromptComposerModal', () => {
 				/>
 			);
 
-			const textarea = screen.getByPlaceholderText('Write your prompt here...');
+			const textarea = screen.getByPlaceholderText(
+				'Write your prompt here... (@ to reference files)'
+			);
 			fireEvent.change(textarea, { target: { value: 'Edited text' } });
 
 			const closeButton = screen.getByTitle('Close (Escape)');
@@ -819,7 +837,9 @@ describe('PromptComposerModal', () => {
 				/>
 			);
 
-			const textarea = screen.getByPlaceholderText('Write your prompt here...');
+			const textarea = screen.getByPlaceholderText(
+				'Write your prompt here... (@ to reference files)'
+			);
 			fireEvent.click(textarea);
 
 			expect(onClose).not.toHaveBeenCalled();
@@ -860,7 +880,9 @@ describe('PromptComposerModal', () => {
 				/>
 			);
 
-			const textarea = screen.getByPlaceholderText('Write your prompt here...');
+			const textarea = screen.getByPlaceholderText(
+				'Write your prompt here... (@ to reference files)'
+			);
 			fireEvent.change(textarea, { target: { value: 'Modified' } });
 
 			fireEvent.keyDown(document, { key: 'Escape' });
@@ -884,7 +906,9 @@ describe('PromptComposerModal', () => {
 				/>
 			);
 
-			const textarea = screen.getByPlaceholderText('Write your prompt here...');
+			const textarea = screen.getByPlaceholderText(
+				'Write your prompt here... (@ to reference files)'
+			);
 			fireEvent.change(textarea, { target: { value: 'New content' } });
 
 			expect((textarea as HTMLTextAreaElement).value).toBe('New content');
@@ -902,7 +926,9 @@ describe('PromptComposerModal', () => {
 				/>
 			);
 
-			const textarea = screen.getByPlaceholderText('Write your prompt here...');
+			const textarea = screen.getByPlaceholderText(
+				'Write your prompt here... (@ to reference files)'
+			);
 			expect(textarea).toHaveStyle({ color: mockTheme.colors.textMain });
 		});
 	});
@@ -955,7 +981,7 @@ describe('PromptComposerModal', () => {
 
 			// Unicode chars are still counted as characters
 			const textarea = screen.getByPlaceholderText(
-				'Write your prompt here...'
+				'Write your prompt here... (@ to reference files)'
 			) as HTMLTextAreaElement;
 			expect(textarea.value).toBe('Hello 世界 🌍');
 		});
@@ -1078,7 +1104,9 @@ describe('PromptComposerModal', () => {
 				/>
 			);
 
-			const textarea = screen.getByPlaceholderText('Write your prompt here...');
+			const textarea = screen.getByPlaceholderText(
+				'Write your prompt here... (@ to reference files)'
+			);
 			expect(textarea.tagName).toBe('TEXTAREA');
 		});
 

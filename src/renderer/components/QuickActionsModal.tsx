@@ -636,7 +636,12 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 				: 'Turn On Custom Notifications',
 			subtext: `Custom notifications: ${audioFeedbackEnabled ? 'enabled' : 'disabled'}`,
 			action: () => {
-				setAudioFeedbackEnabled(!audioFeedbackEnabled);
+				const newState = !audioFeedbackEnabled;
+				setAudioFeedbackEnabled(newState);
+				setSuccessFlashNotification(
+					newState ? 'Custom Notifications: ON' : 'Custom Notifications: OFF'
+				);
+				setTimeout(() => setSuccessFlashNotification(null), 2000);
 				setQuickActionOpen(false);
 			},
 		},
