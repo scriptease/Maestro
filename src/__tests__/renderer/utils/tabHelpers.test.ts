@@ -66,6 +66,10 @@ import type {
 	ClosedTabEntry,
 	FilePreviewTab,
 } from '../../../renderer/types';
+import {
+	createMockAITab as createMockTab,
+	createMockFileTab,
+} from '../../helpers/mockTab';
 
 // Mock the generateId function to return predictable IDs
 vi.mock('../../../renderer/utils/ids', () => ({
@@ -113,39 +117,6 @@ function createMockSession(overrides: Partial<Session> = {}): Session {
 	};
 }
 
-// Helper to create a minimal AITab for testing
-function createMockTab(overrides: Partial<AITab> = {}): AITab {
-	return {
-		id: 'tab-1',
-		agentSessionId: null,
-		name: null,
-		starred: false,
-		logs: [],
-		inputValue: '',
-		stagedImages: [],
-		createdAt: Date.now(),
-		state: 'idle',
-		...overrides,
-	};
-}
-
-// Helper to create a minimal FilePreviewTab for testing
-function createMockFileTab(overrides: Partial<FilePreviewTab> = {}): FilePreviewTab {
-	return {
-		id: 'file-tab-1',
-		path: '/test/file.ts',
-		name: 'file',
-		extension: '.ts',
-		content: '// test content',
-		scrollTop: 0,
-		searchQuery: '',
-		editMode: false,
-		editContent: undefined,
-		createdAt: Date.now(),
-		lastModified: Date.now(),
-		...overrides,
-	};
-}
 
 function createMockBrowserTab(overrides: Record<string, unknown> = {}) {
 	return {

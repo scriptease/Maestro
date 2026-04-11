@@ -11,6 +11,7 @@ import {
 } from '../../../renderer/utils/contextExtractor';
 import type { AITab, LogEntry, Session } from '../../../renderer/types';
 import type { ContextSource } from '../../../renderer/types/contextMerge';
+import { createMockAITab } from '../../helpers/mockTab';
 
 // Mock window.maestro for extractStoredSessionContext tests
 const mockAgentSessionsRead = vi.fn();
@@ -59,18 +60,12 @@ function createMockSession(overrides: Partial<Session> = {}): Session {
 
 // Helper to create a mock tab
 function createMockTab(overrides: Partial<AITab> = {}): AITab {
-	return {
+	return createMockAITab({
 		id: 'tab-123',
 		agentSessionId: 'agent-session-456',
 		name: 'Test Tab',
-		starred: false,
-		logs: [],
-		inputValue: '',
-		stagedImages: [],
-		createdAt: Date.now(),
-		state: 'idle',
 		...overrides,
-	};
+	});
 }
 
 // Helper to create a mock log entry

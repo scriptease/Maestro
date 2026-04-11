@@ -25,6 +25,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { MergeSessionModal } from '../../../renderer/components/MergeSessionModal';
 import { LayerStackProvider } from '../../../renderer/contexts/LayerStackContext';
 import type { Theme, Session, AITab, ToolType } from '../../../renderer/types';
+import { createMockAITab } from '../../helpers/mockTab';
 
 // Create a test theme
 const testTheme: Theme = {
@@ -48,19 +49,14 @@ const testTheme: Theme = {
 	},
 };
 
-// Create a mock tab
+// Create a mock tab (positional signature thin wrapper over shared factory)
 function createMockTab(id: string, logs: any[] = [], name?: string): AITab {
-	return {
+	return createMockAITab({
 		id,
 		name: name || `Tab ${id}`,
 		agentSessionId: `session-${id}`,
-		starred: false,
 		logs,
-		inputValue: '',
-		stagedImages: [],
-		createdAt: Date.now(),
-		state: 'idle',
-	};
+	});
 }
 
 // Create a mock session

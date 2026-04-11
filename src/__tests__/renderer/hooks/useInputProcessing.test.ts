@@ -25,21 +25,15 @@ import type {
 	BatchRunState,
 	QueuedItem,
 } from '../../../renderer/types';
+import { createMockAITab } from '../../helpers/mockTab';
 
 // Create a mock AITab
-const createMockTab = (overrides: Partial<AITab> = {}): AITab => ({
-	id: 'tab-1',
-	agentSessionId: null,
-	name: null,
-	starred: false,
-	logs: [],
-	inputValue: '',
-	stagedImages: [],
-	createdAt: 1700000000000,
-	state: 'idle',
-	saveToHistory: true,
-	...overrides,
-});
+const createMockTab = (overrides: Partial<AITab> = {}): AITab =>
+	createMockAITab({
+		createdAt: 1700000000000,
+		saveToHistory: true,
+		...overrides,
+	});
 
 // Create a mock Session
 const createMockSession = (overrides: Partial<Session> = {}): Session => {

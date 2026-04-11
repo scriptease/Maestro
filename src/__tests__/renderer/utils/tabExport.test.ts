@@ -9,6 +9,7 @@ vi.mock('marked', () => ({
 
 import { generateTabExportHtml } from '../../../renderer/utils/tabExport';
 import type { AITab, LogEntry, Theme } from '../../../renderer/types';
+import { createMockAITab } from '../../helpers/mockTab';
 
 // Mock theme for testing
 const mockTheme: Theme = {
@@ -49,18 +50,13 @@ function createLogEntry(overrides?: Partial<LogEntry>): LogEntry {
 }
 
 function createMockTab(overrides?: Partial<AITab>): AITab {
-	return {
+	return createMockAITab({
 		id: 'tab-001',
 		agentSessionId: 'abc12345-def6-7890-ghij-klmnopqrstuv',
 		name: 'Test Tab',
-		starred: false,
-		logs: [],
-		inputValue: '',
-		stagedImages: [],
 		createdAt: 1703116800000, // 2023-12-21T00:00:00.000Z
-		state: 'idle',
 		...overrides,
-	};
+	});
 }
 
 describe('tabExport', () => {

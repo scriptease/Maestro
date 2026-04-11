@@ -24,27 +24,11 @@ import { useSessionStore } from '../../../renderer/stores/sessionStore';
 import { useModalStore } from '../../../renderer/stores/modalStore';
 import { useUIStore } from '../../../renderer/stores/uiStore';
 import type { Session, AITab } from '../../../renderer/types';
+import { createMockAITab } from '../../helpers/mockTab';
 
 // ============================================================================
 // Test Helpers
 // ============================================================================
-
-function createMockAITab(overrides: Partial<AITab> = {}): AITab {
-	return {
-		id: 'tab-1',
-		agentSessionId: null,
-		name: null,
-		starred: false,
-		logs: [],
-		inputValue: '',
-		stagedImages: [],
-		createdAt: Date.now(),
-		state: 'idle' as const,
-		hasUnread: false,
-		isAtBottom: true,
-		...overrides,
-	} as AITab;
-}
 
 function createMockSession(overrides: Partial<Session> = {}): Session {
 	return {
