@@ -19,15 +19,42 @@ import { parseSynopsis } from '../../shared/synopsis';
 import { generateUUID } from '../../shared/uuid';
 import { formatElapsedTime } from '../../shared/formatters';
 import { getPromptFilename, PROMPT_IDS } from '../../shared/promptDefinitions';
+import { getConfigDirectory } from './storage';
 import fs from 'fs/promises';
 import path from 'path';
 
 // CLI prompt cache (loaded once on first use)
 const cliPromptCache = new Map<string, string>();
 
+/**
+ * Try to load a user-customized prompt from core-prompts-customizations.json.
+ * Returns the customized content if found and marked as modified, else null.
+ */
+async function getCustomizedPrompt(id: string): Promise<string | null> {
+	try {
+		const customizationsPath = path.join(getConfigDirectory(), 'core-prompts-customizations.json');
+		const raw = await fs.readFile(customizationsPath, 'utf-8');
+		const data = JSON.parse(raw);
+		const entry = data?.prompts?.[id];
+		if (entry?.isModified && entry?.content) {
+			return entry.content;
+		}
+	} catch {
+		// No customizations file or parse error — fall through to bundled
+	}
+	return null;
+}
+
 async function getCliPrompt(id: string): Promise<string> {
 	if (cliPromptCache.has(id)) {
 		return cliPromptCache.get(id)!;
+	}
+
+	// Check user customizations first (same precedence as Electron prompt-manager)
+	const customized = await getCustomizedPrompt(id);
+	if (customized) {
+		cliPromptCache.set(id, customized);
+		return customized;
 	}
 
 	// Resolve filename from shared definitions (single source of truth)
