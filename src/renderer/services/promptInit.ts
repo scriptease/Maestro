@@ -71,6 +71,9 @@ export async function initializeRendererPrompts(): Promise<void> {
 			initialized = true;
 			console.log('[PromptInit] Renderer prompts loaded successfully');
 		} catch (error) {
+			// Clear the promise so a subsequent call can retry instead of
+			// returning the same rejected promise forever
+			initPromise = null;
 			console.error('[PromptInit] Failed to load renderer prompts:', error);
 			throw error;
 		}

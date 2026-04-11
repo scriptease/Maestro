@@ -53,6 +53,29 @@ export async function loadSettingsStorePrompts(force = false): Promise<void> {
 	}
 	cachedCommitCommandPrompt = result.content!;
 	settingsStorePromptsLoaded = true;
+	// Update the exported DEFAULT_AI_COMMANDS so the /commit prompt reflects the loaded value
+	DEFAULT_AI_COMMANDS = [
+		{
+			id: 'commit',
+			command: '/commit',
+			description: 'Commit outstanding changes and push up',
+			prompt: cachedCommitCommandPrompt,
+			isBuiltIn: true,
+		},
+	];
+
+	// Patch the live Zustand store: the store was created at module load with the
+	// empty-prompt DEFAULT_AI_COMMANDS. For first-run users (no saved customAICommands),
+	// loadAllSettings() never overwrites this field, so the store retains the stale array.
+	const currentCommands = useSettingsStore.getState().customAICommands;
+	const commitCmd = currentCommands.find((c) => c.id === 'commit');
+	if (commitCmd && !commitCmd.prompt) {
+		useSettingsStore.setState({
+			customAICommands: currentCommands.map((c) =>
+				c.id === 'commit' ? { ...c, prompt: cachedCommitCommandPrompt } : c
+			),
+		});
+	}
 }
 
 function getCommitCommandPrompt(): string {
@@ -149,7 +172,8 @@ export const DEFAULT_DIRECTOR_NOTES_SETTINGS: DirectorNotesSettings = {
 	defaultLookbackDays: 7,
 };
 
-export const DEFAULT_AI_COMMANDS: CustomAICommand[] = [
+// Uses `let` so the binding updates after loadSettingsStorePrompts() populates the cache
+export let DEFAULT_AI_COMMANDS: CustomAICommand[] = [
 	{
 		id: 'commit',
 		command: '/commit',

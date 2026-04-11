@@ -37,6 +37,8 @@ export async function loadInputProcessingPrompts(force = false): Promise<void> {
 	cachedImageOnlyPrompt = imageResult.content!;
 	cachedInputMaestroSystemPrompt = systemResult.content!;
 	inputProcessingPromptsLoaded = true;
+	// Update the exported binding so consumers see the loaded value
+	DEFAULT_IMAGE_ONLY_PROMPT = cachedImageOnlyPrompt;
 }
 
 function getImageOnlyPrompt(): string {
@@ -49,8 +51,9 @@ function getInputMaestroSystemPrompt(): string {
 
 /**
  * Default prompt used when user sends only an image without text.
+ * Uses `let` so the binding updates after loadInputProcessingPrompts() populates the cache.
  */
-export const DEFAULT_IMAGE_ONLY_PROMPT = getImageOnlyPrompt();
+export let DEFAULT_IMAGE_ONLY_PROMPT: string = getImageOnlyPrompt();
 
 /**
  * Dependencies for the useInputProcessing hook.

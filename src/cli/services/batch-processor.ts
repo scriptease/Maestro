@@ -33,20 +33,37 @@ async function getCliPrompt(id: string): Promise<string> {
 	// Resolve filename from shared definitions (single source of truth)
 	const filename = getPromptFilename(id);
 
-	// In dev mode, __dirname is dist/cli/services/ — resolve to project root's src/prompts/
+	// Try multiple resolution strategies since the CLI runs in different contexts:
+	// 1. Dev mode: __dirname is dist/cli/services/ → project root's src/prompts/
+	// 2. Packaged Electron app: process.resourcesPath/prompts/core/
+	// 3. Standalone CLI (maestro-cli.js bundled at Resources/): resolve relative to script
 	const projectRoot = path.resolve(__dirname, '..', '..', '..');
-	const devPath = path.join(projectRoot, 'src', 'prompts', filename);
-	try {
-		const content = await fs.readFile(devPath, 'utf-8');
-		cliPromptCache.set(id, content);
-		return content;
-	} catch {
-		// Try bundled path (when running from packaged app)
-		const bundledPath = path.join(process.resourcesPath || '', 'prompts', 'core', filename);
-		const content = await fs.readFile(bundledPath, 'utf-8');
-		cliPromptCache.set(id, content);
-		return content;
+	const candidates = [path.join(projectRoot, 'src', 'prompts', filename)];
+
+	// process.resourcesPath is Electron-only; guard against standalone Node.js
+	if (typeof process !== 'undefined' && (process as any).resourcesPath) {
+		candidates.push(path.join((process as any).resourcesPath, 'prompts', 'core', filename));
 	}
+
+	// Standalone CLI bundled alongside Resources/prompts/core/
+	candidates.push(
+		path.join(path.dirname(process.argv[1] || __dirname), 'prompts', 'core', filename)
+	);
+	candidates.push(path.join(__dirname, '..', 'prompts', 'core', filename));
+
+	for (const candidate of candidates) {
+		try {
+			const content = await fs.readFile(candidate, 'utf-8');
+			cliPromptCache.set(id, content);
+			return content;
+		} catch {
+			// Try next candidate
+		}
+	}
+
+	throw new Error(
+		`Failed to load prompt "${id}" (${filename}). Searched: ${candidates.join(', ')}`
+	);
 }
 
 /**
