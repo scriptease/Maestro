@@ -12,12 +12,14 @@ import {
 	Monitor,
 	Globe,
 	Users,
+	FileText,
 } from 'lucide-react';
 import { useSettings } from '../../hooks';
 import type { Theme, LLMProvider } from '../../types';
 import { useLayerStack } from '../../contexts/LayerStackContext';
 import { MODAL_PRIORITIES } from '../../constants/modalPriorities';
 import { AICommandsPanel } from '../AICommandsPanel';
+import { MaestroPromptsTab } from './tabs/MaestroPromptsTab';
 import { SpecKitCommandsPanel } from '../SpecKitCommandsPanel';
 import { OpenSpecCommandsPanel } from '../OpenSpecCommandsPanel';
 import { BmadCommandsPanel } from '../BmadCommandsPanel';
@@ -54,7 +56,8 @@ interface SettingsModalProps {
 		| 'groupchat'
 		| 'ssh'
 		| 'environment'
-		| 'encore';
+		| 'encore'
+		| 'prompts';
 	hasNoAgents?: boolean;
 	onThemeImportError?: (message: string) => void;
 	onThemeImportSuccess?: (message: string) => void;
@@ -117,6 +120,7 @@ export const SettingsModal = memo(function SettingsModal(props: SettingsModalPro
 		| 'ssh'
 		| 'environment'
 		| 'encore'
+		| 'prompts'
 	>('general');
 	const [testingLLM, setTestingLLM] = useState(false);
 	const [testResult, setTestResult] = useState<{
@@ -213,6 +217,7 @@ export const SettingsModal = memo(function SettingsModal(props: SettingsModalPro
 				| 'ssh'
 				| 'environment'
 				| 'encore'
+				| 'prompts'
 			> = FEATURE_FLAGS.LLM_SETTINGS
 				? [
 						'general',
@@ -222,6 +227,7 @@ export const SettingsModal = memo(function SettingsModal(props: SettingsModalPro
 						'theme',
 						'notifications',
 						'aicommands',
+						'prompts',
 						'groupchat',
 						'ssh',
 						'environment',
@@ -234,6 +240,7 @@ export const SettingsModal = memo(function SettingsModal(props: SettingsModalPro
 						'theme',
 						'notifications',
 						'aicommands',
+						'prompts',
 						'groupchat',
 						'ssh',
 						'environment',
@@ -384,6 +391,7 @@ export const SettingsModal = memo(function SettingsModal(props: SettingsModalPro
 		{ id: 'theme', label: 'Themes', icon: Palette },
 		{ id: 'notifications', label: 'Notifications', icon: Bell },
 		{ id: 'aicommands', label: 'AI Commands', icon: Cpu },
+		{ id: 'prompts', label: 'Maestro Prompts', icon: FileText },
 		{ id: 'groupchat', label: 'Group Chat', icon: Users },
 		{ id: 'ssh', label: 'SSH Hosts', icon: Server },
 		{ id: 'environment', label: 'Environment', icon: Globe },
@@ -633,6 +641,8 @@ export const SettingsModal = memo(function SettingsModal(props: SettingsModalPro
 								</div>
 							</div>
 						)}
+
+						{activeTab === 'prompts' && <MaestroPromptsTab theme={theme} />}
 
 						{activeTab === 'groupchat' && (
 							<div className="space-y-5">
