@@ -37,7 +37,27 @@ import { DEFAULT_SHORTCUTS, TAB_SHORTCUTS, FIXED_SHORTCUTS } from '../constants/
 import { getLevelIndex } from '../constants/keyboardMastery';
 import type { FileExplorerIconTheme } from '../utils/fileExplorerIcons/shared';
 import { isFileExplorerIconTheme } from '../utils/fileExplorerIcons/shared';
-import { commitCommandPrompt } from '../../prompts';
+// ============================================================================
+// Prompt cache (loaded via IPC at startup)
+// ============================================================================
+
+let cachedCommitCommandPrompt: string = '';
+let settingsStorePromptsLoaded = false;
+
+export async function loadSettingsStorePrompts(force = false): Promise<void> {
+	if (settingsStorePromptsLoaded && !force) return;
+
+	const result = await window.maestro.prompts.get('commit-command');
+	if (!result.success) {
+		throw new Error(`Failed to load commit-command prompt: ${result.error}`);
+	}
+	cachedCommitCommandPrompt = result.content!;
+	settingsStorePromptsLoaded = true;
+}
+
+function getCommitCommandPrompt(): string {
+	return cachedCommitCommandPrompt;
+}
 
 // ============================================================================
 // Shared Type Aliases
@@ -134,7 +154,7 @@ export const DEFAULT_AI_COMMANDS: CustomAICommand[] = [
 		id: 'commit',
 		command: '/commit',
 		description: 'Commit outstanding changes and push up',
-		prompt: commitCommandPrompt,
+		prompt: getCommitCommandPrompt(),
 		isBuiltIn: true,
 	},
 ];
