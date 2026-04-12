@@ -308,6 +308,8 @@ export function registerTabNamingHandlers(deps: TabNamingHandlerDependencies): v
 							prompt: fullPrompt,
 							customEnvVars,
 							sendPromptViaStdin: shouldSendPromptViaStdin,
+							sendPromptViaStdinRaw: agent.sendPromptViaStdinRaw,
+							noPromptSeparator: agent.noPromptSeparator,
 						});
 					});
 				} catch (error) {
