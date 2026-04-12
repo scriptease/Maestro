@@ -747,7 +747,7 @@ describe('createMarkdownComponents link handling', () => {
 		const element = aComponent({ node: null, href: 'https://example.com', children: 'link' });
 		const clickEvent = { preventDefault: vi.fn() } as any;
 		element.props.onClick(clickEvent);
-		expect(onExternalLinkClick).toHaveBeenCalledWith('https://example.com');
+		expect(onExternalLinkClick).toHaveBeenCalledWith('https://example.com', { ctrlKey: undefined });
 	});
 
 	it('should call onExternalLinkClick for mailto URLs', () => {
@@ -761,7 +761,9 @@ describe('createMarkdownComponents link handling', () => {
 		const element = aComponent({ node: null, href: 'mailto:test@example.com', children: 'email' });
 		const clickEvent = { preventDefault: vi.fn() } as any;
 		element.props.onClick(clickEvent);
-		expect(onExternalLinkClick).toHaveBeenCalledWith('mailto:test@example.com');
+		expect(onExternalLinkClick).toHaveBeenCalledWith('mailto:test@example.com', {
+			ctrlKey: undefined,
+		});
 	});
 
 	it('should NOT call onExternalLinkClick for relative paths', () => {

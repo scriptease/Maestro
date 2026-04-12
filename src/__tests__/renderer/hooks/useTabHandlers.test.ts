@@ -186,6 +186,7 @@ describe('useTabHandlers', () => {
 			defaultSaveToHistory: true,
 			defaultShowThinking: undefined,
 			fileTabAutoRefreshEnabled: false,
+			browserHomeUrl: '',
 		} as any);
 
 		vi.clearAllMocks();
