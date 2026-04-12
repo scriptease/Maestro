@@ -237,3 +237,4 @@ Update `CopilotCliRawMessage` interface and `transformMessage()` method to match
 8. **Image Input** — if supported by CLI
 9. **Context Export** — depends on session storage
 10. **Wizard + Group Chat** — quality-dependent, test and enable
+11. **SSH Remote Session Storage** — implement remote handlers for listSessions, readSessionMessages, getSessionPath, and getSearchableMessages matching the pattern in factory-droid-session-storage.ts. Currently logs a warning and falls back to local.

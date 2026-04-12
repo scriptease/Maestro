@@ -128,8 +128,14 @@ export class CopilotCliSessionStorage extends BaseSessionStorage {
 	 */
 	async listSessions(
 		projectPath: string,
-		_sshConfig?: SshRemoteConfig
+		sshConfig?: SshRemoteConfig
 	): Promise<AgentSessionInfo[]> {
+		if (sshConfig) {
+			logger.warn(
+				'Copilot CLI SSH remote session storage is not yet implemented — reading local sessions instead. See Phase 2 plan.',
+				LOG_CONTEXT
+			);
+		}
 		const sessionBaseDir = getCopilotSessionDir();
 
 		try {
@@ -241,8 +247,14 @@ export class CopilotCliSessionStorage extends BaseSessionStorage {
 		_projectPath: string,
 		sessionId: string,
 		options?: SessionReadOptions,
-		_sshConfig?: SshRemoteConfig
+		sshConfig?: SshRemoteConfig
 	): Promise<SessionMessagesResult> {
+		if (sshConfig) {
+			logger.warn(
+				'Copilot CLI SSH remote session reading is not yet implemented — reading local session instead.',
+				LOG_CONTEXT
+			);
+		}
 		if (!isValidSessionId(sessionId)) {
 			return { messages: [], total: 0, hasMore: false };
 		}
@@ -299,8 +311,14 @@ export class CopilotCliSessionStorage extends BaseSessionStorage {
 	getSessionPath(
 		_projectPath: string,
 		sessionId: string,
-		_sshConfig?: SshRemoteConfig
+		sshConfig?: SshRemoteConfig
 	): string | null {
+		if (sshConfig) {
+			logger.warn(
+				'Copilot CLI SSH remote session path is not yet implemented — returning local path.',
+				LOG_CONTEXT
+			);
+		}
 		if (!isValidSessionId(sessionId)) {
 			return null;
 		}
@@ -326,8 +344,14 @@ export class CopilotCliSessionStorage extends BaseSessionStorage {
 	protected async getSearchableMessages(
 		sessionId: string,
 		_projectPath: string,
-		_sshConfig?: SshRemoteConfig
+		sshConfig?: SshRemoteConfig
 	): Promise<SearchableMessage[]> {
+		if (sshConfig) {
+			logger.warn(
+				'Copilot CLI SSH remote search is not yet implemented — searching local sessions.',
+				LOG_CONTEXT
+			);
+		}
 		if (!isValidSessionId(sessionId)) {
 			return [];
 		}

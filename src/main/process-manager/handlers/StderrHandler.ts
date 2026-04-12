@@ -107,17 +107,12 @@ export class StderrHandler {
 				return;
 			}
 
-			// For JSONL agents with output parsers (copilot-cli, codex, opencode,
-			// factory-droid), suppress stderr display. These agents emit MCP server
-			// startup messages, shell profile banners, and other initialization noise
-			// to stderr that should not be shown to the user. Error detection has
-			// already happened above, so real errors are already captured.
-			if (outputParser && toolType !== 'codex') {
-				// Codex is excluded because it has its own special stderr handling below
-				// that re-emits actual response content from stderr as data.
-				logger.info('[ProcessManager] Suppressing stderr for JSONL agent', 'ProcessManager', {
+			// Copilot CLI emits MCP server startup messages, shell profile banners,
+			// and other initialization noise to stderr. Suppress it — error detection
+			// has already happened above, so real errors are already captured.
+			if (toolType === 'copilot-cli' && outputParser) {
+				logger.info('[ProcessManager] Suppressing stderr for copilot-cli', 'ProcessManager', {
 					sessionId,
-					toolType,
 					stderrPreview: cleanedStderr.substring(0, 100),
 				});
 				return;

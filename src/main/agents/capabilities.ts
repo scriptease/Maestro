@@ -406,9 +406,10 @@ export const AGENT_CAPABILITIES: Record<string, AgentCapabilities> = {
 	 * Binary: `copilot`. Batch mode: `-p` flag. JSON: `--output-format json` (JSONL).
 	 * Session resume: `--resume SESSION-ID`. YOLO: `--allow-all`.
 	 *
-	 * Phase 1 capabilities are conservative — advanced features (session storage
-	 * browsing, cost tracking, thinking display) will be enabled in Phase 2
-	 * after verifying the JSON output schema.
+	 * Phase 1 ships: resume, JSON output, session ID, slash commands, session storage,
+	 * usage stats, batch mode, streaming, result messages, model selection, context merge.
+	 * Phase 2 deferred: cost tracking, thinking display, read-only mode, image input,
+	 * context export, wizard, group chat moderation, SSH remote session storage.
 	 */
 	'copilot-cli': {
 		supportsResume: true, // --resume SESSION-ID
