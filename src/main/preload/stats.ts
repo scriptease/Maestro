@@ -15,13 +15,21 @@ import type {
 	SessionLifecycleEvent,
 	StatsAggregation,
 } from '../../shared/stats-types';
-export type { QueryEvent, AutoRunSession, AutoRunTask, StatsAggregation } from '../../shared/stats-types';
+export type {
+	QueryEvent,
+	AutoRunSession,
+	AutoRunTask,
+	StatsAggregation,
+} from '../../shared/stats-types';
 
 /**
  * Session lifecycle event for recording session creation.
  * Subset of SessionLifecycleEvent from shared/stats-types.
  */
-export type SessionCreatedEvent = Pick<SessionLifecycleEvent, 'sessionId' | 'agentType' | 'projectPath' | 'createdAt' | 'isRemote'>;
+export type SessionCreatedEvent = Pick<
+	SessionLifecycleEvent,
+	'sessionId' | 'agentType' | 'projectPath' | 'createdAt' | 'isRemote'
+>;
 
 /**
  * Creates the Stats API object for preload exposure

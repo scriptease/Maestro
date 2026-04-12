@@ -32,7 +32,11 @@ import type {
 	SessionMessage,
 } from '../agents';
 import type { ToolType, SshRemoteConfig } from '../../shared/types';
-import type { ClaudeSessionOrigin, ClaudeSessionOriginInfo, ClaudeSessionOriginsData } from '../stores/types';
+import type {
+	ClaudeSessionOrigin,
+	ClaudeSessionOriginInfo,
+	ClaudeSessionOriginsData,
+} from '../stores/types';
 export type { ClaudeSessionOriginsData } from '../stores/types';
 
 /**
