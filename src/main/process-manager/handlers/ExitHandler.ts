@@ -198,6 +198,12 @@ export class ExitHandler {
 			}
 		}
 
+		// Reset parser state to prevent stale data leaking into the next session
+		// (parsers are singletons shared across sessions)
+		if (outputParser?.resetState) {
+			outputParser.resetState();
+		}
+
 		// Clean up temp image files if any
 		if (managedProcess.tempImageFiles && managedProcess.tempImageFiles.length > 0) {
 			cleanupTempFiles(managedProcess.tempImageFiles);

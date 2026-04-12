@@ -163,12 +163,14 @@ export class CopilotCliSessionStorage extends BaseSessionStorage {
 				const yamlContent = await fs.readFile(workspacePath, 'utf-8');
 				const meta = parseWorkspaceYaml(yamlContent);
 
-				// Filter by project path if the session has a cwd
-				if (meta.cwd) {
-					const normalizedCwd = path.resolve(meta.cwd).toLowerCase();
-					if (normalizedCwd !== normalizedProjectPath) {
-						continue;
-					}
+				// Filter by project path — skip sessions from other projects
+				// and sessions without a cwd (which would appear in every project)
+				if (!meta.cwd) {
+					continue;
+				}
+				const normalizedCwd = path.resolve(meta.cwd).toLowerCase();
+				if (normalizedCwd !== normalizedProjectPath) {
+					continue;
 				}
 
 				const sessionId = meta.id || entry.name;

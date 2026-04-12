@@ -104,6 +104,14 @@ export class CopilotCliOutputParser implements AgentOutputParser {
 	private accumulatedOutputTokens = 0;
 
 	/**
+	 * Reset internal state. Called on process exit to prevent stale token
+	 * counts from leaking into the next session (parser is a singleton).
+	 */
+	resetState(): void {
+		this.accumulatedOutputTokens = 0;
+	}
+
+	/**
 	 * Parse a single JSON line from Copilot CLI output.
 	 */
 	parseJsonLine(line: string): ParsedEvent | null {
