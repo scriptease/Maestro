@@ -76,6 +76,8 @@ export interface ModalProps {
 	testId?: string;
 	/** Override className for the content wrapper (default: 'p-6 overflow-y-auto flex-1') */
 	contentClassName?: string;
+	/** Allow content to overflow the modal container (e.g., for dropdowns). Defaults to false */
+	allowOverflow?: boolean;
 }
 
 /**
@@ -100,6 +102,7 @@ export function Modal({
 	initialFocusRef,
 	testId,
 	contentClassName,
+	allowOverflow = false,
 }: ModalProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 
@@ -139,7 +142,7 @@ export function Modal({
 			data-testid={testId}
 		>
 			<div
-				className="border rounded-lg shadow-2xl overflow-hidden flex flex-col"
+				className={`border rounded-lg shadow-2xl flex flex-col ${allowOverflow ? 'overflow-visible' : 'overflow-hidden'}`}
 				style={{
 					width: `${width}px`,
 					maxHeight,

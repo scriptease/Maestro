@@ -157,7 +157,7 @@ export function FeedbackChatView({ theme, onCancel, onWidthChange }: FeedbackCha
 	// --- Report desired width based on current step ---
 	useEffect(() => {
 		const isNarrow = step === 'gh-check' || step === 'provider-select';
-		onWidthChange?.(isNarrow ? 420 : 780);
+		onWidthChange?.(isNarrow ? 462 : 858);
 	}, [step, onWidthChange]);
 
 	// --- GH Auth Check ---
