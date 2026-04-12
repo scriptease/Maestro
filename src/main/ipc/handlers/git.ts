@@ -46,6 +46,9 @@ export interface GitHandlerDependencies {
 
 // Worktree directory watchers keyed by session ID
 const worktreeWatchers = new Map<string, FSWatcher>();
+// Debounce timers keyed by "sessionId:dirPath" so each discovered directory
+// gets its own independent timer (previously keyed by sessionId alone, which
+// caused only the last of multiple near-simultaneous addDir events to fire).
 const worktreeWatchDebounceTimers = new Map<string, NodeJS.Timeout>();
 
 /** Helper to create handler options with Git context */
@@ -1193,11 +1196,12 @@ export function registerGitHandlers(_deps: GitHandlerDependencies): void {
 					await existingWatcher.close();
 				}
 
-				// Clear any pending debounce timer
-				const existingTimer = worktreeWatchDebounceTimers.get(sessionId);
-				if (existingTimer) {
-					clearTimeout(existingTimer);
-					worktreeWatchDebounceTimers.delete(sessionId);
+				// Clear any pending debounce timers for this session
+				for (const [key, timer] of worktreeWatchDebounceTimers) {
+					if (key.startsWith(`${sessionId}:`)) {
+						clearTimeout(timer);
+						worktreeWatchDebounceTimers.delete(key);
+					}
 				}
 
 				try {
@@ -1219,14 +1223,16 @@ export function registerGitHandlers(_deps: GitHandlerDependencies): void {
 						// Skip the root directory itself
 						if (dirPath === worktreePath) return;
 
-						// Debounce to avoid flooding with events
-						const existingTimer = worktreeWatchDebounceTimers.get(sessionId);
+						// Per-directory debounce so multiple near-simultaneous worktree
+						// additions each get their own validation pipeline
+						const debounceKey = `${sessionId}:${dirPath}`;
+						const existingTimer = worktreeWatchDebounceTimers.get(debounceKey);
 						if (existingTimer) {
 							clearTimeout(existingTimer);
 						}
 
 						const timer = setTimeout(async () => {
-							worktreeWatchDebounceTimers.delete(sessionId);
+							worktreeWatchDebounceTimers.delete(debounceKey);
 
 							// Check if this new directory is a git worktree
 							const isInsideWorkTree = await execFileNoThrow(
@@ -1296,7 +1302,7 @@ export function registerGitHandlers(_deps: GitHandlerDependencies): void {
 							logger.info(`${LOG_CONTEXT} New worktree discovered: ${dirPath} (branch: ${branch})`);
 						}, 500); // 500ms debounce
 
-						worktreeWatchDebounceTimers.set(sessionId, timer);
+						worktreeWatchDebounceTimers.set(debounceKey, timer);
 					});
 
 					// Handler for directory removals (e.g., git worktree remove from CLI)
@@ -1356,11 +1362,12 @@ export function registerGitHandlers(_deps: GitHandlerDependencies): void {
 				logger.info(`${LOG_CONTEXT} Stopped watching worktree directory for session ${sessionId}`);
 			}
 
-			// Clear any pending debounce timer
-			const timer = worktreeWatchDebounceTimers.get(sessionId);
-			if (timer) {
-				clearTimeout(timer);
-				worktreeWatchDebounceTimers.delete(sessionId);
+			// Clear any pending debounce timers for this session
+			for (const [key, timer] of worktreeWatchDebounceTimers) {
+				if (key.startsWith(`${sessionId}:`)) {
+					clearTimeout(timer);
+					worktreeWatchDebounceTimers.delete(key);
+				}
 			}
 
 			return { success: true };
