@@ -238,3 +238,5 @@ Update `CopilotCliRawMessage` interface and `transformMessage()` method to match
 9. **Context Export** — depends on session storage
 10. **Wizard + Group Chat** — quality-dependent, test and enable
 11. **SSH Remote Session Storage** — implement remote handlers for listSessions, readSessionMessages, getSessionPath, and getSearchableMessages matching the pattern in factory-droid-session-storage.ts. Currently logs a warning and falls back to local.
+12. **Launcher flags: `--no-auto-update` and `--no-ask-user`** — consider adding these to the Copilot CLI launch args to suppress automatic update downloads and disable the ask_user tool in batch mode. Both flags are confirmed available on the standalone `copilot` binary. Suggested by @adamcongdon.
+13. **Alternative executable: `gh copilot --`** — consider supporting `gh` (GitHub CLI) as an alternative executable path for Copilot, invoked via `gh copilot -- [flags]`. This would allow users who have Copilot installed as a `gh` extension (rather than the standalone `copilot` binary) to use it as an agent. Would require a config option or auto-detection for the executable path. Suggested by @adamcongdon.

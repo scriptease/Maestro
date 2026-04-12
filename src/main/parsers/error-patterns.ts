@@ -881,12 +881,27 @@ const COPILOT_CLI_ERROR_PATTERNS: AgentErrorPatterns = {
 			message: 'Unauthorized. Please check your Copilot subscription and credentials.',
 			recoverable: true,
 		},
+		{
+			pattern: /invalid.*token/i,
+			message: 'Invalid token. Please run "copilot login" to refresh your credentials.',
+			recoverable: true,
+		},
+		{
+			pattern: /please.*login/i,
+			message: 'Please log in. Run "copilot login" to authenticate.',
+			recoverable: true,
+		},
 	],
 
 	rate_limited: [
 		{
 			pattern: /rate limit|too many requests/i,
 			message: 'Rate limited by GitHub Copilot. Please wait a moment before retrying.',
+			recoverable: true,
+		},
+		{
+			pattern: /\b429\b/,
+			message: 'Rate limited (429). Please wait and try again.',
 			recoverable: true,
 		},
 	],
@@ -902,16 +917,26 @@ const COPILOT_CLI_ERROR_PATTERNS: AgentErrorPatterns = {
 			message: 'Connection timed out. Check your internet connection.',
 			recoverable: true,
 		},
+		{
+			pattern: /ECONNRESET|ENOTFOUND/i,
+			message: 'Network error. Check your internet connection.',
+			recoverable: true,
+		},
+		{
+			pattern: /request\s+timed?\s*out|timed?\s*out\s+waiting/i,
+			message: 'Request timed out. Please try again.',
+			recoverable: true,
+		},
 	],
 
 	token_exhaustion: [
 		{
-			pattern: /context.*too long|context window/i,
+			pattern: /context.*too long|context window|context.*exceeded/i,
 			message: 'Context window exceeded. Please start a new session.',
 			recoverable: true,
 		},
 		{
-			pattern: /maximum.*tokens/i,
+			pattern: /maximum.*tokens|too many tokens/i,
 			message: 'Maximum token limit reached. Start a new session.',
 			recoverable: true,
 		},
@@ -927,6 +952,24 @@ const COPILOT_CLI_ERROR_PATTERNS: AgentErrorPatterns = {
 			pattern: /copilot.*command not found/i,
 			message: 'Copilot CLI not found. Ensure it is installed and in your PATH.',
 			recoverable: false,
+		},
+		{
+			pattern: /\b(fatal|unexpected|internal|unhandled)\s+error\b/i,
+			message: 'An unexpected error occurred in Copilot CLI.',
+			recoverable: true,
+		},
+	],
+
+	session_not_found: [
+		{
+			pattern: /session.*not found/i,
+			message: 'Session not found. Starting fresh conversation.',
+			recoverable: true,
+		},
+		{
+			pattern: /invalid.*session/i,
+			message: 'Invalid session. Starting fresh conversation.',
+			recoverable: true,
 		},
 	],
 };
