@@ -191,6 +191,9 @@ export class CopilotCliOutputParser implements AgentOutputParser {
 				}
 
 				// If the message has tool requests AND text, emit as text with tool blocks
+				// (not 'result' — this is a mid-turn message before tool execution, not the
+				// final answer; emitting 'result' here would consume StdoutHandler's result
+				// slot and suppress the actual post-tool response)
 				if (toolRequests.length > 0 && content) {
 					return {
 						type: 'text',

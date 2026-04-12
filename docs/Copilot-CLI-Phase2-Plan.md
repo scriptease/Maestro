@@ -16,46 +16,15 @@ If the JSONL output schema doesn't match the parser's assumptions, **fix the par
 
 ---
 
-## JSON Schema Investigation (Do This First)
+## ~~JSON Schema Investigation~~ ✓ Done (Phase 1)
 
-Run: `echo "Say hello in one sentence" | copilot --output-format json --allow-all`
-
-Pipe the prompt via stdin (not `-p`) to match the transport used by the Maestro integration (`sendPromptViaStdinRaw`). Capture the full output and document the actual JSONL event types. Re-validate the parser at `src/main/parsers/copilot-cli-output-parser.ts` against the piped-stdin JSONL output to ensure heuristic matching is refined to the actual schema emitted by the stdin path:
-
-1. What event type contains the session ID? (e.g., `session.started`, `init`, `thread.started`)
-2. What event type contains streaming text? (e.g., `content.delta`, `assistant.message`, `text`)
-3. What event type contains tool calls? (e.g., `tool_use`, `tool.started`, `tool.completed`)
-4. What event type contains usage stats? (e.g., `usage`, `turn.completed`, `stats`)
-5. What event type signals completion? (e.g., `result`, `complete`, `done`)
-6. How are errors structured? (e.g., `{ type: "error", error: { message: "..." } }`)
-
-Update `CopilotCliRawMessage` interface and `transformMessage()` method to match.
+Parser validated against actual Copilot CLI JSONL output. Event types documented in `copilot-cli-output-parser.ts` header comment. `CopilotCliMessage` interface and `transformMessage()` match the verified schema.
 
 ---
 
-## Todo: Session Storage Browser
+## ~~Session Storage Browser~~ ✓ Done (Phase 1)
 
-**Goal**: Enable browsing/resuming past sessions from the Right Bar.
-
-**Files**:
-
-- New: `src/main/storage/copilot-cli-session-storage.ts`
-- Edit: `src/main/storage/index.ts` — register `CopilotCliSessionStorage`
-- Edit: `src/main/agents/capabilities.ts` — set `supportsSessionStorage: true`
-
-**Implementation**:
-
-1. Investigate session file format at `~/.copilot/session-state/` (may also be `~/.copilot/sessions/`)
-2. Extend `BaseSessionStorage` from `src/main/storage/base-session-storage.ts`
-3. Implement required abstract methods:
-   - `listSessions(projectPath, sshConfig?)` — list session directories, extract metadata from workspace.yaml
-   - `readSessionMessages(projectPath, sessionId, options?, sshConfig?)` — parse events.jsonl into `SessionMessage[]`
-   - `getSessionPath(projectPath, sessionId, sshConfig?)` — resolve the file path for a session
-   - `deleteMessagePair(projectPath, sessionId, messageId, fallbackContent?, sshConfig?)` — remove a message pair
-   - `getSearchableMessages(sessionId, projectPath, sshConfig?)` — load messages in simplified format for search
-4. Register in `initializeSessionStorages()` in `src/main/storage/index.ts`
-
-**Reference**: Follow `codex-session-storage.ts` or `factory-droid-session-storage.ts` patterns.
+Implemented in `src/main/storage/copilot-cli-session-storage.ts`, registered in `src/main/storage/index.ts`, capability set to `supportsSessionStorage: true`. Reads `~/.copilot/session-state/<uuid>/workspace.yaml` and `events.jsonl`.
 
 ---
 

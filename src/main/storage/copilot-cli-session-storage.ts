@@ -43,6 +43,7 @@ import type {
 	SessionMessage,
 } from '../agents';
 import type { ToolType, SshRemoteConfig } from '../../shared/types';
+import { captureException } from '../utils/sentry';
 
 const LOG_CONTEXT = '[CopilotCliSessionStorage]';
 
@@ -119,7 +120,14 @@ export class CopilotCliSessionStorage extends BaseSessionStorage {
 				}
 			}
 			return events;
-		} catch {
+		} catch (error: unknown) {
+			// ENOENT is expected (session has no events file yet) — silently return empty
+			if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+				return [];
+			}
+			// Permission/I/O errors should be reported to Sentry
+			logger.error(`Failed to load session events: ${eventsPath}`, LOG_CONTEXT, error);
+			captureException(error, { operation: 'copilotCliStorage:loadSessionEvents', eventsPath });
 			return [];
 		}
 	}
@@ -326,18 +334,7 @@ export class CopilotCliSessionStorage extends BaseSessionStorage {
 			}
 		}
 
-		const totalMessages = messages.length;
-
-		// Apply pagination
-		const limit = options?.limit || totalMessages;
-		const offset = options?.offset || 0;
-		const paginatedMessages = messages.slice(offset, offset + limit);
-
-		return {
-			messages: paginatedMessages,
-			total: totalMessages,
-			hasMore: offset + limit < totalMessages,
-		};
+		return BaseSessionStorage.applyMessagePagination(messages, options);
 	}
 
 	/**
