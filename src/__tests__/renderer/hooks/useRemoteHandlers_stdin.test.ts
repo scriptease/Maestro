@@ -248,8 +248,8 @@ describe('useRemoteHandlers - remote command stdin flags (integration)', () => {
 		const spawnCall = (window as any).maestro.process.spawn.mock.calls[0][0];
 
 		// SSH sessions must NOT use stdin flags
-		expect(spawnCall.sendPromptViaStdin).toBe(false);
-		expect(spawnCall.sendPromptViaStdinRaw).toBe(false);
+		expect(spawnCall.sendPromptViaStdin).toBeUndefined();
+		expect(spawnCall.sendPromptViaStdinRaw).toBeUndefined();
 	});
 
 	it('should pass both stdin flags as false on non-Windows platforms', async () => {
@@ -278,8 +278,8 @@ describe('useRemoteHandlers - remote command stdin flags (integration)', () => {
 		expect((window as any).maestro.process.spawn).toHaveBeenCalled();
 		const spawnCall = (window as any).maestro.process.spawn.mock.calls[0][0];
 
-		expect(spawnCall.sendPromptViaStdin).toBe(false);
-		expect(spawnCall.sendPromptViaStdinRaw).toBe(false);
+		expect(spawnCall.sendPromptViaStdin).toBeUndefined();
+		expect(spawnCall.sendPromptViaStdinRaw).toBeUndefined();
 	});
 
 	it('should pass sendPromptViaStdinRaw for agents without stream-json support', async () => {

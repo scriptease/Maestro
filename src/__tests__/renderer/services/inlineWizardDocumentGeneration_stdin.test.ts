@@ -157,8 +157,8 @@ CONTENT:
 		const spawnCall = mockMaestro.process.spawn.mock.calls[0][0];
 
 		// SSH sessions must NOT use stdin flags
-		expect(spawnCall.sendPromptViaStdin).toBe(false);
-		expect(spawnCall.sendPromptViaStdinRaw).toBe(false);
+		expect(spawnCall.sendPromptViaStdin).toBeUndefined();
+		expect(spawnCall.sendPromptViaStdinRaw).toBeUndefined();
 	}, 30000);
 
 	it('should NOT pass stdin flags on non-Windows platforms', async () => {
@@ -196,8 +196,8 @@ CONTENT:
 		expect(mockMaestro.process.spawn).toHaveBeenCalled();
 		const spawnCall = mockMaestro.process.spawn.mock.calls[0][0];
 
-		expect(spawnCall.sendPromptViaStdin).toBe(false);
-		expect(spawnCall.sendPromptViaStdinRaw).toBe(false);
+		expect(spawnCall.sendPromptViaStdin).toBeUndefined();
+		expect(spawnCall.sendPromptViaStdinRaw).toBeUndefined();
 	});
 
 	it('should NOT add --input-format when sendPromptViaStdin is false', async () => {

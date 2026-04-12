@@ -269,8 +269,8 @@ describe('useAgentExecution', () => {
 		});
 
 		const spawnConfig = mockProcess.spawn.mock.calls[0][0];
-		expect(spawnConfig.sendPromptViaStdin).toBe(false);
-		expect(spawnConfig.sendPromptViaStdinRaw).toBe(false);
+		expect(spawnConfig.sendPromptViaStdin).toBeUndefined();
+		expect(spawnConfig.sendPromptViaStdinRaw).toBeUndefined();
 
 		const targetSessionId = spawnConfig.sessionId as string;
 		act(() => {

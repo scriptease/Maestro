@@ -19,16 +19,22 @@ export function getStdinFlags(opts: {
 	supportsStreamJsonInput: boolean;
 	hasImages: boolean;
 }): {
-	sendPromptViaStdin: boolean;
-	sendPromptViaStdinRaw: boolean;
+	sendPromptViaStdin: boolean | undefined;
+	sendPromptViaStdinRaw: boolean | undefined;
 } {
 	const isWindows = isWindowsPlatform();
 	const useStdin = isWindows && !opts.isSshSession;
 
+	if (!useStdin) {
+		// Return undefined (not false) so the agent-level default from definitions.ts
+		// is not overridden by the ?? operator in the IPC handler
+		return { sendPromptViaStdin: undefined, sendPromptViaStdinRaw: undefined };
+	}
+
 	return {
 		// Only use stream-json stdin when there are images AND agent supports it
-		sendPromptViaStdin: useStdin && opts.supportsStreamJsonInput && !!opts.hasImages,
+		sendPromptViaStdin: opts.supportsStreamJsonInput && !!opts.hasImages,
 		// Use raw stdin for text-only messages (or for agents that don't support stream-json)
-		sendPromptViaStdinRaw: useStdin && (!opts.supportsStreamJsonInput || !opts.hasImages),
+		sendPromptViaStdinRaw: !opts.supportsStreamJsonInput || !opts.hasImages,
 	};
 }

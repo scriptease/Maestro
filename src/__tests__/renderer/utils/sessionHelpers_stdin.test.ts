@@ -85,8 +85,8 @@ describe('buildSpawnConfigForAgent - Windows stdin transport flags', () => {
 
 		expect(result).not.toBeNull();
 		// SSH sessions must NOT use stdin flags
-		expect(result!.sendPromptViaStdin).toBe(false);
-		expect(result!.sendPromptViaStdinRaw).toBe(false);
+		expect(result!.sendPromptViaStdin).toBeUndefined();
+		expect(result!.sendPromptViaStdinRaw).toBeUndefined();
 	});
 
 	it('should NOT include stdin flags on non-Windows platforms', async () => {
@@ -111,8 +111,8 @@ describe('buildSpawnConfigForAgent - Windows stdin transport flags', () => {
 		});
 
 		expect(result).not.toBeNull();
-		expect(result!.sendPromptViaStdin).toBe(false);
-		expect(result!.sendPromptViaStdinRaw).toBe(false);
+		expect(result!.sendPromptViaStdin).toBeUndefined();
+		expect(result!.sendPromptViaStdinRaw).toBeUndefined();
 	});
 
 	it('should include sendPromptViaStdinRaw for agents without stream-json support', async () => {

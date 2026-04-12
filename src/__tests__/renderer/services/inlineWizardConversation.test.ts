@@ -497,9 +497,9 @@ describe('inlineWizardConversation', () => {
 
 			const spawnCall = mockMaestro.process.spawn.mock.calls[0][0];
 
-			// On non-Windows, both flags should be false
-			expect(spawnCall.sendPromptViaStdin).toBe(false);
-			expect(spawnCall.sendPromptViaStdinRaw).toBe(false);
+			// On non-Windows, both flags should be undefined (so ?? defaults apply)
+			expect(spawnCall.sendPromptViaStdin).toBeUndefined();
+			expect(spawnCall.sendPromptViaStdinRaw).toBeUndefined();
 
 			// Clean up
 			const exitCallback = mockMaestro.process.onExit.mock.calls[0][0];
