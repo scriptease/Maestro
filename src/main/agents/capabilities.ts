@@ -434,6 +434,7 @@ export const AGENT_CAPABILITIES: Record<string, AgentCapabilities> = {
 		supportsGroupChatModeration: false, // Phase 2
 		usesJsonLineOutput: true, // JSONL output format - Verified
 		usesCombinedContextWindow: false, // Depends on selected model
+		supportsAppendSystemPrompt: false, // Not documented in CLI reference
 	},
 };
 
