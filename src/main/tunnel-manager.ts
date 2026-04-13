@@ -45,7 +45,13 @@ class TunnelManager {
 				'TunnelManager'
 			);
 
-			this.process = spawn(cloudflaredBinary, ['tunnel', '--url', `http://localhost:${port}`]);
+			this.process = spawn(cloudflaredBinary, [
+				'tunnel',
+				'--url',
+				`http://localhost:${port}`,
+				'--protocol',
+				'http2',
+			]);
 
 			let resolved = false;
 			let stderrBuffer = '';
@@ -60,9 +66,7 @@ class TunnelManager {
 				}
 			}, 30000);
 
-			// Cloudflare outputs the URL to stderr
-			// Accumulate buffer in case URL is split across chunks
-			this.process.stderr?.on('data', (data: Buffer) => {
+			const handleOutput = (data: Buffer) => {
 				const output = data.toString();
 				stderrBuffer += output;
 				logger.info(`cloudflared output: ${output}`, 'TunnelManager');
@@ -76,7 +80,11 @@ class TunnelManager {
 					logger.info(`Tunnel established: ${this.url}`, 'TunnelManager');
 					resolve({ success: true, url: this.url });
 				}
-			});
+			};
+
+			// cloudflared outputs the URL to stderr, but also listen on stdout as a fallback
+			this.process.stderr?.on('data', handleOutput);
+			this.process.stdout?.on('data', handleOutput);
 
 			this.process.on('error', (err) => {
 				clearTimeout(timeout);
