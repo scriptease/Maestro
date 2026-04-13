@@ -285,7 +285,10 @@ export function EditAgentModal({
 				? {
 						enabled: true,
 						remoteId: sshRemoteConfig.remoteId,
-						workingDirOverride: sshRemoteConfig.workingDirOverride,
+						// Ensure workingDirOverride is set: prefer explicit override, then session's
+						// projectRoot (which is the remote path the user originally configured).
+						workingDirOverride:
+							sshRemoteConfig.workingDirOverride || session?.projectRoot || undefined,
 						syncHistory: sshRemoteConfig.syncHistory,
 					}
 				: { enabled: false, remoteId: null };

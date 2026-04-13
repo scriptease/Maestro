@@ -405,6 +405,127 @@ describe('TerminalView — auto-close on shell exit', () => {
 	});
 });
 
+describe('TerminalView — SSH terminal working directory (regression)', () => {
+	// Regression test suite: SSH terminals must cd to the correct remote directory.
+	// The workingDirOverride in sessionSshRemoteConfig must follow the fallback chain:
+	//   1. sessionSshRemoteConfig.workingDirOverride (explicit)
+	//   2. session.remoteCwd (tracked remote cwd from agent)
+	//   3. session.cwd (the working directory from session creation — a remote path for SSH sessions)
+	// Without this chain, SSH terminals silently drop into the remote home directory.
+
+	it('uses sessionSshRemoteConfig.workingDirOverride when set', async () => {
+		const tab = makeTab({ id: 'tab-1', pid: 0, state: 'idle', createdAt: Date.now() });
+		const session = {
+			...makeSession([tab]),
+			cwd: '/home/user/project',
+			sessionSshRemoteConfig: {
+				enabled: true,
+				remoteId: 'remote-1',
+				workingDirOverride: '/explicit/remote/path',
+			},
+		} as unknown as Session;
+
+		await act(async () => {
+			render(<TerminalView {...defaultProps} session={session} isVisible={true} />);
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		});
+
+		expect(maestro().process.spawnTerminalTab).toHaveBeenCalledWith(
+			expect.objectContaining({
+				sessionSshRemoteConfig: expect.objectContaining({
+					enabled: true,
+					remoteId: 'remote-1',
+					workingDirOverride: '/explicit/remote/path',
+				}),
+			})
+		);
+	});
+
+	it('falls back to session.remoteCwd when workingDirOverride is not set', async () => {
+		const tab = makeTab({ id: 'tab-1', pid: 0, state: 'idle', createdAt: Date.now() });
+		const session = {
+			...makeSession([tab]),
+			cwd: '/home/user/project',
+			remoteCwd: '/remote/tracked/cwd',
+			sessionSshRemoteConfig: {
+				enabled: true,
+				remoteId: 'remote-1',
+				// No workingDirOverride
+			},
+		} as unknown as Session;
+
+		await act(async () => {
+			render(<TerminalView {...defaultProps} session={session} isVisible={true} />);
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		});
+
+		expect(maestro().process.spawnTerminalTab).toHaveBeenCalledWith(
+			expect.objectContaining({
+				sessionSshRemoteConfig: expect.objectContaining({
+					enabled: true,
+					workingDirOverride: '/remote/tracked/cwd',
+				}),
+			})
+		);
+	});
+
+	it('falls back to session.cwd when both workingDirOverride and remoteCwd are absent', async () => {
+		const tab = makeTab({ id: 'tab-1', pid: 0, state: 'idle', createdAt: Date.now() });
+		const session = {
+			...makeSession([tab]),
+			cwd: '/home/user/project',
+			// No remoteCwd
+			sessionSshRemoteConfig: {
+				enabled: true,
+				remoteId: 'remote-1',
+				// No workingDirOverride
+			},
+		} as unknown as Session;
+
+		await act(async () => {
+			render(<TerminalView {...defaultProps} session={session} isVisible={true} />);
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		});
+
+		// session.cwd is the last-resort fallback — for SSH sessions this IS a remote path
+		expect(maestro().process.spawnTerminalTab).toHaveBeenCalledWith(
+			expect.objectContaining({
+				sessionSshRemoteConfig: expect.objectContaining({
+					enabled: true,
+					workingDirOverride: '/home/user/project',
+				}),
+			})
+		);
+	});
+
+	it('uses sshRemoteId fallback path with correct cwd chain', async () => {
+		// When sessionSshRemoteConfig is not enabled but sshRemoteId is set
+		// (agent connected via SSH), the fallback path should still resolve a working dir.
+		const tab = makeTab({ id: 'tab-1', pid: 0, state: 'idle', createdAt: Date.now() });
+		const session = {
+			...makeSession([tab]),
+			cwd: '/home/user/project',
+			sshRemoteId: 'remote-1',
+			// No sessionSshRemoteConfig.enabled
+		} as unknown as Session;
+
+		await act(async () => {
+			render(<TerminalView {...defaultProps} session={session} isVisible={true} />);
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		});
+
+		expect(maestro().process.spawnTerminalTab).toHaveBeenCalledWith(
+			expect.objectContaining({
+				sessionSshRemoteConfig: expect.objectContaining({
+					enabled: true,
+					remoteId: 'remote-1',
+					workingDirOverride: '/home/user/project',
+				}),
+			})
+		);
+	});
+});
+
 describe('TerminalView — no refresh when no tabs', () => {
 	it('renders empty state without calling refresh when there are no terminal tabs', () => {
 		const session = makeSession([]);

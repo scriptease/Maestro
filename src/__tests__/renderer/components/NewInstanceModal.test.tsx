@@ -2424,7 +2424,9 @@ describe('NewInstanceModal', () => {
 			});
 
 			// Should have passed the SSH config that was selected while agent was not yet selected
-			// This proves the _pending_ config was transferred to the agent on selection
+			// This proves the _pending_ config was transferred to the agent on selection.
+			// workingDirOverride should be the working directory path since SSH is enabled
+			// (the Working Directory field contains a remote path when SSH is on).
 			expect(onCreate).toHaveBeenCalledWith(
 				'opencode',
 				'/test/path',
@@ -2440,7 +2442,7 @@ describe('NewInstanceModal', () => {
 					enabled: true,
 					remoteId: 'remote-1',
 					syncHistory: false,
-					workingDirOverride: undefined,
+					workingDirOverride: '/test/path',
 				}
 			);
 		});
@@ -2567,6 +2569,214 @@ describe('NewInstanceModal', () => {
 				expect(detectMock.mock.calls.length).toBeGreaterThan(initialCallCount);
 				expect(detectMock).toHaveBeenCalledWith('remote-1');
 			});
+		});
+
+		it('should set workingDirOverride to the remote path when creating SSH agent (regression: SSH terminal cwd)', async () => {
+			// Regression test: when SSH is enabled the "Working Directory" field contains a remote
+			// path. This path MUST flow into sessionSshRemoteConfig.workingDirOverride so that
+			// SSH terminals `cd` to the correct directory on the remote host. Without this,
+			// terminals would drop into the remote home directory instead.
+			vi.mocked(window.maestro.agents.detect).mockResolvedValue([
+				createAgentConfig({ id: 'claude-code', name: 'Claude Code', available: true }),
+			]);
+			vi.mocked(window.maestro.sshRemote.getConfigs).mockResolvedValue({
+				success: true,
+				configs: [
+					{
+						id: 'remote-1',
+						name: 'Dev Server',
+						host: 'dev.example.com',
+						port: 22,
+						username: 'devuser',
+						privateKeyPath: '/path/to/key',
+						enabled: true,
+					},
+				],
+			});
+			vi.mocked(window.maestro.fs.stat).mockResolvedValue({
+				size: 4096,
+				createdAt: '2024-01-01T00:00:00.000Z',
+				modifiedAt: '2024-01-15T12:30:00.000Z',
+				isDirectory: true,
+				isFile: false,
+			});
+
+			render(
+				<NewInstanceModal
+					isOpen={true}
+					onClose={onClose}
+					onCreate={onCreate}
+					theme={theme}
+					existingSessions={[]}
+				/>
+			);
+
+			// Wait for agents and SSH selector to load
+			await waitFor(() => {
+				expect(screen.getByText('SSH Remote Execution')).toBeInTheDocument();
+			});
+
+			// Select SSH remote
+			const dropdown = screen.getByRole('combobox');
+			fireEvent.change(dropdown, { target: { value: 'remote-1' } });
+
+			// Select agent
+			await waitFor(() => {
+				expect(screen.getByText('Claude Code')).toBeInTheDocument();
+			});
+			const agentOption = screen.getByRole('option', { name: /Claude Code/i });
+			await act(async () => {
+				fireEvent.click(agentOption);
+			});
+
+			// Fill in name and remote working directory
+			fireEvent.change(screen.getByLabelText('Agent Name'), {
+				target: { value: 'Remote Agent' },
+			});
+			fireEvent.change(screen.getByLabelText('Working Directory'), {
+				target: { value: '/home/devuser/my-project' },
+			});
+
+			// Wait for remote path validation
+			await waitFor(
+				() => {
+					expect(screen.getByText('Directory found on dev.example.com')).toBeInTheDocument();
+				},
+				{ timeout: 3000 }
+			);
+
+			// Create the agent
+			await act(async () => {
+				fireEvent.click(screen.getByText('Create Agent'));
+			});
+
+			// The critical assertion: workingDirOverride MUST match the remote path
+			expect(onCreate).toHaveBeenCalledWith(
+				'claude-code',
+				'/home/devuser/my-project',
+				'Remote Agent',
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				expect.objectContaining({
+					enabled: true,
+					remoteId: 'remote-1',
+					workingDirOverride: '/home/devuser/my-project',
+				})
+			);
+		});
+
+		it('should preserve explicit workingDirOverride over working directory when duplicating SSH agent', async () => {
+			// When duplicating a session that already has an explicit workingDirOverride,
+			// the explicit value should take precedence over the working directory field.
+			const sourceSession: Session = {
+				id: 'session-1',
+				name: 'SSH Agent',
+				toolType: 'claude-code',
+				cwd: '/home/devuser/project',
+				projectRoot: '/home/devuser/project',
+				fullPath: '/home/devuser/project',
+				state: 'idle',
+				inputMode: 'ai',
+				aiPid: 12345,
+				terminalPid: 12346,
+				port: 3000,
+				aiTabs: [],
+				activeTabId: 'tab-1',
+				closedTabHistory: [],
+				shellLogs: [],
+				executionQueue: [],
+				contextUsage: 0,
+				workLog: [],
+				isGitRepo: false,
+				changedFiles: [],
+				fileTree: [],
+				fileExplorerExpanded: [],
+				fileExplorerScrollPos: 0,
+				isLive: false,
+				sessionSshRemoteConfig: {
+					enabled: true,
+					remoteId: 'remote-1',
+					workingDirOverride: '/explicit/override/path',
+				},
+			} as Session;
+
+			vi.mocked(window.maestro.agents.detect).mockResolvedValue([
+				createAgentConfig({ id: 'claude-code', name: 'Claude Code', available: true }),
+			]);
+			vi.mocked(window.maestro.sshRemote.getConfigs).mockResolvedValue({
+				success: true,
+				configs: [
+					{
+						id: 'remote-1',
+						name: 'Dev Server',
+						host: 'dev.example.com',
+						port: 22,
+						username: 'devuser',
+						privateKeyPath: '/path/to/key',
+						enabled: true,
+					},
+				],
+			});
+			vi.mocked(window.maestro.fs.stat).mockResolvedValue({
+				size: 4096,
+				createdAt: '2024-01-01T00:00:00.000Z',
+				modifiedAt: '2024-01-15T12:30:00.000Z',
+				isDirectory: true,
+				isFile: false,
+			});
+
+			render(
+				<NewInstanceModal
+					isOpen={true}
+					onClose={onClose}
+					onCreate={onCreate}
+					theme={theme}
+					existingSessions={[]}
+					sourceSession={sourceSession}
+				/>
+			);
+
+			await waitFor(() => {
+				const nameInput = screen.getByLabelText('Agent Name') as HTMLInputElement;
+				expect(nameInput.value).toBe('SSH Agent (Copy)');
+			});
+
+			// Wait for remote path validation
+			await waitFor(
+				() => {
+					expect(screen.getByText(/Directory found/)).toBeInTheDocument();
+				},
+				{ timeout: 3000 }
+			);
+
+			// Create the duplicate
+			await act(async () => {
+				fireEvent.click(screen.getByText('Create Agent'));
+			});
+
+			// The explicit workingDirOverride from the source session should be preserved
+			expect(onCreate).toHaveBeenCalledWith(
+				expect.any(String),
+				expect.any(String),
+				expect.any(String),
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				expect.objectContaining({
+					enabled: true,
+					remoteId: 'remote-1',
+					workingDirOverride: '/explicit/override/path',
+				})
+			);
 		});
 
 		it('should show connection error when SSH remote is unreachable', async () => {

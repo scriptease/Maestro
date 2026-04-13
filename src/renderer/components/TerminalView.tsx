@@ -161,15 +161,19 @@ export const TerminalView = memo(
 				// to sshRemoteId which is set after an AI agent connects. Without this fallback,
 				// terminal tabs under running SSH agents spawn locally instead of on the remote host.
 				//
-				// workingDirOverride must be a REMOTE path. session.remoteCwd is the tracked remote
-				// working directory; sessionSshRemoteConfig.workingDirOverride is the user-configured
-				// remote project root. session.cwd is LOCAL and must NOT be used here — it would
-				// cause `cd "/local/path"` on the remote, which fails and exits SSH immediately.
+				// workingDirOverride must be a REMOTE path. Fallback chain:
+				//   1. sessionSshRemoteConfig.workingDirOverride — user-configured remote project root
+				//   2. session.remoteCwd — tracked remote cwd (set after agent reports cd)
+				//   3. session.cwd — the working directory from session creation; for SSH sessions
+				//      this IS a remote path (the user types a remote path when SSH is enabled)
 				const effectiveSshConfig = session.sessionSshRemoteConfig?.enabled
 					? {
 							...session.sessionSshRemoteConfig,
 							workingDirOverride:
-								session.sessionSshRemoteConfig.workingDirOverride || session.remoteCwd || undefined,
+								session.sessionSshRemoteConfig.workingDirOverride ||
+								session.remoteCwd ||
+								session.cwd ||
+								undefined,
 						}
 					: session.sshRemoteId
 						? {
@@ -178,6 +182,7 @@ export const TerminalView = memo(
 								workingDirOverride:
 									session.remoteCwd ||
 									session.sessionSshRemoteConfig?.workingDirOverride ||
+									session.cwd ||
 									undefined,
 							}
 						: undefined;

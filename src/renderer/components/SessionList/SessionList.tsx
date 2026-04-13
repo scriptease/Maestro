@@ -132,19 +132,15 @@ function SessionListInner(props: SessionListProps) {
 	const contextWarningRedThreshold = useSettingsStore(
 		(s) => s.contextManagementSettings.contextWarningRedThreshold
 	);
-	const maestroCueEnabled = useSettingsStore((s) => s.encoreFeatures.maestroCue);
 	const activeBatchSessionIds = useBatchStore(useShallow(selectActiveBatchSessionIds));
 
-	// Cue session status map: sessionId → { count, active } (only active when Encore Feature enabled)
+	// Cue session status map: sessionId → { count, active }
+	// Always fetched — the indicator shows whenever a .maestro/cue.yaml has subscriptions,
+	// regardless of whether the Cue Encore Feature is enabled (that only gates execution).
 	const [cueSessionMap, setCueSessionMap] = useState<
 		Map<string, { count: number; active: boolean }>
 	>(new Map());
 	useEffect(() => {
-		if (!maestroCueEnabled) {
-			setCueSessionMap(new Map());
-			return;
-		}
-
 		let mounted = true;
 
 		const fetchCueStatus = async () => {
@@ -175,7 +171,8 @@ function SessionListInner(props: SessionListProps) {
 			mounted = false;
 			unsubscribe();
 		};
-	}, [maestroCueEnabled]);
+		// Re-fetch when sessions change so newly added agents show their Cue indicator
+	}, [sessions.length]);
 	const groupChats = useGroupChatStore((s) => s.groupChats);
 	const activeGroupChatId = useGroupChatStore((s) => s.activeGroupChatId);
 	const groupChatState = useGroupChatStore((s) => s.groupChatState);
@@ -1366,11 +1363,7 @@ function SessionListInner(props: SessionListProps) {
 							? () => onCreateGroupAndMove(contextMenuSession.id)
 							: createNewGroup
 					}
-					onConfigureCue={
-						onConfigureCue && maestroCueEnabled
-							? () => onConfigureCue(contextMenuSession)
-							: undefined
-					}
+					onConfigureCue={onConfigureCue ? () => onConfigureCue(contextMenuSession) : undefined}
 				/>
 			)}
 		</div>

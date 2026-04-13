@@ -380,7 +380,10 @@ export function NewInstanceModal({
 				? {
 						enabled: true,
 						remoteId: sshRemoteConfig.remoteId,
-						workingDirOverride: sshRemoteConfig.workingDirOverride,
+						// When SSH is enabled, the Working Directory field contains a remote path.
+						// Use it as workingDirOverride so SSH terminals cd to the right place.
+						workingDirOverride:
+							sshRemoteConfig.workingDirOverride || expandedWorkingDir || undefined,
 						syncHistory: sshRemoteConfig.syncHistory,
 					}
 				: { enabled: false, remoteId: null };

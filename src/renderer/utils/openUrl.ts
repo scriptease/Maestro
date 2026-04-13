@@ -54,9 +54,16 @@ export function openUrl(url: string, options?: { ctrlKey?: boolean }): void {
 }
 
 /**
+ * Open a URL directly in the system browser, bypassing settings.
+ */
+export function openInSystemBrowser(url: string): void {
+	window.maestro.shell.openExternal(url);
+}
+
+/**
  * Open a URL in a Maestro browser tab within the current active agent.
  */
-function openInMaestroBrowser(url: string): void {
+export function openInMaestroBrowser(url: string): void {
 	const { sessions, activeSessionId, setSessions } = useSessionStore.getState();
 	const session = sessions.find((s) => s.id === activeSessionId);
 	if (!session) {

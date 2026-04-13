@@ -604,7 +604,7 @@ export const SETTINGS_METADATA: Record<string, SettingMetadata> = {
 	// --- Browser ---
 	useSystemBrowser: {
 		description:
-			'Use the system browser for opening links instead of the Maestro built-in browser tab. Ctrl+click inverts the behavior.',
+			'Controls the default browser for clicking links. Ctrl+click shows a context menu to choose the browser.',
 		type: 'boolean',
 		default: false,
 		category: 'editor',

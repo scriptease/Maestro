@@ -441,6 +441,135 @@ describe('EditAgentModal', () => {
 		});
 	});
 
+	it('should set workingDirOverride from projectRoot when saving SSH session without explicit override (regression: SSH terminal cwd)', async () => {
+		// Regression test: when an SSH session has no explicit workingDirOverride
+		// (e.g., created before the fix), saving it should populate workingDirOverride
+		// from session.projectRoot so SSH terminals cd to the correct remote directory.
+		const sshSession = createSession({
+			projectRoot: '/home/devuser/my-project',
+			cwd: '/home/devuser/my-project',
+			sessionSshRemoteConfig: {
+				enabled: true,
+				remoteId: 'remote-1',
+				// No workingDirOverride — this is the regression scenario
+			},
+		});
+
+		vi.mocked(window.maestro.sshRemote.getConfigs).mockResolvedValue({
+			success: true,
+			configs: [
+				{
+					id: 'remote-1',
+					name: 'Dev Server',
+					host: 'dev.example.com',
+					port: 22,
+					username: 'devuser',
+					privateKeyPath: '/path/to/key',
+					enabled: true,
+				},
+			],
+		});
+
+		render(
+			<EditAgentModal
+				isOpen={true}
+				onClose={onClose}
+				onSave={onSave}
+				theme={theme}
+				session={sshSession}
+				existingSessions={[]}
+			/>
+		);
+
+		await waitFor(() => {
+			expect(screen.getByDisplayValue('My Agent')).toBeInTheDocument();
+		});
+
+		fireEvent.click(screen.getByText('Save Changes'));
+
+		// workingDirOverride should be populated from projectRoot
+		expect(onSave).toHaveBeenCalledWith(
+			expect.any(String), // sessionId
+			expect.any(String), // name
+			undefined, // toolType not changed
+			expect.anything(), // nudgeMessage
+			expect.anything(), // customPath
+			expect.anything(), // customArgs
+			expect.anything(), // customEnvVars
+			expect.anything(), // model
+			expect.anything(), // contextWindow
+			expect.objectContaining({
+				enabled: true,
+				remoteId: 'remote-1',
+				workingDirOverride: '/home/devuser/my-project',
+			})
+		);
+	});
+
+	it('should preserve explicit workingDirOverride when saving SSH session (regression: SSH terminal cwd)', async () => {
+		// When a session already has an explicit workingDirOverride, saving should keep it
+		// (not overwrite it with projectRoot).
+		const sshSession = createSession({
+			projectRoot: '/home/devuser/project',
+			cwd: '/home/devuser/project',
+			sessionSshRemoteConfig: {
+				enabled: true,
+				remoteId: 'remote-1',
+				workingDirOverride: '/explicit/remote/path',
+			},
+		});
+
+		vi.mocked(window.maestro.sshRemote.getConfigs).mockResolvedValue({
+			success: true,
+			configs: [
+				{
+					id: 'remote-1',
+					name: 'Dev Server',
+					host: 'dev.example.com',
+					port: 22,
+					username: 'devuser',
+					privateKeyPath: '/path/to/key',
+					enabled: true,
+				},
+			],
+		});
+
+		render(
+			<EditAgentModal
+				isOpen={true}
+				onClose={onClose}
+				onSave={onSave}
+				theme={theme}
+				session={sshSession}
+				existingSessions={[]}
+			/>
+		);
+
+		await waitFor(() => {
+			expect(screen.getByDisplayValue('My Agent')).toBeInTheDocument();
+		});
+
+		fireEvent.click(screen.getByText('Save Changes'));
+
+		// Explicit workingDirOverride should be preserved, not replaced by projectRoot
+		expect(onSave).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.any(String),
+			undefined,
+			expect.anything(),
+			expect.anything(),
+			expect.anything(),
+			expect.anything(),
+			expect.anything(),
+			expect.anything(),
+			expect.objectContaining({
+				enabled: true,
+				remoteId: 'remote-1',
+				workingDirOverride: '/explicit/remote/path',
+			})
+		);
+	});
+
 	it('should render SSH remote selector when remotes exist', async () => {
 		vi.mocked(window.maestro.sshRemote.getConfigs).mockResolvedValue({
 			success: true,

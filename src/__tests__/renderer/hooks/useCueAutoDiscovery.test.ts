@@ -2,10 +2,11 @@
  * Tests for useCueAutoDiscovery hook
  *
  * This hook auto-discovers .maestro/cue.yaml files when sessions are loaded,
- * created, or removed. It gates all operations on the maestroCue encore feature.
+ * created, or removed. Session discovery always runs so the Cue indicator
+ * shows in the Left Bar. The encore feature flag only gates engine start/stop.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useCueAutoDiscovery } from '../../../renderer/hooks/useCueAutoDiscovery';
 import { useSessionStore } from '../../../renderer/stores/sessionStore';
@@ -80,7 +81,7 @@ describe('useCueAutoDiscovery', () => {
 			expect(mockRefreshSession).toHaveBeenCalledWith('s2', '/project/b');
 		});
 
-		it('should not scan sessions if maestroCue is disabled', () => {
+		it('should scan sessions even if maestroCue is disabled (indicator always shows)', () => {
 			const sessions = [makeSession('s1', '/project/a')];
 			const encoreFeatures = makeEncoreFeatures(false);
 
@@ -90,7 +91,8 @@ describe('useCueAutoDiscovery', () => {
 				useSessionStore.setState({ sessionsLoaded: true });
 			});
 
-			expect(mockRefreshSession).not.toHaveBeenCalled();
+			expect(mockRefreshSession).toHaveBeenCalledTimes(1);
+			expect(mockRefreshSession).toHaveBeenCalledWith('s1', '/project/a');
 		});
 
 		it('should skip sessions without projectRoot', () => {
@@ -211,8 +213,8 @@ describe('useCueAutoDiscovery', () => {
 		});
 	});
 
-	describe('gating behavior', () => {
-		it('should not refresh sessions when maestroCue is disabled even if sessions change', () => {
+	describe('discovery always runs', () => {
+		it('should refresh new sessions even when maestroCue is disabled', () => {
 			const initialSessions = [makeSession('s1', '/project/a')];
 			const encoreFeatures = makeEncoreFeatures(false);
 
@@ -225,11 +227,11 @@ describe('useCueAutoDiscovery', () => {
 
 			mockRefreshSession.mockClear();
 
-			// Add a new session while feature is disabled
+			// Add a new session while feature is disabled — should still refresh
 			const updatedSessions = [...initialSessions, makeSession('s2', '/project/b')];
 			rerender({ sessions: updatedSessions, encore: encoreFeatures });
 
-			expect(mockRefreshSession).not.toHaveBeenCalled();
+			expect(mockRefreshSession).toHaveBeenCalledWith('s2', '/project/b');
 		});
 	});
 });

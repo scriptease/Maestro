@@ -898,7 +898,7 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 					icon={ExternalLink}
 					sectionLabel="Default Browser"
 					title="Use system browser for links"
-					description="When enabled, clicking links opens them in your system browser instead of a Maestro browser tab. Ctrl+click always uses the other browser."
+					description="Controls the default browser for clicking links. Use Ctrl+Click on URLs to get a context menu and choose the specific browser."
 					checked={useSystemBrowser}
 					onChange={setUseSystemBrowser}
 					theme={theme}

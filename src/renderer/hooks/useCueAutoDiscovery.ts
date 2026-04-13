@@ -9,10 +9,12 @@ import { useSessionStore } from '../stores/sessionStore';
  * 1. After sessions are restored on app launch, refreshes all sessions
  * 2. When a new session is created, refreshes that session
  * 3. When a session is removed, notifies the engine to clean up
- * 4. When the maestroCue encore feature is toggled on, scans all sessions
- * 5. When the maestroCue encore feature is toggled off, disables the engine
+ * 4. When the maestroCue encore feature is toggled on, starts the engine
+ * 5. When the maestroCue encore feature is toggled off, stops the engine
  *
- * All calls are gated on encoreFeatures.maestroCue being enabled.
+ * Session discovery always runs so the Cue indicator shows in the Left Bar
+ * whenever a .maestro/cue.yaml exists. The encore feature flag only gates
+ * engine execution (start/stop), not config discovery.
  */
 export function useCueAutoDiscovery(sessions: Session[], encoreFeatures: EncoreFeatureFlags) {
 	const sessionsLoaded = useSessionStore((s) => s.sessionsLoaded);
@@ -20,16 +22,15 @@ export function useCueAutoDiscovery(sessions: Session[], encoreFeatures: EncoreF
 	const prevMaestroCueEnabledRef = useRef<boolean>(encoreFeatures.maestroCue);
 	const initialScanDoneRef = useRef(false);
 
-	// Track session additions and removals
+	// Track session additions and removals — always runs regardless of encore flag
 	useEffect(() => {
 		if (!sessionsLoaded) return;
 
 		const currentIds = new Set(sessions.map((s) => s.id));
 		const prevIds = prevSessionIdsRef.current;
-		const isMaestroCueEnabled = encoreFeatures.maestroCue;
 
 		// --- Initial scan after sessions are loaded ---
-		if (!initialScanDoneRef.current && isMaestroCueEnabled) {
+		if (!initialScanDoneRef.current) {
 			initialScanDoneRef.current = true;
 			for (const session of sessions) {
 				if (session.projectRoot) {
@@ -38,17 +39,6 @@ export function useCueAutoDiscovery(sessions: Session[], encoreFeatures: EncoreF
 						.catch((err) => console.error('[CueAutoDiscovery] Failed to refresh session:', err));
 				}
 			}
-			prevSessionIdsRef.current = currentIds;
-			return;
-		}
-
-		if (!initialScanDoneRef.current) {
-			initialScanDoneRef.current = true;
-			prevSessionIdsRef.current = currentIds;
-			return;
-		}
-
-		if (!isMaestroCueEnabled) {
 			prevSessionIdsRef.current = currentIds;
 			return;
 		}
@@ -72,7 +62,7 @@ export function useCueAutoDiscovery(sessions: Session[], encoreFeatures: EncoreF
 		}
 
 		prevSessionIdsRef.current = currentIds;
-	}, [sessions, sessionsLoaded, encoreFeatures.maestroCue]);
+	}, [sessions, sessionsLoaded]);
 
 	// Track encore feature toggle
 	useEffect(() => {

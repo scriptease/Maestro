@@ -3246,13 +3246,12 @@ describe('SessionList', () => {
 	// ============================================================================
 
 	describe('Cue Status Indicator', () => {
-		it('shows Zap icon for sessions with active Cue subscriptions when Encore Feature enabled', async () => {
+		it('shows Zap icon for sessions with active Cue subscriptions', async () => {
 			const session = createMockSession({ id: 's1', name: 'Cue Session' });
 			useSessionStore.setState({ sessions: [session] });
 			useUIStore.setState({ leftSidebarOpen: true });
 			useSettingsStore.setState({
 				shortcuts: defaultShortcuts,
-				encoreFeatures: { directorNotes: false, maestroCue: true },
 			});
 
 			// Mock Cue status to return session with subscriptions
@@ -3286,8 +3285,8 @@ describe('SessionList', () => {
 			);
 		});
 
-		it('does not show Zap icon when Encore Feature is disabled', async () => {
-			const session = createMockSession({ id: 's1', name: 'No Cue Session' });
+		it('shows Zap icon even when Encore Feature is disabled (indicator is not gated)', async () => {
+			const session = createMockSession({ id: 's1', name: 'Cue Session' });
 			useSessionStore.setState({ sessions: [session] });
 			useUIStore.setState({ leftSidebarOpen: true });
 			useSettingsStore.setState({
@@ -3295,15 +3294,28 @@ describe('SessionList', () => {
 				encoreFeatures: { directorNotes: false, maestroCue: false },
 			});
 
+			// Mock Cue status to return session with subscriptions
+			(window.maestro as Record<string, unknown>).cue = {
+				getStatus: vi.fn().mockResolvedValue([
+					{
+						sessionId: 's1',
+						sessionName: 'Cue Session',
+						subscriptionCount: 2,
+						enabled: false,
+						activeRuns: 0,
+					},
+				]),
+				getActiveRuns: vi.fn().mockResolvedValue([]),
+				getActivityLog: vi.fn().mockResolvedValue([]),
+				onActivityUpdate: vi.fn().mockReturnValue(() => {}),
+			};
+
 			const props = createDefaultProps({ sortedSessions: [session] });
 			render(<SessionList {...props} />);
 
-			// Give async effects time to settle
-			await act(async () => {
-				await new Promise((r) => setTimeout(r, 50));
+			await waitFor(() => {
+				expect(screen.getByTestId('icon-zap')).toBeInTheDocument();
 			});
-
-			expect(screen.queryByTestId('icon-zap')).not.toBeInTheDocument();
 		});
 
 		it('does not show Zap icon for sessions without Cue subscriptions', async () => {
@@ -3312,7 +3324,6 @@ describe('SessionList', () => {
 			useUIStore.setState({ leftSidebarOpen: true });
 			useSettingsStore.setState({
 				shortcuts: defaultShortcuts,
-				encoreFeatures: { directorNotes: false, maestroCue: true },
 			});
 
 			// Mock Cue status with no sessions having subscriptions
