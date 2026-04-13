@@ -2824,4 +2824,109 @@ describe('useMainKeyboardHandler', () => {
 			input.remove();
 		});
 	});
+
+	describe('browser tab shortcut IPC forwarding', () => {
+		it('dispatches a keydown event on the window when IPC shortcut arrives', () => {
+			let ipcCallback: ((input: Record<string, unknown>) => void) | null = null;
+			(window as any).maestro = {
+				...(window as any).maestro,
+				app: {
+					...((window as any).maestro?.app ?? {}),
+					onBrowserTabShortcutKey: (cb: (input: Record<string, unknown>) => void) => {
+						ipcCallback = cb;
+						return () => {
+							ipcCallback = null;
+						};
+					},
+				},
+			};
+
+			renderHook(() => useMainKeyboardHandler());
+			expect(ipcCallback).not.toBeNull();
+
+			const dispatched: KeyboardEvent[] = [];
+			const listener = (e: Event) => dispatched.push(e as KeyboardEvent);
+			originalAddEventListener.call(window, 'keydown', listener);
+
+			act(() => {
+				ipcCallback!({
+					key: ']',
+					code: 'BracketRight',
+					meta: true,
+					control: false,
+					alt: false,
+					shift: true,
+				});
+			});
+
+			originalRemoveEventListener.call(window, 'keydown', listener);
+
+			const match = dispatched.find((e) => e.key === ']' && e.metaKey && e.shiftKey);
+			expect(match).toBeDefined();
+		});
+
+		it('blurs the active webview element before dispatching', () => {
+			let ipcCallback: ((input: Record<string, unknown>) => void) | null = null;
+			(window as any).maestro = {
+				...(window as any).maestro,
+				app: {
+					...((window as any).maestro?.app ?? {}),
+					onBrowserTabShortcutKey: (cb: (input: Record<string, unknown>) => void) => {
+						ipcCallback = cb;
+						return () => {
+							ipcCallback = null;
+						};
+					},
+				},
+			};
+
+			renderHook(() => useMainKeyboardHandler());
+
+			// Create a fake WEBVIEW element and focus it.
+			// jsdom needs tabIndex to make non-standard elements focusable.
+			const fakeWebview = document.createElement('webview');
+			fakeWebview.tabIndex = 0;
+			const blurSpy = vi.spyOn(fakeWebview, 'blur');
+			document.body.appendChild(fakeWebview);
+			fakeWebview.focus();
+			// Verify jsdom actually focused it
+			expect(document.activeElement).toBe(fakeWebview);
+
+			act(() => {
+				ipcCallback!({
+					key: '[',
+					code: 'BracketLeft',
+					meta: true,
+					control: false,
+					alt: false,
+					shift: true,
+				});
+			});
+
+			expect(blurSpy).toHaveBeenCalled();
+			fakeWebview.remove();
+		});
+
+		it('unsubscribes from IPC on unmount', () => {
+			let ipcCallback: ((input: Record<string, unknown>) => void) | null = null;
+			(window as any).maestro = {
+				...(window as any).maestro,
+				app: {
+					...((window as any).maestro?.app ?? {}),
+					onBrowserTabShortcutKey: (cb: (input: Record<string, unknown>) => void) => {
+						ipcCallback = cb;
+						return () => {
+							ipcCallback = null;
+						};
+					},
+				},
+			};
+
+			const { unmount } = renderHook(() => useMainKeyboardHandler());
+			expect(ipcCallback).not.toBeNull();
+
+			unmount();
+			expect(ipcCallback).toBeNull();
+		});
+	});
 });

@@ -2494,6 +2494,26 @@ describe('tabHelpers', () => {
 			expect(result!.id).toBe('unread-tab');
 		});
 
+		it('includes browser tabs in showUnreadOnly mode', () => {
+			const readTab = createMockTab({ id: 'read-tab', hasUnread: false, inputValue: '' });
+			const browserTab = createMockBrowserTab({ id: 'browser-1' });
+			const session = createMockSession({
+				aiTabs: [readTab],
+				browserTabs: [browserTab as any],
+				activeTabId: 'read-tab',
+				activeFileTabId: null,
+				unifiedTabOrder: [
+					{ type: 'ai', id: 'read-tab' },
+					{ type: 'browser', id: 'browser-1' },
+				],
+			});
+
+			const result = navigateToNextUnifiedTab(session, true);
+
+			expect(result!.type).toBe('browser');
+			expect(result!.id).toBe('browser-1');
+		});
+
 		it('navigates to first tab when current tab not found in unified order', () => {
 			const tab1 = createMockTab({ id: 'tab-1' });
 			const tab2 = createMockTab({ id: 'tab-2' });
@@ -2744,6 +2764,26 @@ describe('tabHelpers', () => {
 			// Should skip the file tab and land on the unread AI tab
 			expect(result!.type).toBe('ai');
 			expect(result!.id).toBe('unread-tab');
+		});
+
+		it('includes browser tabs in showUnreadOnly mode', () => {
+			const readTab = createMockTab({ id: 'read-tab', hasUnread: false, inputValue: '' });
+			const browserTab = createMockBrowserTab({ id: 'browser-1' });
+			const session = createMockSession({
+				aiTabs: [readTab],
+				browserTabs: [browserTab as any],
+				activeTabId: 'read-tab',
+				activeFileTabId: null,
+				unifiedTabOrder: [
+					{ type: 'browser', id: 'browser-1' },
+					{ type: 'ai', id: 'read-tab' },
+				],
+			});
+
+			const result = navigateToPrevUnifiedTab(session, true);
+
+			expect(result!.type).toBe('browser');
+			expect(result!.id).toBe('browser-1');
 		});
 
 		it('navigates to last tab when current tab not found in unified order', () => {

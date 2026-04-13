@@ -1053,14 +1053,28 @@ export function useMainKeyboardHandler(): UseMainKeyboardHandlerReturn {
 		return () => window.removeEventListener('keydown', handleKeyDown);
 	}, []); // Empty dependencies - handler reads from ref
 
-	// Browser tab shortcut forwarding: BrowserTabView handles this directly
-	// via its own console-message listener (capture-phase interception in the
-	// guest page).  This IPC listener is kept as a no-op subscriber so the
-	// main-process side doesn't warn about unhandled messages.
+	// Browser tab shortcut forwarding: the main process intercepts shortcuts
+	// via before-input-event on webview guest contents and sends them here
+	// over IPC.  We blur the webview and re-dispatch so the main keyboard
+	// handler (above) processes them like any other shortcut.
 	useEffect(() => {
 		if (!window.maestro?.app?.onBrowserTabShortcutKey) return;
-		return window.maestro.app.onBrowserTabShortcutKey(() => {
-			// Handled by BrowserTabView console-message listener
+		return window.maestro.app.onBrowserTabShortcutKey((input) => {
+			if (document.activeElement?.tagName === 'WEBVIEW') {
+				(document.activeElement as HTMLElement).blur();
+			}
+			window.dispatchEvent(
+				new KeyboardEvent('keydown', {
+					key: input.key,
+					code: input.code,
+					metaKey: input.meta,
+					ctrlKey: input.control,
+					altKey: input.alt,
+					shiftKey: input.shift,
+					bubbles: true,
+					cancelable: true,
+				})
+			);
 		});
 	}, []);
 

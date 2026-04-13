@@ -56,6 +56,10 @@ export const BrowserTabView = React.memo(function BrowserTabView({
 	const isDomReadyRef = useRef(false);
 	const latestTabRef = useRef(tab);
 	const isAddressFocusedRef = useRef(false);
+	// Track whether the user explicitly clicked into the webview host area.
+	// Used to distinguish intentional focus (user click) from programmatic
+	// focus-stealing (page autofocus, window.focus(), etc.).
+	const userClickedRef = useRef(false);
 	const [addressValue, setAddressValue] = useState(tab.url);
 	const [addressError, setAddressError] = useState<string | null>(null);
 	const [addressBarHidden, setAddressBarHidden] = useState(false);
@@ -63,6 +67,36 @@ export const BrowserTabView = React.memo(function BrowserTabView({
 	useEffect(() => {
 		latestTabRef.current = tab;
 	}, [tab]);
+
+	// Prevent webview from stealing host-page focus when pages auto-focus an
+	// element (e.g. search box, login form, window.focus()).  If the webview
+	// gains focus without a preceding user click inside the host area, blur
+	// it immediately so keyboard shortcuts keep flowing through the window
+	// handler.  The user can always click the webview to intentionally focus it.
+	useEffect(() => {
+		const host = hostRef.current;
+		if (!host) return;
+		const onPointerDown = () => {
+			userClickedRef.current = true;
+		};
+		const onFocusIn = () => {
+			if (!userClickedRef.current) {
+				// Focus was not user-initiated — push it back out.
+				const active = document.activeElement;
+				if (active && host.contains(active)) {
+					(active as HTMLElement).blur();
+				}
+			}
+			// Reset after each focus event so the next auto-focus is caught.
+			userClickedRef.current = false;
+		};
+		host.addEventListener('pointerdown', onPointerDown, true);
+		host.addEventListener('focusin', onFocusIn);
+		return () => {
+			host.removeEventListener('pointerdown', onPointerDown, true);
+			host.removeEventListener('focusin', onFocusIn);
+		};
+	}, []);
 
 	useEffect(() => {
 		if (!isAddressFocusedRef.current) {
@@ -231,42 +265,9 @@ export const BrowserTabView = React.memo(function BrowserTabView({
 			const msg = (event as Event & { message?: string }).message;
 			if (msg === '__MAESTRO_SCROLL__1') setAddressBarHidden(true);
 			else if (msg === '__MAESTRO_SCROLL__0') setAddressBarHidden(false);
-			else if (msg?.startsWith('__MAESTRO_KEY__')) {
-				try {
-					const input = JSON.parse(msg.slice('__MAESTRO_KEY__'.length));
-					const k = (input.key as string).toLowerCase();
-					// Cmd+L: focus address bar directly
-					if ((input.meta || input.control) && !input.alt && !input.shift && k === 'l') {
-						const addrInput = document.getElementById(
-							`browser-tab-address-${tab.id}`
-						) as HTMLInputElement | null;
-						if (addrInput) {
-							addrInput.focus();
-							addrInput.select();
-						}
-						return;
-					}
-					// All other shortcuts: blur webview and re-dispatch so the
-					// main keyboard handler can process them.
-					if (document.activeElement?.tagName === 'WEBVIEW') {
-						(document.activeElement as HTMLElement).blur();
-					}
-					window.dispatchEvent(
-						new KeyboardEvent('keydown', {
-							key: input.key,
-							code: input.code,
-							metaKey: input.meta,
-							ctrlKey: input.control,
-							altKey: input.alt,
-							shiftKey: input.shift,
-							bubbles: true,
-							cancelable: true,
-						})
-					);
-				} catch {
-					// malformed, ignore
-				}
-			}
+			// __MAESTRO_KEY__ shortcuts are forwarded by the main process
+			// (via before-input-event and console-message → IPC) and handled
+			// by the onBrowserTabShortcutKey listener in useMainKeyboardHandler.
 		};
 
 		const handleDomReady = () => {

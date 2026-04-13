@@ -1915,7 +1915,7 @@ export function navigateToNextUnifiedTab(
 			const nextIndex = (currentIndex + offset) % length;
 			const tabRef = effectiveOrder[nextIndex];
 
-			// File tabs: only navigable if setting enabled; terminal tabs always navigable
+			// File tabs: only navigable if setting enabled; terminal/browser tabs always navigable
 			if (tabRef.type === 'file') {
 				if (useSettingsStore.getState().showFilePreviewsInUnreadFilter) {
 					const result = navigateToUnifiedTabByIndex(session, nextIndex);
@@ -1923,7 +1923,7 @@ export function navigateToNextUnifiedTab(
 				}
 				continue;
 			}
-			if (tabRef.type === 'terminal') {
+			if (tabRef.type === 'terminal' || tabRef.type === 'browser') {
 				const result = navigateToUnifiedTabByIndex(session, nextIndex);
 				if (result) return result;
 				continue;
@@ -2005,7 +2005,7 @@ export function navigateToPrevUnifiedTab(
 			const prevIndex = (currentIndex - offset + length) % length;
 			const tabRef = effectiveOrder[prevIndex];
 
-			// File tabs: only navigable if setting enabled; terminal tabs always navigable
+			// File tabs: only navigable if setting enabled; terminal/browser tabs always navigable
 			if (tabRef.type === 'file') {
 				if (useSettingsStore.getState().showFilePreviewsInUnreadFilter) {
 					const result = navigateToUnifiedTabByIndex(session, prevIndex);
@@ -2013,7 +2013,7 @@ export function navigateToPrevUnifiedTab(
 				}
 				continue;
 			}
-			if (tabRef.type === 'terminal') {
+			if (tabRef.type === 'terminal' || tabRef.type === 'browser') {
 				const result = navigateToUnifiedTabByIndex(session, prevIndex);
 				if (result) return result;
 				continue;
