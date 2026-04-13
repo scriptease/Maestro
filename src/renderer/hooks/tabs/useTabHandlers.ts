@@ -1208,17 +1208,11 @@ export function useTabHandlers(): TabHandlersReturn {
 			return { type: 'terminal', tabId };
 		}
 
-		// Check if a file tab is active
+		// Check if a file tab is active — delegate to handleCloseFileTab
+		// which shows an unsaved-changes confirmation modal when needed
 		if (session.activeFileTabId) {
 			const tabId = session.activeFileTabId;
-			setSessions((prev: Session[]) =>
-				prev.map((s) => {
-					if (s.id !== activeSessionId) return s;
-					const result = closeFileTabHelper(s, tabId);
-					if (!result) return s;
-					return result.session;
-				})
-			);
+			handleCloseFileTab(tabId);
 			return { type: 'file', tabId };
 		}
 
@@ -1245,7 +1239,7 @@ export function useTabHandlers(): TabHandlersReturn {
 		}
 
 		return { type: 'none' };
-	}, []);
+	}, [handleCloseFileTab]);
 
 	// ========================================================================
 	// Log Deletion

@@ -352,7 +352,7 @@ describe('useFilePreviewHandlers', () => {
 			);
 		});
 
-		it('does not write when save dialog is cancelled', async () => {
+		it('returns false and does not write when save dialog is cancelled', async () => {
 			mockSaveFile.mockResolvedValue(null);
 
 			const { result } = renderHook(() =>
@@ -363,10 +363,12 @@ describe('useFilePreviewHandlers', () => {
 				})
 			);
 
+			let saveResult: boolean | void;
 			await act(async () => {
-				await result.current.handleFilePreviewSave('', 'hello world');
+				saveResult = await result.current.handleFilePreviewSave('', 'hello world');
 			});
 
+			expect(saveResult!).toBe(false);
 			expect(mockSaveFile).toHaveBeenCalled();
 			expect(mockWriteFile).not.toHaveBeenCalled();
 		});

@@ -681,6 +681,27 @@ describe('useTabHandlers', () => {
 			expect(closeResult.tabId).toBe('file-1');
 		});
 
+		it('handleCloseCurrentTab shows confirmation for unsaved file tab', () => {
+			const aiTab = createMockAITab({ id: 'ai-1' });
+			const fileTab = createMockFileTab({
+				id: 'file-1',
+				editContent: 'unsaved draft',
+				name: 'Untitled',
+				extension: '',
+			});
+			setupSessionWithTabs([aiTab], [fileTab], 'ai-1', 'file-1');
+
+			const { result } = renderHook(() => useTabHandlers());
+			act(() => {
+				result.current.handleCloseCurrentTab();
+			});
+
+			expect(useModalStore.getState().isOpen('confirm')).toBe(true);
+			// File should NOT be removed yet (pending user confirmation)
+			const session = useSessionStore.getState().sessions[0];
+			expect(session.filePreviewTabs).toHaveLength(1);
+		});
+
 		it('handleCloseCurrentTab returns browser type for active browser tab', () => {
 			const aiTab = createMockAITab({ id: 'ai-1' });
 			const browserTab = createMockBrowserTab({ id: 'browser-1' });

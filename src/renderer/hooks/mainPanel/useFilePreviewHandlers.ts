@@ -77,7 +77,7 @@ export function useFilePreviewHandlers({
 	);
 
 	const handleFilePreviewSave = useCallback(
-		async (path: string, content: string) => {
+		async (path: string, content: string): Promise<boolean> => {
 			let savePath = path;
 
 			// Untitled file — prompt for save location
@@ -86,7 +86,7 @@ export function useFilePreviewHandlers({
 					title: 'Save File',
 					defaultPath: activeSession?.fullPath ? `${activeSession.fullPath}/Untitled` : undefined,
 				});
-				if (!chosen) return; // User cancelled
+				if (!chosen) return false; // User cancelled
 				savePath = chosen;
 			}
 
@@ -125,6 +125,7 @@ export function useFilePreviewHandlers({
 					onFileTabEditContentChange?.(activeFileTabId, undefined, content);
 				}
 			}
+			return true;
 		},
 		[
 			activeFileTabId,

@@ -50,7 +50,7 @@ export interface MainPanelContentProps {
 	filePreviewRef: React.RefObject<FilePreviewHandle>;
 	handleFilePreviewClose: () => void;
 	handleFilePreviewEditModeChange: (editMode: boolean) => void;
-	handleFilePreviewSave: (path: string, content: string) => Promise<void>;
+	handleFilePreviewSave: (path: string, content: string) => Promise<boolean | void>;
 	handleFilePreviewEditContentChange: (content: string) => void;
 	handleFilePreviewScrollPositionChange: (scrollTop: number) => void;
 	handleFilePreviewSearchQueryChange: (searchQuery: string) => void;

@@ -511,7 +511,8 @@ export const FilePreview = React.memo(
 
 			setIsSaving(true);
 			try {
-				await onSave(file.path, editContent);
+				const result = await onSave(file.path, editContent);
+				if (result === false) return; // User cancelled save dialog
 				// Update lastModifiedRef so the file-change poller doesn't flag our own save
 				try {
 					const stat = await window.maestro?.fs?.stat(file.path, sshRemoteId);
