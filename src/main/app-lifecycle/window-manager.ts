@@ -320,6 +320,9 @@ export function createWindowManager(deps: WindowManagerDependencies): WindowMana
 					});
 				});
 
+				// Capture-phase listener: intercepts app shortcuts BEFORE the page
+				// can handle them.  We preventDefault+stopPropagation so the page
+				// never sees the event, then forward it to the app via console.log.
 				const shortcutInjection = `(function(){
 					if(window.__maestroShortcutListenerInstalled)return;
 					window.__maestroShortcutListenerInstalled=true;
@@ -327,17 +330,18 @@ export function createWindowManager(deps: WindowManagerDependencies): WindowMana
 						var hasMod=e.metaKey||e.ctrlKey;
 						var hasAlt=e.altKey;
 						if(!hasMod&&!hasAlt)return;
-						if(e.defaultPrevented)return;
 						var k=e.key.toLowerCase();
 						var te=hasMod&&!hasAlt&&!e.shiftKey&&'acvxzf'.indexOf(k)!==-1;
 						var re=hasMod&&!hasAlt&&e.shiftKey&&k==='z';
 						if(te||re)return;
+						e.preventDefault();
+						e.stopPropagation();
 						console.log('__MAESTRO_KEY__'+JSON.stringify({
 							key:e.key,code:e.code,
 							meta:e.metaKey,control:e.ctrlKey,
 							alt:e.altKey,shift:e.shiftKey
 						}));
-					},false);
+					},true);
 				})();`;
 				const injectShortcutListener = () => {
 					guest.executeJavaScript(shortcutInjection).catch(() => {});

@@ -21,6 +21,9 @@ import { autoRun } from './commands/auto-run';
 import { cueTrigger } from './commands/cue-trigger';
 import { createAgent } from './commands/create-agent';
 import { removeAgent } from './commands/remove-agent';
+import { listSshRemotes } from './commands/list-ssh-remotes';
+import { createSshRemote } from './commands/create-ssh-remote';
+import { removeSshRemote } from './commands/remove-ssh-remote';
 import { settingsList } from './commands/settings-list';
 import { settingsGet } from './commands/settings-get';
 import { settingsSet } from './commands/settings-set';
@@ -79,6 +82,12 @@ list
 	.option('-s, --search <keyword>', 'Filter sessions by keyword in name or first message')
 	.option('--json', 'Output as JSON (for scripting)')
 	.action(listSessions);
+
+list
+	.command('ssh-remotes')
+	.description('List all configured SSH remotes')
+	.option('--json', 'Output as JSON lines (for scripting)')
+	.action(listSshRemotes);
 
 // Show command
 const show = program.command('show').description('Show details of a resource');
@@ -215,6 +224,36 @@ program
 	.description('Remove an agent from the Maestro desktop app')
 	.option('--json', 'Output as JSON (for scripting)')
 	.action(removeAgent);
+
+// Create SSH remote command - add a new SSH remote configuration
+program
+	.command('create-ssh-remote <name>')
+	.description('Create a new SSH remote configuration')
+	.requiredOption(
+		'-H, --host <host>',
+		'SSH hostname or IP (or SSH config Host pattern with --ssh-config)'
+	)
+	.option('-p, --port <port>', 'SSH port (default: 22)')
+	.option('-u, --username <user>', 'SSH username')
+	.option('-k, --key <path>', 'Path to private key file')
+	.option(
+		'--env <KEY=VALUE>',
+		'Remote environment variable (repeatable)',
+		(val: string, prev: string[]) => [...prev, val],
+		[] as string[]
+	)
+	.option('--ssh-config', 'Use ~/.ssh/config for connection settings (host becomes Host pattern)')
+	.option('--disabled', 'Create in disabled state')
+	.option('--set-default', 'Set as the global default SSH remote')
+	.option('--json', 'Output as JSON (for scripting)')
+	.action(createSshRemote);
+
+// Remove SSH remote command - delete an SSH remote configuration
+program
+	.command('remove-ssh-remote <remote-id>')
+	.description('Remove an SSH remote configuration')
+	.option('--json', 'Output as JSON (for scripting)')
+	.action(removeSshRemote);
 
 // Settings commands
 const settings = program.command('settings').description('View and manage Maestro configuration');

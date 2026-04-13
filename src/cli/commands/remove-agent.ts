@@ -20,7 +20,7 @@ export async function removeAgent(agentId: string, options: RemoveAgentOptions):
 		} else {
 			console.error(formatError(msg));
 		}
-		process.exit(1);
+		return process.exit(1);
 	}
 
 	try {

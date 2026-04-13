@@ -14,17 +14,22 @@ The Maestro CLI (`maestro-cli`) provides command-line access to agents, playbook
 
 ```text
 src/cli/
-├── index.ts              # Entry point (Commander.js program)
-├── commands/             # Command implementations
+├── index.ts                # Entry point (Commander.js program)
+├── commands/               # Command implementations
 │   ├── auto-run.ts
 │   ├── clean-playbooks.ts
+│   ├── create-agent.ts       # Create agent via WebSocket (requires running app)
+│   ├── create-ssh-remote.ts  # Create SSH remote via disk I/O
 │   ├── list-agents.ts
 │   ├── list-groups.ts
 │   ├── list-playbooks.ts
 │   ├── list-sessions.ts
+│   ├── list-ssh-remotes.ts   # List SSH remotes via disk I/O
 │   ├── open-file.ts
 │   ├── refresh-auto-run.ts
 │   ├── refresh-files.ts
+│   ├── remove-agent.ts       # Remove agent via WebSocket (requires running app)
+│   ├── remove-ssh-remote.ts  # Remove SSH remote via disk I/O
 │   ├── run-playbook.ts
 │   ├── send.ts
 │   ├── settings-agent.ts
@@ -35,16 +40,16 @@ src/cli/
 │   ├── show-agent.ts
 │   ├── show-playbook.ts
 │   └── status.ts
-├── services/             # Business logic
-│   ├── agent-sessions.ts  # Read Claude Code session files
-│   ├── agent-spawner.ts   # Spawn agent CLIs
-│   ├── batch-processor.ts # Playbook execution engine
-│   ├── maestro-client.ts  # IPC client to running Maestro desktop app
-│   ├── playbooks.ts       # Playbook file management
-│   └── storage.ts         # Electron Store file reader
-└── output/               # Output formatting
-    ├── formatter.ts       # Human-readable terminal output
-    └── jsonl.ts           # Machine-parseable JSON Lines
+├── services/               # Business logic
+│   ├── agent-sessions.ts    # Read Claude Code session files
+│   ├── agent-spawner.ts     # Spawn agent CLIs
+│   ├── batch-processor.ts   # Playbook execution engine
+│   ├── maestro-client.ts    # IPC client to running Maestro desktop app
+│   ├── playbooks.ts         # Playbook file management
+│   └── storage.ts           # Electron Store file reader + SSH remote helpers
+└── output/                 # Output formatting
+    ├── formatter.ts         # Human-readable terminal output (incl. SSH remote tables)
+    └── jsonl.ts             # Machine-parseable JSON Lines
 ```
 
 Note: `run-playbook.ts` is the file name, but the command is registered under the `playbook` verb (see entry point). Additional commands (`auto-run`, `open-file`, `refresh-*`, `settings-*`, `status`) are lightweight wrappers over `maestro-client.ts` for talking to a running desktop app.
@@ -196,11 +201,69 @@ Remove orphaned playbooks for deleted sessions.
 maestro-cli clean playbooks [--dry-run] [--json]
 ```
 
+### `create-agent <name>`
+
+Create a new agent in the running Maestro desktop app via WebSocket (`withMaestroClient`). Sends a `create_session` message with optional config fields that flow through the full IPC pipeline (messageHandlers → CallbackRegistry → web-server-factory → preload → useRemoteIntegration → useAppRemoteEventListeners).
+
+```bash
+maestro-cli create-agent <name> -d <cwd> [-t <type>] [-g <group-id>] [--nudge <msg>] [--custom-path <path>] [--custom-args <args>] [--env KEY=VALUE]... [--model <model>] [--effort <level>] [--context-window <size>] [--provider-path <path>] [--ssh-remote <id>] [--ssh-cwd <path>] [--json]
+```
+
+Options:
+
+- `--cwd <path>` - Working directory (required)
+- `--type <type>` - Agent type, validated against `AGENT_IDS` (default: `claude-code`)
+- `--env KEY=VALUE` - Repeatable environment variable; parsed into a `Record<string, string>`
+- `--context-window <size>` - Validated as positive integer
+- `--ssh-remote <id>` + `--ssh-cwd <path>` - Builds `sessionSshRemoteConfig` for remote execution
+
+### `remove-agent <agent-id>`
+
+Remove an agent via WebSocket (`withMaestroClient`). Sends a `delete_session` message. Supports partial ID matching via `resolveAgentId()`.
+
+```bash
+maestro-cli remove-agent <agent-id> [--json]
+```
+
+### `list ssh-remotes`
+
+List all configured SSH remotes. Reads directly from `maestro-settings.json` via `readSshRemotes()` — no running app required.
+
+```bash
+maestro-cli list ssh-remotes [--json]
+```
+
+### `create-ssh-remote <name>`
+
+Create a new SSH remote configuration. Direct disk I/O via `readSshRemotes()`/`writeSshRemotes()`.
+
+```bash
+maestro-cli create-ssh-remote <name> -H <host> [-p <port>] [-u <user>] [-k <key-path>] [--env KEY=VALUE]... [--ssh-config] [--disabled] [--set-default] [--json]
+```
+
+Options:
+
+- `--host <host>` - Hostname or IP (required)
+- `--port <port>` - Validated range 1-65535 (default: 22)
+- `--ssh-config` - Use `~/.ssh/config` mode; host becomes the Host pattern
+- `--set-default` - Writes `defaultSshRemoteId` to settings
+- `--env KEY=VALUE` - Repeatable remote environment variable
+
+Generates a UUID via `crypto.randomUUID()` for the remote ID.
+
+### `remove-ssh-remote <remote-id>`
+
+Remove an SSH remote configuration. Supports partial ID matching via `resolveSshRemoteId()`. Clears `defaultSshRemoteId` if the removed remote was the default.
+
+```bash
+maestro-cli remove-ssh-remote <remote-id> [--json]
+```
+
 ---
 
 ## ID Resolution
 
-All commands that take agent, group, or playbook IDs support **partial ID matching**:
+All commands that take agent, group, playbook, or SSH remote IDs support **partial ID matching**:
 
 1. Try exact match first
 2. Try prefix match - if exactly one ID starts with the input, use it
@@ -256,10 +319,13 @@ addHistoryEntry(entry: HistoryEntry): void
 
 resolveAgentId(partialId: string): string   // throws on ambiguous/not found
 resolveGroupId(partialId: string): string
+resolveSshRemoteId(partialId: string): string  // throws on ambiguous/not found
 getSessionById(sessionId: string): SessionInfo | undefined
 getSessionsByGroup(groupId: string): SessionInfo[]
 getAgentCustomPath(agentId: string): string | undefined
 getConfigDirectory(): string
+readSshRemotes(): SshRemoteConfig[]
+writeSshRemotes(remotes: SshRemoteConfig[]): void
 ```
 
 ### History Migration
@@ -525,21 +591,25 @@ Machine-parseable output format. Each line is a complete JSON object. Used when 
 
 ## Key Files Reference
 
-| Concern             | Primary Files                         |
-| ------------------- | ------------------------------------- |
-| CLI entry point     | `src/cli/index.ts`                    |
-| Storage reader      | `src/cli/services/storage.ts`         |
-| Agent spawner       | `src/cli/services/agent-spawner.ts`   |
-| Batch processor     | `src/cli/services/batch-processor.ts` |
-| Playbook management | `src/cli/services/playbooks.ts`       |
-| Agent sessions      | `src/cli/services/agent-sessions.ts`  |
-| Desktop IPC client  | `src/cli/services/maestro-client.ts`  |
-| Human output        | `src/cli/output/formatter.ts`         |
-| JSONL output        | `src/cli/output/jsonl.ts`             |
-| Send command        | `src/cli/commands/send.ts`            |
-| Run playbook        | `src/cli/commands/run-playbook.ts`    |
-| Shared types        | `src/shared/types.ts`                 |
-| Template variables  | `src/shared/templateVariables.ts`     |
-| Agent definitions   | `src/main/agents/definitions.ts`      |
-| CLI activity        | `src/shared/cli-activity.ts`          |
-| Prompt templates    | `src/prompts/`                        |
+| Concern             | Primary Files                                                                          |
+| ------------------- | -------------------------------------------------------------------------------------- |
+| CLI entry point     | `src/cli/index.ts`                                                                     |
+| Storage reader      | `src/cli/services/storage.ts`                                                          |
+| Agent spawner       | `src/cli/services/agent-spawner.ts`                                                    |
+| Batch processor     | `src/cli/services/batch-processor.ts`                                                  |
+| Playbook management | `src/cli/services/playbooks.ts`                                                        |
+| Agent sessions      | `src/cli/services/agent-sessions.ts`                                                   |
+| Desktop IPC client  | `src/cli/services/maestro-client.ts`                                                   |
+| Human output        | `src/cli/output/formatter.ts`                                                          |
+| JSONL output        | `src/cli/output/jsonl.ts`                                                              |
+| Send command        | `src/cli/commands/send.ts`                                                             |
+| Run playbook        | `src/cli/commands/run-playbook.ts`                                                     |
+| Create agent        | `src/cli/commands/create-agent.ts`                                                     |
+| Remove agent        | `src/cli/commands/remove-agent.ts`                                                     |
+| SSH remote CRUD     | `src/cli/commands/create-ssh-remote.ts`, `list-ssh-remotes.ts`, `remove-ssh-remote.ts` |
+| Shared types        | `src/shared/types.ts`                                                                  |
+| Template variables  | `src/shared/templateVariables.ts`                                                      |
+| Agent definitions   | `src/main/agents/definitions.ts`                                                       |
+| Agent IDs           | `src/shared/agentIds.ts`                                                               |
+| CLI activity        | `src/shared/cli-activity.ts`                                                           |
+| Prompt templates    | `src/prompts/`                                                                         |

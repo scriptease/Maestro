@@ -147,6 +147,56 @@ JSON output includes full session metadata:
 
 Currently supported for `claude-code` agents.
 
+### Creating and Removing Agents
+
+Create agents directly from the command line. Requires the Maestro desktop app to be running.
+
+```bash
+# Create a Claude Code agent with a working directory
+maestro-cli create-agent "My Agent" -d /path/to/project
+
+# Create a Codex agent with custom model and environment variables
+maestro-cli create-agent "Codex Worker" -d . -t codex --model gpt-5.3-codex --env API_KEY=abc123
+
+# Create an agent with SSH remote execution
+maestro-cli create-agent "Remote Agent" -d /home/user/project -t claude-code --ssh-remote <remote-id>
+
+# Create an agent with all options
+maestro-cli create-agent "Full Config" -d /workspace \
+	-t claude-code \
+	-g <group-id> \
+	--nudge "Always write tests" \
+	--custom-path /usr/local/bin/claude \
+	--custom-args "--verbose" \
+	--env DEBUG=true --env LOG_LEVEL=info \
+	--model opus \
+	--effort high \
+	--context-window 200000 \
+	--provider-path /custom/provider \
+	--ssh-remote <remote-id> \
+	--ssh-cwd /remote/workdir
+
+# Remove an agent
+maestro-cli remove-agent <agent-id>
+```
+
+| Flag                      | Description                                              | Default       |
+| ------------------------- | -------------------------------------------------------- | ------------- |
+| `-d, --cwd <path>`        | Working directory for the agent (required)               | —             |
+| `-t, --type <type>`       | Agent type (claude-code, codex, opencode, factory-droid) | `claude-code` |
+| `-g, --group <id>`        | Group ID to assign the agent to                          | —             |
+| `--nudge <message>`       | Nudge message appended to every user message             | —             |
+| `--custom-path <path>`    | Custom binary path for the agent CLI                     | —             |
+| `--custom-args <args>`    | Custom CLI arguments                                     | —             |
+| `--env <KEY=VALUE>`       | Environment variable (repeatable)                        | —             |
+| `--model <model>`         | Model override (e.g., sonnet, opus)                      | —             |
+| `--effort <level>`        | Effort/reasoning level override                          | —             |
+| `--context-window <size>` | Context window size in tokens                            | —             |
+| `--provider-path <path>`  | Custom provider path                                     | —             |
+| `--ssh-remote <id>`       | SSH remote ID for remote execution                       | —             |
+| `--ssh-cwd <path>`        | Working directory override on the SSH remote             | —             |
+| `--json`                  | Machine-readable JSON output                             | —             |
+
 ### Listing Resources
 
 ```bash
@@ -295,9 +345,52 @@ maestro-cli settings agent reset codex model
 Settings and agent config changes made via the CLI are automatically detected by the running Maestro desktop app. The app watches for file changes and reloads immediately — it's as if you toggled the setting in the Settings modal yourself.
 </Info>
 
+### Managing SSH Remotes
+
+Create, list, and remove SSH remote configurations. These commands read and write directly to the Maestro settings file — no running desktop app required.
+
+```bash
+# List all configured SSH remotes
+maestro-cli list ssh-remotes
+
+# Create a new SSH remote
+maestro-cli create-ssh-remote "Dev Server" -H 192.168.1.100 -u deploy
+
+# Create with SSH config mode (uses ~/.ssh/config)
+maestro-cli create-ssh-remote "Prod" -H prod-host --ssh-config
+
+# Create with all options
+maestro-cli create-ssh-remote "Build Server" \
+	-H build.example.com \
+	-p 2222 \
+	-u ci \
+	-k ~/.ssh/build_key \
+	--env PATH=/usr/local/bin --env NODE_ENV=production \
+	--set-default
+
+# Remove an SSH remote
+maestro-cli remove-ssh-remote <remote-id>
+```
+
+| Flag                    | Description                                                     | Default |
+| ----------------------- | --------------------------------------------------------------- | ------- |
+| `-H, --host <host>`     | SSH hostname or IP (required; Host pattern with `--ssh-config`) | —       |
+| `-p, --port <port>`     | SSH port                                                        | `22`    |
+| `-u, --username <user>` | SSH username                                                    | —       |
+| `-k, --key <path>`      | Path to private key file                                        | —       |
+| `--env <KEY=VALUE>`     | Remote environment variable (repeatable)                        | —       |
+| `--ssh-config`          | Use `~/.ssh/config` for connection settings                     | —       |
+| `--disabled`            | Create in disabled state                                        | —       |
+| `--set-default`         | Set as the global default SSH remote                            | —       |
+| `--json`                | Machine-readable JSON output                                    | —       |
+
+<Info>
+SSH remote changes made via the CLI are detected by the running Maestro desktop app through file watching, just like settings changes.
+</Info>
+
 ## Partial IDs
 
-All commands that accept an agent ID or group ID support partial matching. You only need to type enough characters to uniquely identify the resource:
+All commands that accept an agent ID, group ID, or SSH remote ID support partial matching. You only need to type enough characters to uniquely identify the resource:
 
 ```bash
 # These are equivalent if "a1b2" uniquely matches one agent

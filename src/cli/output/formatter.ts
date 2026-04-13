@@ -720,6 +720,44 @@ export function formatSettingDetail(setting: SettingDisplay): string {
 	return lines.join('\n');
 }
 
+// SSH Remote formatting
+export interface SshRemoteDisplay {
+	id: string;
+	name: string;
+	host: string;
+	port: number;
+	username: string;
+	enabled: boolean;
+	useSshConfig?: boolean;
+	isDefault?: boolean;
+}
+
+export function formatSshRemotes(remotes: SshRemoteDisplay[]): string {
+	if (remotes.length === 0) {
+		return dim('No SSH remotes configured.');
+	}
+
+	const lines: string[] = [];
+	lines.push(bold(c('cyan', 'SSH REMOTES')) + dim(` (${remotes.length})`));
+	lines.push('');
+
+	for (const remote of remotes) {
+		const name = c('white', remote.name);
+		const status = remote.enabled ? c('green', 'enabled') : c('red', 'disabled');
+		const defaultTag = remote.isDefault ? c('yellow', ' [default]') : '';
+		const sshConfig = remote.useSshConfig ? c('blue', ' [ssh-config]') : '';
+		const hostInfo = remote.username ? `${remote.username}@${remote.host}` : remote.host;
+		const portInfo = remote.port !== 22 ? `:${remote.port}` : '';
+		const id = dim(remote.id);
+
+		lines.push(`  ${name} ${status}${defaultTag}${sshConfig}`);
+		lines.push(`      ${dim(hostInfo + portInfo)}`);
+		lines.push(`      ${id}`);
+	}
+
+	return lines.join('\n');
+}
+
 // Error formatting
 export function formatError(message: string): string {
 	return `${c('red', '✗')} ${c('red', 'Error:')} ${message}`;
