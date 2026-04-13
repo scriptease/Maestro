@@ -198,13 +198,75 @@ export const BrowserTabView = React.memo(function BrowserTabView({
 				});
 			},{passive:true});
 		})();`;
-		const injectScrollListener = () => {
+		// Capture-phase keyboard interceptor: intercepts app shortcuts
+		// BEFORE the page can handle them, then forwards via console.log.
+		// Uses stopImmediatePropagation to prevent any other listener
+		// (including the main-process-injected bubble-phase one) from
+		// double-firing.
+		const keyboardInjection = `(function(){
+			if(window.__maestroShortcutCaptureInstalled)return;
+			window.__maestroShortcutCaptureInstalled=true;
+			document.addEventListener('keydown',function(e){
+				var hasMod=e.metaKey||e.ctrlKey;
+				var hasAlt=e.altKey;
+				if(!hasMod&&!hasAlt)return;
+				var k=e.key.toLowerCase();
+				var te=hasMod&&!hasAlt&&!e.shiftKey&&'acvxzf'.indexOf(k)!==-1;
+				var re=hasMod&&!hasAlt&&e.shiftKey&&k==='z';
+				if(te||re)return;
+				e.preventDefault();
+				e.stopImmediatePropagation();
+				console.log('__MAESTRO_KEY__'+JSON.stringify({
+					key:e.key,code:e.code,
+					meta:e.metaKey,control:e.ctrlKey,
+					alt:e.altKey,shift:e.shiftKey
+				}));
+			},true);
+		})();`;
+		const injectGuestListeners = () => {
 			webview.executeJavaScript(scrollInjection).catch(() => {});
+			webview.executeJavaScript(keyboardInjection).catch(() => {});
 		};
 		const handleConsoleMessage = (event: Event) => {
 			const msg = (event as Event & { message?: string }).message;
 			if (msg === '__MAESTRO_SCROLL__1') setAddressBarHidden(true);
 			else if (msg === '__MAESTRO_SCROLL__0') setAddressBarHidden(false);
+			else if (msg?.startsWith('__MAESTRO_KEY__')) {
+				try {
+					const input = JSON.parse(msg.slice('__MAESTRO_KEY__'.length));
+					const k = (input.key as string).toLowerCase();
+					// Cmd+L: focus address bar directly
+					if ((input.meta || input.control) && !input.alt && !input.shift && k === 'l') {
+						const addrInput = document.getElementById(
+							`browser-tab-address-${tab.id}`
+						) as HTMLInputElement | null;
+						if (addrInput) {
+							addrInput.focus();
+							addrInput.select();
+						}
+						return;
+					}
+					// All other shortcuts: blur webview and re-dispatch so the
+					// main keyboard handler can process them.
+					if (document.activeElement?.tagName === 'WEBVIEW') {
+						(document.activeElement as HTMLElement).blur();
+					}
+					window.dispatchEvent(
+						new KeyboardEvent('keydown', {
+							key: input.key,
+							code: input.code,
+							metaKey: input.meta,
+							ctrlKey: input.control,
+							altKey: input.alt,
+							shiftKey: input.shift,
+							bubbles: true,
+							cancelable: true,
+						})
+					);
+				} catch {
+					// malformed, ignore
+				}
+			}
 		};
 
 		const handleDomReady = () => {
@@ -212,14 +274,17 @@ export const BrowserTabView = React.memo(function BrowserTabView({
 			syncWebviewLayout(webview);
 			updateNavigationState();
 			setAddressBarHidden(false);
-			injectScrollListener();
+			injectGuestListeners();
 		};
+		// Re-inject guest listeners on navigation (page JS state resets)
+		const handleDidNavigateForInjection = () => injectGuestListeners();
 		webview.addEventListener('console-message', handleConsoleMessage);
 		webview.addEventListener('did-start-loading', handleStartLoading);
 		webview.addEventListener('did-stop-loading', handleStopLoading);
 		webview.addEventListener('did-start-navigation', handleNavigationStart);
 		webview.addEventListener('did-redirect-navigation', handleNavigationStart);
 		webview.addEventListener('did-navigate', handleNavigate);
+		webview.addEventListener('did-navigate', handleDidNavigateForInjection);
 		webview.addEventListener('did-navigate-in-page', handleNavigate);
 		webview.addEventListener('did-fail-load', handleDidFailLoad);
 		webview.addEventListener('did-finish-load', updateNavigationState);
@@ -246,6 +311,7 @@ export const BrowserTabView = React.memo(function BrowserTabView({
 			webview.removeEventListener('did-start-navigation', handleNavigationStart);
 			webview.removeEventListener('did-redirect-navigation', handleNavigationStart);
 			webview.removeEventListener('did-navigate', handleNavigate);
+			webview.removeEventListener('did-navigate', handleDidNavigateForInjection);
 			webview.removeEventListener('did-navigate-in-page', handleNavigate);
 			webview.removeEventListener('did-fail-load', handleDidFailLoad);
 			webview.removeEventListener('did-finish-load', updateNavigationState);
