@@ -1321,7 +1321,8 @@ describe('SettingsModal', () => {
 				await vi.advanceTimersByTimeAsync(100);
 			});
 
-			fireEvent.click(screen.getByRole('button', { name: 'Test' }));
+			const customSection = document.querySelector('[data-setting-id="notifications-custom"]')!;
+			fireEvent.click(within(customSection as HTMLElement).getByRole('button', { name: 'Test' }));
 
 			await act(async () => {
 				await vi.advanceTimersByTimeAsync(50);
@@ -1645,7 +1646,8 @@ describe('SettingsModal', () => {
 			});
 
 			// Click Test button to start Command Chain
-			fireEvent.click(screen.getByRole('button', { name: 'Test' }));
+			const customSection = document.querySelector('[data-setting-id="notifications-custom"]')!;
+			fireEvent.click(within(customSection as HTMLElement).getByRole('button', { name: 'Test' }));
 
 			await act(async () => {
 				await vi.advanceTimersByTimeAsync(100);
@@ -1680,7 +1682,8 @@ describe('SettingsModal', () => {
 			});
 
 			// Click Test button to start Command Chain
-			fireEvent.click(screen.getByRole('button', { name: 'Test' }));
+			const customSection = document.querySelector('[data-setting-id="notifications-custom"]')!;
+			fireEvent.click(within(customSection as HTMLElement).getByRole('button', { name: 'Test' }));
 
 			await act(async () => {
 				await vi.advanceTimersByTimeAsync(100);
@@ -1709,7 +1712,8 @@ describe('SettingsModal', () => {
 			});
 
 			// Click Test button to trigger speak error
-			fireEvent.click(screen.getByRole('button', { name: 'Test' }));
+			const customSection = document.querySelector('[data-setting-id="notifications-custom"]')!;
+			fireEvent.click(within(customSection as HTMLElement).getByRole('button', { name: 'Test' }));
 
 			await act(async () => {
 				await vi.advanceTimersByTimeAsync(100);
@@ -1740,7 +1744,8 @@ describe('SettingsModal', () => {
 			});
 
 			// Click Test button to start Command Chain
-			fireEvent.click(screen.getByRole('button', { name: 'Test' }));
+			const customSection = document.querySelector('[data-setting-id="notifications-custom"]')!;
+			fireEvent.click(within(customSection as HTMLElement).getByRole('button', { name: 'Test' }));
 
 			await act(async () => {
 				await vi.advanceTimersByTimeAsync(100);
@@ -1766,7 +1771,10 @@ describe('SettingsModal', () => {
 			});
 
 			// Test button should be back
-			expect(screen.getByText('Test')).toBeInTheDocument();
+			const customSectionAfter = document.querySelector(
+				'[data-setting-id="notifications-custom"]'
+			)!;
+			expect(within(customSectionAfter as HTMLElement).getByText('Test')).toBeInTheDocument();
 		});
 	});
 

@@ -191,6 +191,7 @@ describe('RightPanel', () => {
 			rightPanelWidth: 400,
 			shortcuts: mockShortcuts,
 			showHiddenFiles: false,
+			autoRunDisabled: false,
 		});
 		useFileExplorerStore.setState({
 			fileTreeFilter: '',

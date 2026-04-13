@@ -6,6 +6,62 @@ icon: lightbulb
 
 Complete, copy-paste-ready `.maestro/cue.yaml` configurations for common workflows. Each example is self-contained — drop it into your project's `.maestro/` directory and adjust agent names to match your Left Bar.
 
+## Pipeline Grouping
+
+Group related automations under a single pipeline — multiple trigger lines appear as one pipeline in the Pipeline Editor instead of cluttering the dropdown.
+
+```yaml
+# Pipeline: Monitoring (color: #06b6d4)
+
+subscriptions:
+  # Daily scan — runs every morning
+  - name: Monitoring
+    label: Daily Scan
+    event: time.scheduled
+    schedule_times:
+      - '06:00'
+    schedule_days:
+      - mon
+      - tue
+      - wed
+      - thu
+      - fri
+      - sat
+      - sun
+    prompt: |
+      Run the daily monitoring workflow:
+      1. Scan for new activity
+      2. Compare against yesterday's snapshot
+      3. Generate a briefing in journal/{{DATE}}.md
+
+  # Weekly review — runs Sunday mornings
+  - name: Monitoring-chain-1
+    label: Weekly Review
+    event: time.scheduled
+    schedule_times:
+      - '08:00'
+    schedule_days:
+      - sun
+    prompt: |
+      Generate a weekly performance review.
+      Summarize activity, highlight trends, and flag issues.
+
+settings:
+  timeout_minutes: 45
+  max_concurrent: 1
+```
+
+**How it works:**
+
+1. The `# Pipeline: Monitoring (color: #06b6d4)` comment declares the pipeline name and UI color
+2. The first subscription's `name` matches the pipeline name (`Monitoring`)
+3. Additional subscriptions use `Name-chain-N` (e.g., `Monitoring-chain-1`)
+4. The `label` field gives each line a descriptive name in the UI
+
+Both subscriptions appear as trigger lines within a single **Monitoring** pipeline. Each can have its own event type, schedule, and prompt.
+
+---
+
 ## Workspace Initialization
 
 Run setup tasks once when the Maestro application launches — install dependencies, verify environment, run health checks.
