@@ -4,14 +4,13 @@ import type { RefObject } from 'react';
 import { useAgentSessionManagement } from '../../../renderer/hooks';
 import type { Session, AITab, LogEntry } from '../../../renderer/types';
 import type { RightPanelHandle } from '../../../renderer/components/RightPanel';
+import { createMockAITab } from '../../helpers/mockTab';
 
 type MaestroHistoryApi = typeof window.maestro.history;
 
 type MaestroAgentSessionsApi = typeof window.maestro.agentSessions;
 
 type MaestroClaudeApi = typeof window.maestro.claude;
-
-import { createMockAITab } from '../../helpers/mockTab';
 
 const createMockTab = (overrides: Partial<AITab> = {}): AITab =>
 	createMockAITab({
