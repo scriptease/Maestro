@@ -6,8 +6,8 @@
  */
 
 import type { AgentCapabilities, AgentConfig as BaseAgentConfig } from '../../shared/types';
-export type { AgentCapabilities } from '../../shared/types';
 import { isWindows } from '../../shared/platformDetection';
+export type { AgentCapabilities } from '../../shared/types';
 
 // ============ Configuration Types ============
 

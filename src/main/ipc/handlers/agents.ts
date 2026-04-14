@@ -146,11 +146,6 @@ async function discoverOpenCodeSlashCommands(cwd: string): Promise<DiscoveredCom
 }
 
 /**
- * Interface for agent configuration store data
- */
-// AgentConfigsData imported from stores/types
-
-/**
  * Dependencies required for agents handler registration
  */
 export interface AgentsHandlerDependencies {
