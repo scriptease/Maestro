@@ -60,7 +60,11 @@ export function createCueApi() {
 		stopAll: (): Promise<void> => ipcRenderer.invoke('cue:stopAll'),
 
 		// Manually trigger a subscription by name (Run Now), with optional prompt override
-		triggerSubscription: (subscriptionName: string, prompt?: string, sourceAgentId?: string): Promise<boolean> =>
+		triggerSubscription: (
+			subscriptionName: string,
+			prompt?: string,
+			sourceAgentId?: string
+		): Promise<boolean> =>
 			ipcRenderer.invoke('cue:triggerSubscription', { subscriptionName, prompt, sourceAgentId }),
 
 		// Get queue status per session

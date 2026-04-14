@@ -320,6 +320,10 @@ const createWebServer = createWebServerFactory({
 	groupsStore,
 	getMainWindow: () => mainWindow,
 	getProcessManager: () => processManager,
+	triggerCueSubscription: (subscriptionName, prompt, sourceAgentId) => {
+		if (!cueEngine) return false;
+		return cueEngine.triggerSubscription(subscriptionName, prompt, sourceAgentId);
+	},
 });
 
 // createWindow is now handled by windowManager (Phase 4 refactoring)

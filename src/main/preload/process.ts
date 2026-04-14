@@ -1104,9 +1104,11 @@ export function createProcessApi() {
 				sourceAgentId: string | undefined
 			) => {
 				try {
-					Promise.resolve(callback(subscriptionName, prompt, responseChannel, sourceAgentId)).catch(() => {
-						ipcRenderer.send(responseChannel, false);
-					});
+					Promise.resolve(callback(subscriptionName, prompt, responseChannel, sourceAgentId)).catch(
+						() => {
+							ipcRenderer.send(responseChannel, false);
+						}
+					);
 				} catch {
 					ipcRenderer.send(responseChannel, false);
 				}

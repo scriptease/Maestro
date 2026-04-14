@@ -784,8 +784,11 @@ export class WebServer {
 				this.callbackRegistry.toggleCueSubscription(subscriptionId, enabled),
 			getCueActivity: async (sessionId?: string, limit?: number) =>
 				this.callbackRegistry.getCueActivity(sessionId, limit),
-			triggerCueSubscription: async (subscriptionName: string, prompt?: string) =>
-				this.callbackRegistry.triggerCueSubscription(subscriptionName, prompt),
+			triggerCueSubscription: async (
+				subscriptionName: string,
+				prompt?: string,
+				sourceAgentId?: string
+			) => this.callbackRegistry.triggerCueSubscription(subscriptionName, prompt, sourceAgentId),
 			getUsageDashboard: async (timeRange: 'day' | 'week' | 'month' | 'all') =>
 				this.callbackRegistry.getUsageDashboard(timeRange),
 			getAchievements: async () => this.callbackRegistry.getAchievements(),

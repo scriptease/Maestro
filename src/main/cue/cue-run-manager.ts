@@ -19,6 +19,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { captureException } from '../utils/sentry';
 import { substituteTemplateVariables, type TemplateContext } from '../../shared/templateVariables';
+import { getShellPath } from '../runtime/getShellPath';
 
 /** Phase of a run in the state machine: running → stopping | finished */
 export type RunPhase = 'running' | 'stopping' | 'finished';
@@ -295,6 +296,10 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 
 			// Phase 3: CLI Output delivery — shell out to maestro-cli send --live
 			if (cliOutput && result.status === 'completed') {
+				deps.onLog(
+					'cue',
+					`[CUE] "${subscriptionName}" Phase 3: delivering CLI output to target="${cliOutput.target}" (stdout length=${result.stdout.length})`
+				);
 				try {
 					const execFileAsync = promisify(execFile);
 					// Build a minimal template context for variable substitution in the target
@@ -308,9 +313,27 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 						cue: event.payload as TemplateContext['cue'],
 					};
 					const resolvedTarget = substituteTemplateVariables(cliOutput.target, templateContext);
-					const truncatedOutput = result.stdout.substring(0, 100_000);
-					await execFileAsync('maestro-cli', ['send', resolvedTarget, truncatedOutput, '--live', '--json']);
-					deps.onLog('cue', `[CUE] "${subscriptionName}" CLI output delivered to ${resolvedTarget}`);
+					if (!resolvedTarget || resolvedTarget.trim() === '') {
+						deps.onLog(
+							'warn',
+							`[CUE] "${subscriptionName}" CLI output target resolved to empty string (raw="${cliOutput.target}") — skipping delivery`
+						);
+					} else {
+						const truncatedOutput = result.stdout.substring(0, 100_000);
+						const shellPath = await getShellPath();
+						await execFileAsync(
+							'maestro-cli',
+							['send', resolvedTarget, truncatedOutput, '--live'],
+							{
+								env: { ...process.env, PATH: shellPath || process.env.PATH },
+								timeout: 30_000,
+							}
+						);
+						deps.onLog(
+							'cue',
+							`[CUE] "${subscriptionName}" CLI output delivered to ${resolvedTarget}`
+						);
+					}
 				} catch (cliError) {
 					deps.onLog(
 						'warn',
@@ -318,6 +341,11 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 					);
 					// Non-fatal — don't change result.status
 				}
+			} else if (cliOutput && result.status !== 'completed') {
+				deps.onLog(
+					'cue',
+					`[CUE] "${subscriptionName}" Phase 3 skipped: run status="${result.status}" (not completed)`
+				);
 			}
 		} catch (error) {
 			if (!activeRuns.has(runId)) {
@@ -414,7 +442,15 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 
 			// Slot available — dispatch immediately
 			activeRunCount.set(sessionId, currentCount + 1);
-			doExecuteCueRun(sessionId, prompt, event, subscriptionName, outputPrompt, chainDepth, cliOutput);
+			doExecuteCueRun(
+				sessionId,
+				prompt,
+				event,
+				subscriptionName,
+				outputPrompt,
+				chainDepth,
+				cliOutput
+			);
 		},
 
 		stopRun(runId: string): boolean {

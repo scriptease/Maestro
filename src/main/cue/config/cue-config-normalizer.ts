@@ -140,7 +140,8 @@ function normalizeSubscription(
 				? (sub.forward_output_from as string[])
 				: undefined,
 		cli_output:
-			typeof sub.cli_output === 'object' && sub.cli_output !== null &&
+			typeof sub.cli_output === 'object' &&
+			sub.cli_output !== null &&
 			typeof (sub.cli_output as Record<string, unknown>).target === 'string' &&
 			((sub.cli_output as Record<string, unknown>).target as string).trim() !== ''
 				? { target: String((sub.cli_output as Record<string, unknown>).target) }

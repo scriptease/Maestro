@@ -28,16 +28,29 @@ vi.mock('../../../main/utils/sentry', () => ({
 // We provide a real callback-style function so `promisify(execFile)` works,
 // and capture calls via a separate spy for assertions.
 const { mockExecFileAsync, execFileMock } = vi.hoisted(() => {
-	const mockExecFileAsync = vi.fn<(cmd: string, args: string[]) => Promise<{ stdout: string; stderr: string }>>();
+	const mockExecFileAsync =
+		vi.fn<
+			(
+				cmd: string,
+				args: string[],
+				options?: Record<string, unknown>
+			) => Promise<{ stdout: string; stderr: string }>
+		>();
 	mockExecFileAsync.mockResolvedValue({ stdout: '{}', stderr: '' });
 
 	// A callback-style function whose promisified form delegates to mockExecFileAsync
+	// Handles both (cmd, args, cb) and (cmd, args, options, cb) signatures
 	const execFileMock = vi.fn(function execFile(
 		cmd: string,
 		args: string[],
-		cb: (err: Error | null, stdout: string, stderr: string) => void
+		optionsOrCb:
+			| Record<string, unknown>
+			| ((err: Error | null, stdout: string, stderr: string) => void),
+		maybeCb?: (err: Error | null, stdout: string, stderr: string) => void
 	) {
-		mockExecFileAsync(cmd, args).then(
+		const cb = typeof optionsOrCb === 'function' ? optionsOrCb : maybeCb!;
+		const options = typeof optionsOrCb === 'function' ? undefined : optionsOrCb;
+		mockExecFileAsync(cmd, args, options).then(
 			(result) => cb(null, result.stdout, result.stderr),
 			(err) => cb(err instanceof Error ? err : new Error(String(err)), '', '')
 		);
@@ -49,6 +62,10 @@ const { mockExecFileAsync, execFileMock } = vi.hoisted(() => {
 vi.mock('child_process', () => ({
 	default: { execFile: execFileMock },
 	execFile: execFileMock,
+}));
+
+vi.mock('../../../main/runtime/getShellPath', () => ({
+	getShellPath: vi.fn().mockResolvedValue('/usr/bin:/usr/local/bin'),
 }));
 
 let uuidCounter = 0;
@@ -860,7 +877,28 @@ describe('createCueRunManager', () => {
 			expect(mockExecFileAsync).toHaveBeenCalledTimes(1);
 			expect(mockExecFileAsync).toHaveBeenCalledWith(
 				'maestro-cli',
-				['send', 'agent-42', 'output', '--live', '--json']
+				['send', 'agent-42', 'output', '--live'],
+				expect.objectContaining({
+					env: expect.objectContaining({ PATH: expect.any(String) }),
+					timeout: 30_000,
+				})
+			);
+		});
+
+		it('skips delivery when target resolves to empty string', async () => {
+			const deps = createDeps();
+			const manager = createCueRunManager(deps);
+			const event = createEvent({ payload: {} });
+
+			manager.execute('session-1', 'prompt', event, 'test-sub', undefined, undefined, {
+				target: '{{CUE_SOURCE_AGENT_ID}}',
+			});
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(mockExecFileAsync).not.toHaveBeenCalled();
+			expect(deps.onLog).toHaveBeenCalledWith(
+				'warn',
+				expect.stringContaining('target resolved to empty string')
 			);
 		});
 
@@ -870,15 +908,9 @@ describe('createCueRunManager', () => {
 			});
 			const manager = createCueRunManager(deps);
 
-			manager.execute(
-				'session-1',
-				'prompt',
-				createEvent(),
-				'test-sub',
-				undefined,
-				undefined,
-				{ target: 'agent-42' }
-			);
+			manager.execute('session-1', 'prompt', createEvent(), 'test-sub', undefined, undefined, {
+				target: 'agent-42',
+			});
 			await vi.advanceTimersByTimeAsync(0);
 
 			expect(mockExecFileAsync).not.toHaveBeenCalled();
@@ -889,25 +921,17 @@ describe('createCueRunManager', () => {
 			const deps = createDeps();
 			const manager = createCueRunManager(deps);
 
-			manager.execute(
-				'session-1',
-				'prompt',
-				createEvent(),
-				'test-sub',
-				undefined,
-				undefined,
-				{ target: 'agent-42' }
-			);
+			manager.execute('session-1', 'prompt', createEvent(), 'test-sub', undefined, undefined, {
+				target: 'agent-42',
+			});
 			await vi.advanceTimersByTimeAsync(0);
 
-			// Run still completes successfully despite CLI output failure
 			expect(deps.onRunCompleted).toHaveBeenCalledWith(
 				'session-1',
 				expect.objectContaining({ status: 'completed' }),
 				'test-sub',
 				undefined
 			);
-			// Warning is logged
 			expect(deps.onLog).toHaveBeenCalledWith(
 				'warn',
 				expect.stringContaining('CLI output delivery failed')
@@ -921,22 +945,16 @@ describe('createCueRunManager', () => {
 				payload: { sourceAgentId: 'resolved-agent-99' },
 			});
 
-			manager.execute(
-				'session-1',
-				'prompt',
-				event,
-				'test-sub',
-				undefined,
-				undefined,
-				{ target: '{{CUE_SOURCE_AGENT_ID}}' }
-			);
+			manager.execute('session-1', 'prompt', event, 'test-sub', undefined, undefined, {
+				target: '{{CUE_SOURCE_AGENT_ID}}',
+			});
 			await vi.advanceTimersByTimeAsync(0);
 
 			expect(mockExecFileAsync).toHaveBeenCalledTimes(1);
-			// The template variable should be resolved to the event payload value
 			expect(mockExecFileAsync).toHaveBeenCalledWith(
 				'maestro-cli',
-				['send', 'resolved-agent-99', 'output', '--live', '--json']
+				['send', 'resolved-agent-99', 'output', '--live'],
+				expect.objectContaining({ env: expect.objectContaining({ PATH: expect.any(String) }) })
 			);
 		});
 
@@ -944,7 +962,6 @@ describe('createCueRunManager', () => {
 			const deps = createDeps();
 			const manager = createCueRunManager(deps);
 
-			// No cliOutput argument
 			manager.execute('session-1', 'prompt', createEvent(), 'test-sub');
 			await vi.advanceTimersByTimeAsync(0);
 
@@ -958,20 +975,13 @@ describe('createCueRunManager', () => {
 			});
 			const manager = createCueRunManager(deps);
 
-			manager.execute(
-				'session-1',
-				'prompt',
-				createEvent(),
-				'test-sub',
-				undefined,
-				undefined,
-				{ target: 'agent-42' }
-			);
+			manager.execute('session-1', 'prompt', createEvent(), 'test-sub', undefined, undefined, {
+				target: 'agent-42',
+			});
 			await vi.advanceTimersByTimeAsync(0);
 
 			expect(mockExecFileAsync).toHaveBeenCalledTimes(1);
 			const passedArgs = mockExecFileAsync.mock.calls[0][1] as string[];
-			// The stdout argument (index 2) should be truncated to 100k chars
 			expect(passedArgs[2].length).toBe(100_000);
 		});
 
@@ -979,21 +989,29 @@ describe('createCueRunManager', () => {
 			const deps = createDeps();
 			const manager = createCueRunManager(deps);
 
-			manager.execute(
-				'session-1',
-				'prompt',
-				createEvent(),
-				'test-sub',
-				undefined,
-				undefined,
-				{ target: 'agent-42' }
-			);
+			manager.execute('session-1', 'prompt', createEvent(), 'test-sub', undefined, undefined, {
+				target: 'agent-42',
+			});
 			await vi.advanceTimersByTimeAsync(0);
 
 			expect(deps.onLog).toHaveBeenCalledWith(
 				'cue',
 				expect.stringContaining('CLI output delivered to agent-42')
 			);
+		});
+
+		it('logs Phase 3 skipped when run status is not completed', async () => {
+			const deps = createDeps({
+				onCueRun: vi.fn(async () => makeResult({ status: 'failed', exitCode: 1 })),
+			});
+			const manager = createCueRunManager(deps);
+
+			manager.execute('session-1', 'prompt', createEvent(), 'test-sub', undefined, undefined, {
+				target: 'agent-42',
+			});
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(deps.onLog).toHaveBeenCalledWith('cue', expect.stringContaining('Phase 3 skipped'));
 		});
 	});
 });

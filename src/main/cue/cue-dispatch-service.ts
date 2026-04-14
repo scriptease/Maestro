@@ -91,7 +91,15 @@ export function createCueDispatchService(deps: CueDispatchServiceDeps): CueDispa
 				deps.onLog('warn', `[CUE] "${sub.name}" has no prompt — skipping dispatch`);
 				return;
 			}
-			deps.executeRun(ownerSessionId, prompt, event, sub.name, sub.output_prompt, chainDepth, sub.cli_output);
+			deps.executeRun(
+				ownerSessionId,
+				prompt,
+				event,
+				sub.name,
+				sub.output_prompt,
+				chainDepth,
+				sub.cli_output
+			);
 		},
 	};
 }
