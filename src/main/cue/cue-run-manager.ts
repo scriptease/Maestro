@@ -250,14 +250,25 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 				if (run) run.processRunId = outputRunId;
 
 				const contextPrompt = `${outputPrompt}\n\n---\n\nContext from completed task:\n${result.stdout.substring(0, SOURCE_OUTPUT_MAX_CHARS)}`;
-				const outputResult = await deps.onCueRun({
-					runId: outputRunId,
-					sessionId,
-					prompt: contextPrompt,
-					subscriptionName: `${subscriptionName}:output`,
-					event: outputEvent,
-					timeoutMs,
-				});
+				let outputResult: CueRunResult;
+				try {
+					outputResult = await deps.onCueRun({
+						runId: outputRunId,
+						sessionId,
+						prompt: contextPrompt,
+						subscriptionName: `${subscriptionName}:output`,
+						event: outputEvent,
+						timeoutMs,
+					});
+				} catch (outputErr) {
+					// onCueRun rejected — the outputRunId DB row is still 'running'
+					// because safeUpdateCueEventStatus below was skipped. Finalize it
+					// here so the activity log doesn't show a phantom never-ending
+					// run, then re-throw so the outer catch records the failure on
+					// the parent run.
+					safeUpdateCueEventStatus(outputRunId, 'failed');
+					throw outputErr;
+				}
 
 				safeUpdateCueEventStatus(outputRunId, outputResult.status);
 

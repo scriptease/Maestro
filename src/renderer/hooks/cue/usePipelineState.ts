@@ -282,6 +282,14 @@ export function usePipelineState({
 	const [validationErrors, setValidationErrors] = useState<string[]>([]);
 	const savedStateRef = useRef<string>('');
 
+	// Project roots that the most recent successful save (or initial load) wrote
+	// to. Used by handleSave to know which roots may need an empty-YAML clear
+	// when they drop out of the current set. Avoids re-deriving roots from the
+	// JSON snapshot in savedStateRef — that re-derivation fails when an agent
+	// has been renamed or removed since the previous save (sessionId/Name no
+	// longer resolve to a projectRoot, so the stale root would never be cleared).
+	const lastWrittenRootsRef = useRef<Set<string>>(new Set());
+
 	// Cue global settings
 	const [cueSettings, setCueSettings] = useState<CueSettings>({ ...DEFAULT_CUE_SETTINGS });
 	const [showSettings, setShowSettings] = useState(false);
@@ -294,6 +302,7 @@ export function usePipelineState({
 		pipelineState,
 		setPipelineState,
 		savedStateRef,
+		lastWrittenRootsRef,
 		setIsDirty,
 	});
 
@@ -420,25 +429,12 @@ export function usePipelineState({
 		setValidationErrors(errors);
 		if (errors.length > 0) return;
 
-		// Compute which roots were previously saved so we can clear any that
-		// dropped out of the current set (e.g. the last pipeline in a root was
-		// deleted). Without this, stale YAML files linger at abandoned roots
-		// and reappear on reload.
-		const previousRoots = new Set<string>();
-		if (savedStateRef.current) {
-			try {
-				const prev = JSON.parse(savedStateRef.current) as CuePipeline[];
-				for (const pipeline of prev) {
-					for (const node of pipeline.nodes) {
-						if (node.type !== 'agent') continue;
-						const root = resolveRoot(node.data as AgentNodeData);
-						if (root) previousRoots.add(root);
-					}
-				}
-			} catch {
-				// Corrupt ref — ignore, we'll only touch current roots this save.
-			}
-		}
+		// Use the project roots written by the previous successful save (or
+		// seeded from the initial load). Re-deriving roots from savedStateRef
+		// at save time fails when an agent has been renamed or removed since
+		// the previous save — its sessionId/Name no longer resolves to a
+		// projectRoot, so the stale YAML at that root would never be cleared.
+		const previousRoots = new Set(lastWrittenRootsRef.current);
 
 		setSaveStatus('saving');
 		try {
@@ -473,11 +469,23 @@ export function usePipelineState({
 				totalPipelinesWritten += rootPipelines.length;
 			}
 
-			// Clear any root whose pipelines were all removed this save.
+			// Clear any root whose pipelines were all removed this save. Use the
+			// same write-and-verify path as non-empty writes so an empty YAML
+			// clear can never be a silent no-op (the user would see the deleted
+			// pipeline reappear on next launch).
 			for (const root of previousRoots) {
 				if (currentRoots.has(root)) continue;
 				const { yaml: emptyYaml } = pipelinesToYaml([], cueSettings);
 				await cueService.writeYaml(root, emptyYaml, {});
+				const onDisk = await cueService.readYaml(root);
+				if (onDisk === null) {
+					throw new Error(`writeYaml clear of "${root}" did not persist: no file on disk`);
+				}
+				if (onDisk !== emptyYaml) {
+					throw new Error(
+						`writeYaml clear of "${root}" did not persist the expected content (${onDisk.length} bytes on disk vs ${emptyYaml.length} expected)`
+					);
+				}
 				rootsCleared++;
 			}
 
@@ -490,6 +498,9 @@ export function usePipelineState({
 			}
 
 			savedStateRef.current = JSON.stringify(pipelineState.pipelines);
+			// Snapshot the roots we actually wrote so the next save knows which
+			// of them may need an empty-YAML clear if their pipelines vanish.
+			lastWrittenRootsRef.current = new Set(currentRoots);
 			setIsDirty(false);
 			setSaveStatus('success');
 			persistLayout();
@@ -522,22 +533,46 @@ export function usePipelineState({
 				message: `Your changes were NOT saved. ${message}`,
 			});
 		}
-	}, [pipelineState.pipelines, sessions, cueSettings, persistLayout, savedStateRef]);
+	}, [
+		pipelineState.pipelines,
+		sessions,
+		cueSettings,
+		persistLayout,
+		savedStateRef,
+		lastWrittenRootsRef,
+	]);
 
 	const handleDiscard = useCallback(async () => {
 		try {
 			const data = await cueService.getGraphData();
+			let restoredPipelines: CuePipeline[] = [];
 			if (data && data.length > 0) {
-				const pipelines = graphSessionsToPipelines(data, sessions);
+				restoredPipelines = graphSessionsToPipelines(data, sessions);
 				setPipelineState({
-					pipelines,
-					selectedPipelineId: pipelines.length > 0 ? pipelines[0].id : null,
+					pipelines: restoredPipelines,
+					selectedPipelineId: restoredPipelines.length > 0 ? restoredPipelines[0].id : null,
 				});
-				savedStateRef.current = JSON.stringify(pipelines);
+				savedStateRef.current = JSON.stringify(restoredPipelines);
 			} else {
 				setPipelineState({ pipelines: [], selectedPipelineId: null });
 				savedStateRef.current = '[]';
 			}
+			// Re-derive the written-roots set from what was just loaded so the
+			// next save knows which roots to clear if pipelines disappear again.
+			const sessionsById = new Map(sessions.map((s) => [s.id, s]));
+			const sessionsByName = new Map(sessions.map((s) => [s.name, s]));
+			const restoredRoots = new Set<string>();
+			for (const pipeline of restoredPipelines) {
+				for (const node of pipeline.nodes) {
+					if (node.type !== 'agent') continue;
+					const data = node.data as AgentNodeData;
+					const root =
+						sessionsById.get(data.sessionId)?.projectRoot ??
+						sessionsByName.get(data.sessionName)?.projectRoot;
+					if (root) restoredRoots.add(root);
+				}
+			}
+			lastWrittenRootsRef.current = restoredRoots;
 			setIsDirty(false);
 			setValidationErrors([]);
 		} catch (err: unknown) {

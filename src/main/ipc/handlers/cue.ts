@@ -218,7 +218,7 @@ export function registerCueHandlers(deps: CueHandlerDependencies): void {
 				content: string;
 				promptFiles?: Record<string, string>;
 			}): Promise<void> => {
-				const referencedPaths: string[] = [];
+				const keepPaths = new Set<string>();
 				if (options.promptFiles) {
 					const promptsBase = path.resolve(options.projectRoot, '.maestro/prompts');
 					for (const [relativePath, content] of Object.entries(options.promptFiles)) {
@@ -234,15 +234,45 @@ export function registerCueHandlers(deps: CueHandlerDependencies): void {
 							);
 						}
 						writeCuePromptFile(options.projectRoot, relativePath, content);
-						referencedPaths.push(relativePath);
+						keepPaths.add(relativePath);
 					}
 				}
 
 				writeCueConfigFile(options.projectRoot, options.content);
 
+				// Also keep any prompt_file / output_prompt_file paths the YAML
+				// itself references — callers may write a YAML that references
+				// pre-existing prompt files without re-passing them in promptFiles.
+				// Without this union the prune below would delete those referenced
+				// files as if they were orphans.
+				try {
+					const parsed = yaml.load(options.content) as
+						| { subscriptions?: Array<Record<string, unknown>> }
+						| null
+						| undefined;
+					const subs = parsed?.subscriptions;
+					if (Array.isArray(subs)) {
+						for (const sub of subs) {
+							if (!sub || typeof sub !== 'object') continue;
+							const pf = (sub as Record<string, unknown>).prompt_file;
+							const opf = (sub as Record<string, unknown>).output_prompt_file;
+							if (typeof pf === 'string' && pf.length > 0 && !path.isAbsolute(pf)) {
+								keepPaths.add(pf);
+							}
+							if (typeof opf === 'string' && opf.length > 0 && !path.isAbsolute(opf)) {
+								keepPaths.add(opf);
+							}
+						}
+					}
+				} catch {
+					// Already wrote the YAML — if we can't re-parse it for prune
+					// purposes, fall back to keepPaths as derived from promptFiles
+					// alone. Pruning is best-effort and never blocks the save.
+				}
+
 				// Remove any `.md` files under .maestro/prompts/ that the new YAML no
 				// longer references (handles pipeline/agent renames and deletions).
-				pruneOrphanedPromptFiles(options.projectRoot, referencedPaths);
+				pruneOrphanedPromptFiles(options.projectRoot, keepPaths);
 			}
 		)
 	);

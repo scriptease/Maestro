@@ -56,6 +56,7 @@ function createDefaultParams(
 		pipelineState: { pipelines: [], selectedPipelineId: null },
 		setPipelineState: vi.fn(),
 		savedStateRef: { current: '' },
+		lastWrittenRootsRef: { current: new Set<string>() },
 		setIsDirty: vi.fn(),
 		...overrides,
 	};

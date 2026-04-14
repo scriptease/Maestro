@@ -200,27 +200,70 @@ describe('CuePipelineEditor — initial viewport (regression: empty canvas on fi
 	});
 
 	it('fits view once nodes have been measured (no saved viewport)', () => {
-		mockNodesInitialized = true;
+		// Mount with nodesInitialized=false to mirror the real ReactFlow timing
+		// (initial render happens before the dimension measurement finishes),
+		// then flip to true and rerender so the initial-viewport effect's
+		// dependency change drives it post-mount. Asserting after a single
+		// mount with nodesInitialized=true would mask a regression where the
+		// effect doesn't react to the false→true transition.
+		mockNodesInitialized = false;
 		mockPendingSavedViewportRef.current = null;
-		renderEditor();
+		const { rerender } = renderEditor();
+
+		expect(mockFitView).not.toHaveBeenCalled();
+
+		mockNodesInitialized = true;
+		rerender(
+			<CuePipelineEditor
+				sessions={[]}
+				graphSessions={[]}
+				onSwitchToSession={vi.fn()}
+				onClose={vi.fn()}
+				theme={mockTheme}
+			/>
+		);
 
 		expect(mockFitView).toHaveBeenCalledTimes(1);
 		expect(mockSetViewport).not.toHaveBeenCalled();
 	});
 
 	it('restores saved viewport once nodes have been measured (does NOT fitView)', () => {
-		mockNodesInitialized = true;
+		mockNodesInitialized = false;
 		mockPendingSavedViewportRef.current = { x: 100, y: 200, zoom: 1.5 };
-		renderEditor();
+		const { rerender } = renderEditor();
+
+		expect(mockSetViewport).not.toHaveBeenCalled();
+
+		mockNodesInitialized = true;
+		rerender(
+			<CuePipelineEditor
+				sessions={[]}
+				graphSessions={[]}
+				onSwitchToSession={vi.fn()}
+				onClose={vi.fn()}
+				theme={mockTheme}
+			/>
+		);
 
 		expect(mockSetViewport).toHaveBeenCalledWith({ x: 100, y: 200, zoom: 1.5 });
 		expect(mockFitView).not.toHaveBeenCalled();
 	});
 
 	it('consumes the pending saved viewport after applying it', () => {
-		mockNodesInitialized = true;
+		mockNodesInitialized = false;
 		mockPendingSavedViewportRef.current = { x: 100, y: 200, zoom: 1.5 };
-		renderEditor();
+		const { rerender } = renderEditor();
+
+		mockNodesInitialized = true;
+		rerender(
+			<CuePipelineEditor
+				sessions={[]}
+				graphSessions={[]}
+				onSwitchToSession={vi.fn()}
+				onClose={vi.fn()}
+				theme={mockTheme}
+			/>
+		);
 
 		// Ref is nulled out so the viewport isn't re-applied on subsequent renders
 		// (e.g. after selection changes trigger the other fitView effect).
@@ -228,9 +271,20 @@ describe('CuePipelineEditor — initial viewport (regression: empty canvas on fi
 	});
 
 	it('runs the initial viewport step exactly once', () => {
-		mockNodesInitialized = true;
+		mockNodesInitialized = false;
 		mockPendingSavedViewportRef.current = null;
 		const { rerender } = renderEditor();
+
+		mockNodesInitialized = true;
+		rerender(
+			<CuePipelineEditor
+				sessions={[]}
+				graphSessions={[]}
+				onSwitchToSession={vi.fn()}
+				onClose={vi.fn()}
+				theme={mockTheme}
+			/>
+		);
 
 		expect(mockFitView).toHaveBeenCalledTimes(1);
 

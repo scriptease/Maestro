@@ -630,7 +630,13 @@ describe('CueEngine session lifecycle', () => {
 			expect(clearFanInState).toHaveBeenCalledWith(session.id);
 		});
 
-		it('initSession idempotency guard — does not double-register trigger sources', async () => {
+		it('initSession idempotency guard — does not double-register the session in the registry', async () => {
+			// NOTE: this test uses an empty `subscriptions: []` config so it does
+			// NOT exercise trigger-source registration directly; it only verifies
+			// the registry-level dedupe behavior (calling initSession twice still
+			// leaves exactly one entry in the registry snapshot). A separate test
+			// would need a real subscription wired through createTriggerSource to
+			// assert non-duplication of trigger sources themselves.
 			const config = createMockConfig({ subscriptions: [] });
 			mockLoadCueConfig.mockReturnValue(config);
 			mockWatchCueYaml.mockReturnValue(vi.fn());

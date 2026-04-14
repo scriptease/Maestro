@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Session, SessionState, ThinkingMode } from '../../types';
 import { cueService } from '../../services/cue';
+import { captureException } from '../../utils/sentry';
 import { createTab, closeTab } from '../../utils/tabHelpers';
 
 /**
@@ -891,6 +892,14 @@ export function useRemoteIntegration(deps: UseRemoteIntegrationDeps): UseRemoteI
 					window.maestro.process.sendRemoteTriggerCueSubscriptionResponse(responseChannel, result);
 				} catch (error) {
 					console.error('[Remote Cue Trigger] Failed:', subscriptionName, error);
+					captureException(error, {
+						extra: {
+							context: 'remoteTriggerCueSubscription',
+							subscriptionName,
+							responseChannel,
+							prompt,
+						},
+					});
 					window.maestro.process.sendRemoteTriggerCueSubscriptionResponse(responseChannel, false);
 				}
 			}

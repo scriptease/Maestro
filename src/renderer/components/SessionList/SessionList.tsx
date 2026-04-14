@@ -37,6 +37,7 @@ import { LiveOverlayPanel } from './LiveOverlayPanel';
 import { useSessionCategories } from '../../hooks/session/useSessionCategories';
 import { useSessionFilterMode } from '../../hooks/session/useSessionFilterMode';
 import { cueService } from '../../services/cue';
+import { captureException } from '../../utils/sentry';
 
 // ============================================================================
 // SessionContextMenu - Right-click context menu for session items
@@ -158,8 +159,15 @@ function SessionListInner(props: SessionListProps) {
 					}
 				}
 				setCueSessionMap(map);
-			} catch {
-				// Cue engine may not be initialized yet
+			} catch (err: unknown) {
+				// "Cue engine not initialized" is the expected pre-init case;
+				// treat anything else as a real failure and surface it. Note
+				// that cueService.getStatus already swallows IPC failures and
+				// returns the default ([]), so this catch is a defense-in-depth
+				// backstop for engine-not-ready and any future contract change.
+				const message = err instanceof Error ? err.message : String(err);
+				if (message.includes('Cue engine not initialized')) return;
+				captureException(err, { extra: { context: 'SessionList.fetchCueStatus' } });
 			}
 		};
 

@@ -37,6 +37,12 @@ export function useCue(): UseCueReturn {
 	const refresh = useCallback(async () => {
 		try {
 			setError(null);
+			// NOTE: these reads bypass the cueService wrapper deliberately.
+			// cueService.* read methods swallow IPC failures and return safe
+			// defaults so the rest of the UI degrades silently — but useCue
+			// powers the Cue dashboard, where an IPC failure must surface as
+			// a user-visible error banner. Going direct preserves the catch
+			// path below; the wrapper would make `err` unreachable here.
 			const [statusData, runsData, logData, queueData] = await Promise.all([
 				window.maestro.cue.getStatus(),
 				window.maestro.cue.getActiveRuns(),

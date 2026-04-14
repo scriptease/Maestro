@@ -216,6 +216,12 @@ export function createCueFanInTracker(deps: CueFanInDeps): CueFanInTracker {
 				fanInTimers.delete(key);
 			}
 			fanInTrackers.delete(key);
+			// Drop the timestamp alongside the tracker — leaving it behind would
+			// leak a key into fanInCreatedAt forever (the success path used to
+			// only delete fanInTrackers, while every other path — timeout/break
+			// modes, clearForSession, expireTracker, reset — already cleaned up
+			// fanInCreatedAt correctly).
+			fanInCreatedAt.delete(key);
 
 			const completions = [...tracker.values()];
 			const event = createCueEvent('agent.completed', sub.name, {

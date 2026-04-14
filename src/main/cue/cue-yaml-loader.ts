@@ -82,14 +82,37 @@ export function loadCueConfigDetailed(projectRoot: string): LoadCueConfigDetaile
 		};
 	}
 
-	// Drop normalized subscriptions whose source-YAML index was rejected.
-	const skippedIndices = new Set(partitioned.subscriptionErrors.map((entry) => entry.index));
+	// Map raw-YAML subscription indices (used by the validator) to their
+	// position in document.subscriptions, which is the normalized array.
+	// parseCueConfigDocument silently skips raw entries that aren't objects
+	// (e.g. `- "string-not-an-object"`), so the two arrays' indices drift —
+	// filtering the normalized array using raw-index errors would drop the
+	// wrong subscriptions. Build a translation table from the raw array.
+	const rawSubs = (parsed as Record<string, unknown>).subscriptions as unknown[];
+	const rawToNormalized = new Map<number, number>();
+	let normIdx = 0;
+	for (let i = 0; i < rawSubs.length; i++) {
+		const entry = rawSubs[i];
+		if (entry && typeof entry === 'object') {
+			rawToNormalized.set(i, normIdx);
+			normIdx++;
+		}
+	}
+
+	const skippedNormalizedIndices = new Set<number>();
+	for (const entry of partitioned.subscriptionErrors) {
+		const norm = rawToNormalized.get(entry.index);
+		if (norm !== undefined) skippedNormalizedIndices.add(norm);
+	}
+
 	const filteredDocument =
-		skippedIndices.size === 0
+		skippedNormalizedIndices.size === 0
 			? document
 			: {
 					...document,
-					subscriptions: document.subscriptions.filter((_, idx) => !skippedIndices.has(idx)),
+					subscriptions: document.subscriptions.filter(
+						(_, idx) => !skippedNormalizedIndices.has(idx)
+					),
 				};
 
 	const materialized = materializeCueConfig(filteredDocument);

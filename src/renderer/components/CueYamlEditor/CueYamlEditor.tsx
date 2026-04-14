@@ -21,6 +21,7 @@ import { PatternPreviewModal } from './PatternPreviewModal';
 import { CueAiChat } from './CueAiChat';
 import { YamlTextEditor } from './YamlTextEditor';
 import { cueService } from '../../services/cue';
+import { captureException } from '../../utils/sentry';
 
 interface CueYamlEditorProps {
 	isOpen: boolean;
@@ -71,11 +72,16 @@ export function CueYamlEditor({
 						setIsValid(validationResult.valid);
 						setValidationErrors(validationResult.errors);
 					}
-				} catch {
-					// Validation failure on load is non-fatal
+				} catch (err: unknown) {
+					// Validation failure on load is non-fatal — but unexpected
+					// IPC errors should still surface to telemetry.
+					captureException(err, {
+						extra: { operation: 'cueYamlEditor.loadValidate', projectRoot },
+					});
 				}
-			} catch {
+			} catch (err: unknown) {
 				if (cancelled) return;
+				captureException(err, { extra: { operation: 'cueYamlEditor.loadRead', projectRoot } });
 				setYamlContent(CUE_YAML_TEMPLATE);
 				setOriginalContent(CUE_YAML_TEMPLATE);
 			} finally {
@@ -136,19 +142,25 @@ export function CueYamlEditor({
 	const refreshYamlFromDisk = useCallback(async () => {
 		try {
 			const content = await cueService.readYaml(projectRoot);
-			if (content) {
+			// `if (content)` would skip an intentionally empty YAML — an empty
+			// string is a legitimate result (e.g. user cleared the file) and
+			// should still trigger state updates and revalidation. Only skip
+			// when the read returned null (no file on disk).
+			if (content != null) {
 				setYamlContent(content);
 				setOriginalContent(content);
 				try {
 					const result = await cueService.validateYaml(content);
 					setIsValid(result.valid);
 					setValidationErrors(result.errors);
-				} catch {
-					// non-fatal
+				} catch (err: unknown) {
+					captureException(err, {
+						extra: { operation: 'cueYamlEditor.refreshValidate', projectRoot },
+					});
 				}
 			}
-		} catch {
-			// non-fatal
+		} catch (err: unknown) {
+			captureException(err, { extra: { operation: 'cueYamlEditor.refreshRead', projectRoot } });
 		}
 	}, [projectRoot]);
 

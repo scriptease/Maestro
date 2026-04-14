@@ -17,6 +17,7 @@ import {
 	LEGACY_CUE_CONFIG_PATH,
 	MAESTRO_DIR,
 } from '../../../shared/maestro-paths';
+import { captureException } from '../../utils/sentry';
 
 /**
  * Resolve the cue config file path, preferring `.maestro/cue.yaml`
@@ -136,7 +137,12 @@ export function pruneOrphanedPromptFiles(
 		let entries: fs.Dirent[];
 		try {
 			entries = fs.readdirSync(dir, { withFileTypes: true });
-		} catch {
+		} catch (err) {
+			// Don't re-throw: pruning runs AFTER a successful YAML write, and
+			// re-throwing here would surface a failed-save toast to the user
+			// even though the YAML did persist. Report to Sentry so we can see
+			// readdir failures in production, then continue (skip this dir).
+			captureException(err, { operation: 'pruneOrphanedPromptFiles.readdir', dir });
 			return;
 		}
 		for (const entry of entries) {
@@ -152,8 +158,10 @@ export function pruneOrphanedPromptFiles(
 			try {
 				fs.unlinkSync(abs);
 				removed.push(abs);
-			} catch {
-				// Ignore — a file we can't delete is not worth failing the save.
+			} catch (err) {
+				// Same rationale as readdir: never let a per-file delete
+				// failure poison a successful save. Report and move on.
+				captureException(err, { operation: 'pruneOrphanedPromptFiles.unlink', file: abs });
 			}
 		}
 	};

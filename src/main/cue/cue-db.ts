@@ -10,6 +10,7 @@ import Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
 import { app } from 'electron';
+import { captureException } from '../utils/sentry';
 
 const LOG_CONTEXT = '[CueDB]';
 
@@ -203,6 +204,10 @@ export function safeRecordCueEvent(event: Parameters<typeof recordCueEvent>[0]):
 			'warn',
 			`Failed to record Cue event (id=${event.id}): ${err instanceof Error ? err.message : String(err)}`
 		);
+		// Persist warns to Sentry too — DB write failures here are silent at
+		// runtime (callers must remain non-fatal) but accumulate observability
+		// gaps if not surfaced; keep returning without throwing.
+		captureException(err, { operation: 'safeRecordCueEvent', event });
 	}
 }
 
@@ -218,6 +223,7 @@ export function safeUpdateCueEventStatus(id: string, status: string): void {
 			'warn',
 			`Failed to update Cue event status (id=${id}, status=${status}): ${err instanceof Error ? err.message : String(err)}`
 		);
+		captureException(err, { operation: 'safeUpdateCueEventStatus', id, status });
 	}
 }
 

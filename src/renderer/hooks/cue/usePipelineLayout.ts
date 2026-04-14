@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { ReactFlowInstance, Viewport } from 'reactflow';
 import type {
+	AgentNodeData,
 	CuePipelineState,
 	CueGraphSession,
 	PipelineLayoutState,
@@ -26,6 +27,13 @@ export interface UsePipelineLayoutParams {
 	pipelineState: CuePipelineState;
 	setPipelineState: React.Dispatch<React.SetStateAction<CuePipelineState>>;
 	savedStateRef: React.MutableRefObject<string>;
+	/**
+	 * Set of project roots that the current saved state corresponds to. Seeded
+	 * from the initial loaded pipelines so handleSave knows which roots to
+	 * clear if their last pipeline disappears, even when the agent that owned
+	 * those pipelines was renamed/removed since the load.
+	 */
+	lastWrittenRootsRef: React.MutableRefObject<Set<string>>;
 	setIsDirty: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
@@ -53,6 +61,7 @@ export function usePipelineLayout({
 	pipelineState,
 	setPipelineState,
 	savedStateRef,
+	lastWrittenRootsRef,
 	setIsDirty,
 }: UsePipelineLayoutParams): UsePipelineLayoutReturn {
 	const layoutSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -121,11 +130,13 @@ export function usePipelineLayout({
 			// Guard: if a newer load started or a previous one already completed, bail out
 			if (reqId !== latestRestoreIdRef.current || hasRestoredLayoutRef.current) return;
 
+			let pipelinesForRoots: CuePipelineState['pipelines'];
 			if (savedLayout && savedLayout.pipelines) {
 				const merged = mergePipelinesWithSavedLayout(livePipelines, savedLayout);
 
 				setPipelineState(merged);
 				savedStateRef.current = JSON.stringify(merged.pipelines);
+				pipelinesForRoots = merged.pipelines;
 
 				// Stash the saved viewport for the editor to apply once ReactFlow
 				// has measured the restored nodes. Applying it here on a timeout
@@ -137,7 +148,27 @@ export function usePipelineLayout({
 			} else {
 				setPipelineState({ pipelines: livePipelines, selectedPipelineId: livePipelines[0].id });
 				savedStateRef.current = JSON.stringify(livePipelines);
+				pipelinesForRoots = livePipelines;
 			}
+
+			// Seed lastWrittenRootsRef from the loaded pipelines so the very first
+			// save in this session knows which roots existed before any edits —
+			// otherwise deleting the only pipeline in a root and saving wouldn't
+			// know to clear that root's stale YAML.
+			const loadedRoots = new Set<string>();
+			const sessionsById = new Map(sessions.map((s) => [s.id, s]));
+			const sessionsByName = new Map(sessions.map((s) => [s.name, s]));
+			for (const pipeline of pipelinesForRoots) {
+				for (const node of pipeline.nodes) {
+					if (node.type !== 'agent') continue;
+					const data = node.data as AgentNodeData;
+					const root =
+						sessionsById.get(data.sessionId)?.projectRoot ??
+						sessionsByName.get(data.sessionName)?.projectRoot;
+					if (root) loadedRoots.add(root);
+				}
+			}
+			lastWrittenRootsRef.current = loadedRoots;
 
 			hasRestoredLayoutRef.current = true;
 			setIsDirty(false);

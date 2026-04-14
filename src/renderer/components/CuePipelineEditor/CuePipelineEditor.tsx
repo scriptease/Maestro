@@ -667,15 +667,28 @@ function CuePipelineEditorInner({
 		[isAllPipelinesView]
 	);
 
+	// All three handlers re-check isAllPipelinesView even though onNodeContextMenu
+	// also blocks open: a context menu opened in the per-pipeline view stays
+	// rendered if the user switches to All Pipelines mode while it's open, and
+	// without the guard the still-clickable Configure/Delete/Duplicate items
+	// would mutate state that isn't editable in the All Pipelines view.
 	const handleContextMenuConfigure = useCallback(() => {
 		if (!contextMenu) return;
+		if (isAllPipelinesView) {
+			setContextMenu(null);
+			return;
+		}
 		setSelectedNodeId(`${contextMenu.pipelineId}:${contextMenu.nodeId}`);
 		setSelectedEdgeId(null);
 		setContextMenu(null);
-	}, [contextMenu, setSelectedNodeId, setSelectedEdgeId]);
+	}, [contextMenu, isAllPipelinesView, setSelectedNodeId, setSelectedEdgeId]);
 
 	const handleContextMenuDelete = useCallback(() => {
 		if (!contextMenu) return;
+		if (isAllPipelinesView) {
+			setContextMenu(null);
+			return;
+		}
 		setPipelineState((prev) => ({
 			...prev,
 			pipelines: prev.pipelines.map((p) => {
@@ -691,10 +704,14 @@ function CuePipelineEditorInner({
 		}));
 		setSelectedNodeId(null);
 		setContextMenu(null);
-	}, [contextMenu, setPipelineState, setSelectedNodeId]);
+	}, [contextMenu, isAllPipelinesView, setPipelineState, setSelectedNodeId]);
 
 	const handleContextMenuDuplicate = useCallback(() => {
 		if (!contextMenu || contextMenu.nodeType !== 'trigger') return;
+		if (isAllPipelinesView) {
+			setContextMenu(null);
+			return;
+		}
 		setPipelineState((prev) => {
 			const pipeline = prev.pipelines.find((p) => p.id === contextMenu.pipelineId);
 			if (!pipeline) return prev;
@@ -715,7 +732,7 @@ function CuePipelineEditorInner({
 			};
 		});
 		setContextMenu(null);
-	}, [contextMenu, setPipelineState]);
+	}, [contextMenu, isAllPipelinesView, setPipelineState]);
 
 	// ─── Read-only click wrappers for All Pipelines view ───────────────────
 	// Clicking a node/edge normally sets selection, which opens the node or
