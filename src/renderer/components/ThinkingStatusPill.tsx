@@ -379,7 +379,16 @@ function ThinkingStatusPillInner({
 	// If AutoRun is active for the current session, show the AutoRun pill
 	// with concurrent thinking items badge for parallel operations
 	if (autoRunState?.isRunning) {
-		const concurrentItems = thinkingItems.filter((item) => item.session.id !== activeSessionId);
+		// Exclude only ONE item from the active session (the AutoRun tab itself).
+		// Additional busy tabs on the same session (e.g. force-parallel) are concurrent work.
+		let skippedAutoRunTab = false;
+		const concurrentItems = thinkingItems.filter((item) => {
+			if (!skippedAutoRunTab && item.session.id === activeSessionId) {
+				skippedAutoRunTab = true;
+				return false;
+			}
+			return true;
+		});
 		return (
 			<AutoRunPill
 				theme={theme}
@@ -617,13 +626,24 @@ export const ThinkingStatusPill = memo(ThinkingStatusPillInner, (prevProps, next
 			return false;
 		}
 		// Also check concurrent thinking items (shown as +N badge on AutoRun pill)
+		// Skip only the first active-session item (AutoRun tab); keep additional same-session tabs
 		if (prevProps.activeSessionId !== nextProps.activeSessionId) return false;
-		const prevConcurrent = prevProps.thinkingItems.filter(
-			(item) => item.session.id !== prevProps.activeSessionId
-		);
-		const nextConcurrent = nextProps.thinkingItems.filter(
-			(item) => item.session.id !== nextProps.activeSessionId
-		);
+		let prevSkipped = false;
+		const prevConcurrent = prevProps.thinkingItems.filter((item) => {
+			if (!prevSkipped && item.session.id === prevProps.activeSessionId) {
+				prevSkipped = true;
+				return false;
+			}
+			return true;
+		});
+		let nextSkipped = false;
+		const nextConcurrent = nextProps.thinkingItems.filter((item) => {
+			if (!nextSkipped && item.session.id === nextProps.activeSessionId) {
+				nextSkipped = true;
+				return false;
+			}
+			return true;
+		});
 		if (prevConcurrent.length !== nextConcurrent.length) return false;
 		for (let i = 0; i < prevConcurrent.length; i++) {
 			const prev = prevConcurrent[i];

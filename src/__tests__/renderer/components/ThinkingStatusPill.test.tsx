@@ -790,6 +790,40 @@ describe('ThinkingStatusPill', () => {
 			expect(screen.queryByText(/\+\d/)).not.toBeInTheDocument();
 		});
 
+		it('shows +N badge for force-parallel tabs on the same session during AutoRun', () => {
+			// AutoRun runs on one tab; force-parallel creates a second busy tab on the same session
+			const autoRunTab = createThinkingItemWithTab(
+				{ id: 'active-session', name: 'SANS AI Pentesting' },
+				{ id: 'tab-autorun', name: 'AutoRun Tab' }
+			);
+			const parallelTab = createThinkingItemWithTab(
+				{ id: 'active-session', name: 'SANS AI Pentesting' },
+				{ id: 'tab-parallel', name: 'Proposal vs Outline' }
+			);
+			const autoRunState: BatchRunState = {
+				isRunning: true,
+				isPaused: false,
+				isStopping: false,
+				currentTaskIndex: 0,
+				totalTasks: 10,
+				completedTasks: 5,
+				startTime: Date.now(),
+				tasks: [],
+				batchName: 'Batch',
+			};
+			render(
+				<ThinkingStatusPill
+					thinkingItems={[autoRunTab, parallelTab]}
+					theme={mockTheme}
+					autoRunState={autoRunState}
+					activeSessionId="active-session"
+				/>
+			);
+			expect(screen.getByText('AutoRun')).toBeInTheDocument();
+			expect(screen.getByText('+1')).toBeInTheDocument();
+			expect(screen.getByTitle('+1 more running')).toBeInTheDocument();
+		});
+
 		it('shows expanded dropdown with all running processes on hover', () => {
 			const activeItem = createThinkingItem({ id: 'active-session', name: 'AutoRun Session' });
 			const concurrentItem = createThinkingItem({ id: 'other-session', name: 'Parallel Read' });
