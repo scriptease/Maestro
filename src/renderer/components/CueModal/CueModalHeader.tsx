@@ -50,6 +50,7 @@ function CueModalHeaderInner({
 							onClick={onCloseHelp}
 							className="p-1 rounded-md hover:bg-white/10 transition-colors"
 							style={{ color: theme.colors.textDim }}
+							aria-label="Back to dashboard"
 							title="Back to dashboard"
 						>
 							<ArrowLeft className="w-4 h-4" />
@@ -104,6 +105,10 @@ function CueModalHeaderInner({
 						<button
 							onClick={handleToggle}
 							disabled={toggling}
+							role="switch"
+							aria-checked={isEnabled}
+							aria-disabled={toggling || undefined}
+							aria-label={isEnabled ? 'Disable Cue' : 'Enable Cue'}
 							className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50"
 							style={{
 								backgroundColor: isEnabled ? `${theme.colors.accent}20` : theme.colors.bgActivity,
@@ -130,6 +135,7 @@ function CueModalHeaderInner({
 						<button
 							onClick={onOpenHelp}
 							className="p-1.5 rounded-md hover:bg-white/10 transition-colors"
+							aria-label="Open help"
 							title="Help"
 							style={{ color: theme.colors.textDim }}
 						>
