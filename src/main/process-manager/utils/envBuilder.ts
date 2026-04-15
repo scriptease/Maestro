@@ -59,7 +59,8 @@ export function buildUnixBasePath(): string {
  * // WORKSPACE will expand to /Users/john/projects (with path expansion)
  *
  * @note Path expansion (`~/` → home directory) is applied to all values
- * @note Terminal sessions do NOT strip Electron/IDE variables (full environment inherited on Windows)
+ * @note On Windows, the full environment is inherited without stripping. On Unix/Linux/macOS,
+ *       Electron/IDE variables listed in STRIPPED_ENV_VARS are removed to avoid shell/plugin issues.
  */
 export function buildPtyTerminalEnv(shellEnvVars?: Record<string, string>): NodeJS.ProcessEnv {
 	let env: NodeJS.ProcessEnv;
