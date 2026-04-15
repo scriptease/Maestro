@@ -34,8 +34,10 @@ export interface CueDashboardProps {
 	onEditYaml: (session: CueSessionStatus) => void;
 	onRemoveCue: (session: CueSessionStatus) => void;
 	onTriggerSubscription: (subscriptionName: string) => void;
-	onStopRun: (runId: string) => Promise<void> | Promise<boolean>;
-	onStopAll: () => Promise<void>;
+	/** Fire-and-forget — matches ActiveRunsList's onClick invocation. Any returned
+	 *  promise is discarded; errors should be surfaced via toasts in the caller. */
+	onStopRun: (runId: string) => void;
+	onStopAll: () => void;
 }
 
 export function CueDashboard({

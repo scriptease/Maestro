@@ -203,6 +203,13 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 	const handleOpenHelp = useCallback(() => setShowHelp(true), []);
 	const handleCloseHelp = useCallback(() => setShowHelp(false), []);
 
+	// Retry re-fetches both streams so a transient graph-fetch failure and a
+	// main Cue status failure both clear on one click.
+	const handleRetry = useCallback(() => {
+		refresh();
+		refreshGraphData();
+	}, [refresh, refreshGraphData]);
+
 	return (
 		<>
 			{createPortal(
@@ -253,7 +260,7 @@ export function CueModal({ theme, onClose, cueShortcutKeys }: CueModalProps) {
 									loading={loading}
 									error={error}
 									graphError={graphError}
-									onRetry={refresh}
+									onRetry={handleRetry}
 									sessions={sessions}
 									activeRuns={activeRuns}
 									activityLog={activityLog}
