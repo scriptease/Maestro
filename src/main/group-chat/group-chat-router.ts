@@ -40,13 +40,8 @@ import { AgentDetector } from '../agents';
 import { powerManager } from '../power-manager';
 import { logger } from '../utils/logger';
 import { captureException } from '../utils/sentry';
-import {
-	buildAgentArgs,
-	applyAgentConfigOverrides,
-	getContextWindowValue,
-} from '../utils/agent-args';
+import { buildAgentArgs, applyAgentConfigOverrides } from '../utils/agent-args';
 import { getPrompt } from '../prompt-manager';
-import { wrapSpawnWithSsh } from '../utils/ssh-spawn-wrapper';
 import type { SshRemoteSettingsStore } from '../utils/ssh-remote-resolver';
 import { setGetCustomShellPathCallback } from './group-chat-config';
 import { spawnGroupChatAgent } from './spawnGroupChatAgent';
