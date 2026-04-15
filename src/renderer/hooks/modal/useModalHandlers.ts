@@ -13,7 +13,7 @@
  * directly. These will be migrated in a future cleanup pass.
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Session, LeaderboardRegistration, AgentError } from '../../types';
 import type { RecoveryAction } from '../../components/AgentErrorModal';
 import { getModalActions, useModalStore } from '../../stores/modalStore';
@@ -175,10 +175,12 @@ export function useModalHandlers(
 	// Derived State
 	// ====================================================================
 
-	const errorSession =
-		useSessionStore(
-			agentErrorModalSessionId ? selectSessionById(agentErrorModalSessionId) : () => undefined
-		) ?? null;
+	const errorSessionSelector = useMemo(
+		() =>
+			agentErrorModalSessionId ? selectSessionById(agentErrorModalSessionId) : () => undefined,
+		[agentErrorModalSessionId]
+	);
+	const errorSession = useSessionStore(errorSessionSelector) ?? null;
 
 	// ====================================================================
 	// Group A: Simple Close Handlers
