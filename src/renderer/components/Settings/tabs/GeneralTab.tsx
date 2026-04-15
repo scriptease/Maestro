@@ -171,6 +171,9 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 		try {
 			const result = await window.maestro.maestroCli.installOrUpdate();
 			setMaestroCliStatus(result.status);
+			if (result.pathUpdateError) {
+				setMaestroCliStatusError(result.pathUpdateError);
+			}
 			if (result.restartRequired) {
 				setMaestroCliInstallMessage(
 					'CLI installed. Open a new terminal for PATH changes to apply.'
@@ -579,20 +582,23 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 						matches Maestro v{maestroCliStatus?.expectedVersion || __APP_VERSION__}.
 					</div>
 
-					{maestroCliChecking && (
-						<div className="text-xs opacity-60">Checking Maestro CLI status...</div>
-					)}
-
 					{maestroCliStatus && !maestroCliChecking && (
 						<div className="text-xs space-y-1">
 							<div>
 								<span style={{ color: theme.colors.textDim }}>PATH:</span>{' '}
 								<span
 									style={{
-										color: maestroCliStatus.inPath ? theme.colors.success : theme.colors.warning,
+										color:
+											maestroCliStatus.inPath || maestroCliStatus.inShellPath
+												? theme.colors.success
+												: theme.colors.warning,
 									}}
 								>
-									{maestroCliStatus.inPath ? 'Detected' : 'Not detected'}
+									{maestroCliStatus.inPath
+										? 'Detected'
+										: maestroCliStatus.inShellPath
+											? 'Detected (shell PATH)'
+											: 'Not detected'}
 								</span>
 							</div>
 							<div>
@@ -621,17 +627,20 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 						</div>
 					)}
 
-					{maestroCliStatusError && (
-						<div className="text-xs" style={{ color: theme.colors.warning }}>
-							{maestroCliStatusError}
-						</div>
-					)}
-
-					{maestroCliInstallMessage && (
-						<div className="text-xs" style={{ color: theme.colors.success }}>
-							{maestroCliInstallMessage}
-						</div>
-					)}
+					<div
+						role={maestroCliStatusError ? 'alert' : 'status'}
+						aria-live={maestroCliStatusError ? 'assertive' : 'polite'}
+						aria-atomic="true"
+						className="text-xs space-y-1"
+					>
+						{maestroCliChecking && <div className="opacity-60">Checking Maestro CLI status...</div>}
+						{maestroCliStatusError && (
+							<div style={{ color: theme.colors.warning }}>{maestroCliStatusError}</div>
+						)}
+						{maestroCliInstallMessage && (
+							<div style={{ color: theme.colors.success }}>{maestroCliInstallMessage}</div>
+						)}
+					</div>
 
 					<div className="flex gap-2">
 						<button

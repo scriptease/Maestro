@@ -26,6 +26,8 @@ function splitOutputLines(output: string): string[] {
 }
 
 export class MaestroCliManager {
+	private readonly posixPathMarker = '# Added by Maestro CLI installer';
+
 	private escapeForWindowsCmd(value: string): string {
 		return value.replace(/"/g, '""');
 	}
@@ -96,14 +98,22 @@ export class MaestroCliManager {
 	}
 
 	private async writeUnixShim(installPath: string, bundledCliPath: string): Promise<void> {
-		const script = `#!/usr/bin/env bash\nnode ${JSON.stringify(bundledCliPath)} \"$@\"\n`;
+		const safeCliPath = bundledCliPath.replace(/'/g, "'\\''");
+		const safeRuntimePath = process.execPath.replace(/'/g, "'\\''");
+		const script =
+			`#!/usr/bin/env bash\n` +
+			`ELECTRON_RUN_AS_NODE=1 '${safeRuntimePath}' '${safeCliPath}' "$@"\n`;
 		await fs.promises.writeFile(installPath, script, 'utf-8');
 		await fs.promises.chmod(installPath, 0o755);
 	}
 
 	private async writeWindowsShim(installPath: string, bundledCliPath: string): Promise<void> {
 		const escapedCliPath = this.escapeForWindowsCmd(bundledCliPath);
-		const script = `@echo off\r\nnode "${escapedCliPath}" %*\r\n`;
+		const escapedRuntimePath = this.escapeForWindowsCmd(process.execPath);
+		const script =
+			`@echo off\r\n` +
+			`set "ELECTRON_RUN_AS_NODE=1"\r\n` +
+			`"${escapedRuntimePath}" "${escapedCliPath}" %*\r\n`;
 		await fs.promises.writeFile(installPath, script, 'utf-8');
 	}
 
@@ -112,17 +122,15 @@ export class MaestroCliManager {
 	): Promise<{ updated: boolean; files: string[] }> {
 		const home = os.homedir();
 		const shellName = path.basename(process.env.SHELL || '').toLowerCase();
-		const rcFiles = new Set<string>(['.profile']);
+		const rcFiles = new Set<string>();
 		if (shellName === 'zsh') rcFiles.add('.zshrc');
 		if (shellName === 'bash') rcFiles.add('.bashrc');
-		if (!shellName) {
-			rcFiles.add('.zshrc');
-			rcFiles.add('.bashrc');
+		if (rcFiles.size === 0) {
+			rcFiles.add('.profile');
 		}
 
 		const expectedEntry = '$HOME/.local/bin';
-		const exportLine = `export PATH=\"${expectedEntry}:$PATH\"`;
-		const marker = '# Added by Maestro CLI installer';
+		const exportLine = `export PATH="${expectedEntry}:$PATH"`;
 
 		let updated = false;
 		const filesUpdated: string[] = [];
@@ -136,12 +144,12 @@ export class MaestroCliManager {
 				contents = '';
 			}
 
-			if (contents.includes(expectedEntry) || contents.includes(installDir)) {
+			if (contents.includes(this.posixPathMarker) || contents.includes(exportLine)) {
 				continue;
 			}
 
 			const prefix = contents.length > 0 && !contents.endsWith('\n') ? '\n' : '';
-			const snippet = `${prefix}${marker}\n${exportLine}\n`;
+			const snippet = `${prefix}${this.posixPathMarker}\n${exportLine}\n`;
 			await fs.promises.appendFile(rcPath, snippet, 'utf-8');
 			updated = true;
 			filesUpdated.push(rcPath);
@@ -179,17 +187,27 @@ export class MaestroCliManager {
 		return result.exitCode === 0;
 	}
 
+	private async pathExists(filePath: string): Promise<boolean> {
+		try {
+			await fs.promises.access(filePath, fs.constants.F_OK);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
 	async checkStatus(): Promise<MaestroCliStatus> {
 		const expectedVersion = normalizeVersion(app.getVersion());
 		const installDir = this.getInstallDir();
 		const bundledCliPath = await this.resolveBundledCliPath();
 
 		const inPathCommand = await this.detectCliPath(false);
-		const expandedCommand = inPathCommand || (await this.detectCliPath(true));
+		const expandedCommand = await this.detectCliPath(true);
 		const installPath = this.getInstallPath();
-		const installShimExists = fs.existsSync(installPath);
+		const installShimExists = await this.pathExists(installPath);
 		const commandPath = expandedCommand || (installShimExists ? installPath : null);
 		const inPath = Boolean(inPathCommand);
+		const inShellPath = Boolean(expandedCommand);
 		const installed = Boolean(commandPath);
 		const installedVersion = commandPath ? await this.readCliVersion(commandPath) : null;
 		const versionMatch =
@@ -199,10 +217,11 @@ export class MaestroCliManager {
 			expectedVersion,
 			installed,
 			inPath,
+			inShellPath,
 			commandPath,
 			installedVersion,
 			versionMatch,
-			needsInstallOrUpdate: !installed || !inPath || !versionMatch,
+			needsInstallOrUpdate: !installed || !versionMatch,
 			installDir,
 			bundledCliPath,
 		};
@@ -225,11 +244,15 @@ export class MaestroCliManager {
 
 		let pathUpdated = false;
 		let shellFilesUpdated: string[] = [];
+		let pathUpdateError: string | undefined;
 
 		const alreadyInPath = this.isPathEntryPresent(process.env.PATH, installDir);
 		if (!alreadyInPath) {
 			if (isWindows()) {
 				pathUpdated = await this.ensureWindowsUserPath(installDir);
+				if (!pathUpdated) {
+					pathUpdateError = 'Failed to update Windows user PATH for maestro-cli';
+				}
 			} else {
 				const result = await this.ensurePosixPathExport(installDir);
 				pathUpdated = result.updated;
@@ -240,9 +263,14 @@ export class MaestroCliManager {
 		const status = await this.checkStatus();
 		const executionSucceeded = (await this.readCliVersion(installPath)) !== null;
 		return {
-			success: status.installed && status.versionMatch && executionSucceeded,
+			success:
+				status.installed &&
+				status.versionMatch &&
+				executionSucceeded &&
+				pathUpdateError === undefined,
 			status,
 			pathUpdated,
+			pathUpdateError,
 			restartRequired: pathUpdated,
 			shellFilesUpdated,
 		};
