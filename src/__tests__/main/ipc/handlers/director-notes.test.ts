@@ -854,4 +854,3 @@ describe('director-notes IPC handlers', () => {
 		});
 	});
 });
-

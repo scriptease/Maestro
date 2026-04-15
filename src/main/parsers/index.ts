@@ -87,4 +87,3 @@ export function initializeOutputParsers(): void {
 	const registeredParsers = getAllOutputParsers().map((p) => p.agentId);
 	logger.info(`Initialized output parsers: ${registeredParsers.join(', ')}`, LOG_CONTEXT);
 }
-

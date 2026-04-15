@@ -274,5 +274,4 @@ describe('stores/utils', () => {
 			});
 		});
 	});
-
 });

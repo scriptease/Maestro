@@ -74,4 +74,3 @@ export function checkWslEnvironment(cwd: string): boolean {
 	logger.debug('[WSL] Running from Linux filesystem - OK', 'WSLDetector', { cwd });
 	return false;
 }
-

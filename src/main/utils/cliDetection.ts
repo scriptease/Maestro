@@ -184,4 +184,3 @@ export async function resolveSshPath(): Promise<string> {
 	await detectSshPath();
 	return sshPathCache || 'ssh';
 }
-
