@@ -12,6 +12,8 @@ interface JsonlViewerProps {
 	theme: Theme;
 	searchQuery?: string;
 	jqFilter?: string;
+	/** 'jsonl' splits by line; 'json' parses the entire content as one document */
+	parseMode?: 'jsonl' | 'json';
 	onMatchCount?: (count: number) => void;
 	onJqError?: (error: string | null) => void;
 }
@@ -60,6 +62,21 @@ function parseJsonlLines(content: string): ParsedLine[] {
 		}
 	}
 	return lines;
+}
+
+function parseJsonDocument(content: string): ParsedLine[] {
+	try {
+		return [{ index: 1, raw: content, data: JSON.parse(content), error: null }];
+	} catch (e) {
+		return [
+			{
+				index: 1,
+				raw: content,
+				data: null,
+				error: e instanceof Error ? e.message : 'Invalid JSON',
+			},
+		];
+	}
 }
 
 function applyFilter(lines: ParsedLine[], expr: JqExpr | null): FilteredLine[] {
@@ -578,6 +595,7 @@ export function JsonlViewer({
 	theme,
 	searchQuery,
 	jqFilter,
+	parseMode = 'jsonl',
 	onMatchCount,
 	onJqError,
 }: JsonlViewerProps) {
@@ -587,8 +605,10 @@ export function JsonlViewer({
 
 	const debouncedFilter = useDebouncedValue(jqFilter ?? '', FILTER_DEBOUNCE_MS);
 
-	// Parse all lines
-	const allLines = useMemo(() => parseJsonlLines(content), [content]);
+	const allLines = useMemo(
+		() => (parseMode === 'json' ? parseJsonDocument(content) : parseJsonlLines(content)),
+		[content, parseMode]
+	);
 	const parseErrors = useMemo(() => allLines.filter((l) => l.error !== null).length, [allLines]);
 
 	// Parse and apply jq filter

@@ -1031,7 +1031,7 @@ export const FilePreview = React.memo(
 												setJqError(null);
 												setTimeout(() => searchInputRef.current?.focus(), 0);
 											}}
-											className="flex items-center gap-1 px-2 py-1.5 rounded border text-xs font-medium whitespace-nowrap transition-colors"
+											className="flex items-center gap-1 px-2 py-2 rounded border text-xs font-medium whitespace-nowrap transition-colors"
 											style={{
 												borderColor:
 													searchMode === 'jq' ? theme.colors.accent : theme.colors.border,
@@ -1367,6 +1367,7 @@ export const FilePreview = React.memo(
 						<JsonlViewer
 							content={file.content}
 							theme={theme}
+							parseMode={isJson ? 'json' : 'jsonl'}
 							searchQuery={searchMode === 'text' ? searchQuery : undefined}
 							jqFilter={searchMode === 'jq' ? searchQuery : undefined}
 							onMatchCount={searchMode === 'text' ? setMatchCount : undefined}
