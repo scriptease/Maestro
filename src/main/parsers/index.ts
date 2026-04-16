@@ -87,16 +87,3 @@ export function initializeOutputParsers(): void {
 	const registeredParsers = getAllOutputParsers().map((p) => p.agentId);
 	logger.info(`Initialized output parsers: ${registeredParsers.join(', ')}`, LOG_CONTEXT);
 }
-
-/**
- * Check if parsers have been initialized
- * @returns true if at least one parser is registered
- */
-let _initialized = false;
-
-export function ensureParsersInitialized(): void {
-	if (!_initialized) {
-		initializeOutputParsers();
-		_initialized = true;
-	}
-}
