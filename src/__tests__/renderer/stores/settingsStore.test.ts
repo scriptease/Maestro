@@ -2,21 +2,59 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
 	useSettingsStore,
 	loadAllSettings,
-	getBadgeLevelForTime,
 	selectIsLeaderboardRegistered,
-	getSettingsState,
-	getSettingsActions,
-	DEFAULT_CONTEXT_MANAGEMENT_SETTINGS,
-	DEFAULT_AUTO_RUN_STATS,
-	DEFAULT_USAGE_STATS,
-	DEFAULT_KEYBOARD_MASTERY_STATS,
-	DEFAULT_ONBOARDING_STATS,
-	DEFAULT_AI_COMMANDS,
 } from '../../../renderer/stores/settingsStore';
 import type { SettingsStoreState } from '../../../renderer/stores/settingsStore';
 import type { FileExplorerIconTheme } from '../../../renderer/utils/fileExplorerIcons/shared';
 import { DEFAULT_SHORTCUTS, TAB_SHORTCUTS } from '../../../renderer/constants/shortcuts';
 import { DEFAULT_CUSTOM_THEME_COLORS } from '../../../renderer/constants/themes';
+
+// Pull defaults from a freshly-initialized store so tests don't need to re-import them.
+// Deep-cloned so test mutations can't affect the captured reference.
+// These constants match what the store uses internally (kept non-exported to prevent fan-out).
+const _INITIAL_STATE = useSettingsStore.getState();
+const DEFAULT_CONTEXT_MANAGEMENT_SETTINGS = JSON.parse(
+	JSON.stringify(_INITIAL_STATE.contextManagementSettings)
+);
+const DEFAULT_AUTO_RUN_STATS = JSON.parse(JSON.stringify(_INITIAL_STATE.autoRunStats));
+const DEFAULT_USAGE_STATS = JSON.parse(JSON.stringify(_INITIAL_STATE.usageStats));
+const DEFAULT_KEYBOARD_MASTERY_STATS = JSON.parse(
+	JSON.stringify(_INITIAL_STATE.keyboardMasteryStats)
+);
+const DEFAULT_ONBOARDING_STATS = JSON.parse(JSON.stringify(_INITIAL_STATE.onboardingStats));
+const DEFAULT_AI_COMMANDS = JSON.parse(JSON.stringify(_INITIAL_STATE.customAICommands));
+
+// Inlined badge level calculator matching settingsStore's internal function.
+// Kept local so removing the export from the store doesn't break this test.
+function getBadgeLevelForTime(cumulativeTimeMs: number): number {
+	const MINUTE = 60 * 1000;
+	const HOUR = 60 * MINUTE;
+	const DAY = 24 * HOUR;
+	const WEEK = 7 * DAY;
+	const MONTH = 30 * DAY;
+	const thresholds = [
+		15 * MINUTE,
+		1 * HOUR,
+		8 * HOUR,
+		1 * DAY,
+		1 * WEEK,
+		1 * MONTH,
+		3 * MONTH,
+		6 * MONTH,
+		365 * DAY,
+		5 * 365 * DAY,
+		10 * 365 * DAY,
+	];
+	let level = 0;
+	for (let i = 0; i < thresholds.length; i++) {
+		if (cumulativeTimeMs >= thresholds[i]) {
+			level = i + 1;
+		} else {
+			break;
+		}
+	}
+	return level;
+}
 
 /**
  * Reset the Zustand store to initial state between tests.
@@ -1828,17 +1866,16 @@ describe('settingsStore', () => {
 	// ========================================================================
 
 	describe('non-React access', () => {
-		it('getSettingsState returns current state', () => {
+		it('useSettingsStore.getState() returns current state', () => {
 			useSettingsStore.setState({ fontSize: 20 });
-			const state = getSettingsState();
+			const state = useSettingsStore.getState();
 			expect(state.fontSize).toBe(20);
 		});
 
-		it('getSettingsActions returns action functions that work', () => {
-			const actions = getSettingsActions();
-			expect(typeof actions.setFontSize).toBe('function');
+		it('useSettingsStore.getState() exposes action functions that work', () => {
+			expect(typeof useSettingsStore.getState().setFontSize).toBe('function');
 
-			actions.setFontSize(22);
+			useSettingsStore.getState().setFontSize(22);
 			expect(useSettingsStore.getState().fontSize).toBe(22);
 			expect(window.maestro.settings.set).toHaveBeenCalledWith('fontSize', 22);
 		});

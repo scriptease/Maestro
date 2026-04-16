@@ -10,16 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import {
-	useNotificationStore,
-	notifyToast,
-	resetToastIdCounter,
-	getNotificationState,
-	getNotificationActions,
-	selectToasts,
-	selectToastCount,
-	selectConfig,
-} from '../../../renderer/stores/notificationStore';
+import { useNotificationStore, notifyToast } from '../../../renderer/stores/notificationStore';
 import type { Toast } from '../../../renderer/stores/notificationStore';
 
 // ============================================================================
@@ -43,7 +34,6 @@ beforeEach(() => {
 			idleNotificationCommand: '',
 		},
 	});
-	resetToastIdCounter();
 
 	// Mock window.maestro
 	(globalThis as any).window = {
@@ -245,9 +235,9 @@ describe('notificationStore', () => {
 
 	describe('notifyToast', () => {
 		describe('ID generation', () => {
-			it('returns generated toast ID', () => {
+			it('returns generated toast ID with expected shape', () => {
 				const id = notifyToast({ type: 'success', title: 'Test', message: 'msg' });
-				expect(id).toMatch(/^toast-\d+-0$/);
+				expect(id).toMatch(/^toast-\d+-\d+$/);
 			});
 
 			it('generates unique IDs', () => {
@@ -256,10 +246,12 @@ describe('notificationStore', () => {
 				expect(id1).not.toBe(id2);
 			});
 
-			it('increments counter', () => {
-				notifyToast({ type: 'success', title: 'A', message: 'a' });
+			it('counter portion increments between consecutive calls', () => {
+				const id1 = notifyToast({ type: 'success', title: 'A', message: 'a' });
 				const id2 = notifyToast({ type: 'success', title: 'B', message: 'b' });
-				expect(id2).toMatch(/^toast-\d+-1$/);
+				const counter1 = Number(id1.split('-').pop());
+				const counter2 = Number(id2.split('-').pop());
+				expect(counter2).toBe(counter1 + 1);
 			});
 		});
 
@@ -530,20 +522,20 @@ describe('notificationStore', () => {
 	// Selectors
 	// ==========================================================================
 
-	describe('selectors', () => {
-		it('selectToasts returns toasts array', () => {
+	describe('store state access', () => {
+		it('toasts array reflects addToast calls', () => {
 			useNotificationStore.getState().addToast(createToast({ id: 'a' }));
-			expect(selectToasts(useNotificationStore.getState())).toHaveLength(1);
+			expect(useNotificationStore.getState().toasts).toHaveLength(1);
 		});
 
-		it('selectToastCount returns count', () => {
+		it('toasts length reflects count', () => {
 			useNotificationStore.getState().addToast(createToast({ id: 'a' }));
 			useNotificationStore.getState().addToast(createToast({ id: 'b' }));
-			expect(selectToastCount(useNotificationStore.getState())).toBe(2);
+			expect(useNotificationStore.getState().toasts).toHaveLength(2);
 		});
 
-		it('selectConfig returns config object', () => {
-			const config = selectConfig(useNotificationStore.getState());
+		it('config object exposes defaults', () => {
+			const { config } = useNotificationStore.getState();
 			expect(config.defaultDuration).toBe(20);
 			expect(config.osNotificationsEnabled).toBe(true);
 		});
@@ -554,20 +546,19 @@ describe('notificationStore', () => {
 	// ==========================================================================
 
 	describe('non-React access', () => {
-		it('getNotificationState returns current state', () => {
+		it('useNotificationStore.getState() returns current state', () => {
 			notifyToast({ type: 'info', title: 'Test', message: 'msg' });
-			expect(getNotificationState().toasts).toHaveLength(1);
+			expect(useNotificationStore.getState().toasts).toHaveLength(1);
 		});
 
-		it('getNotificationActions returns working action references', () => {
-			const actions = getNotificationActions();
-			actions.addToast(createToast({ id: 'from-actions' }));
+		it('useNotificationStore.getState() exposes working action references', () => {
+			useNotificationStore.getState().addToast(createToast({ id: 'from-actions' }));
 			expect(useNotificationStore.getState().toasts[0].id).toBe('from-actions');
 		});
 
-		it('getNotificationActions.clearToasts works', () => {
+		it('useNotificationStore.getState().clearToasts works', () => {
 			notifyToast({ type: 'info', title: 'A', message: 'a' });
-			getNotificationActions().clearToasts();
+			useNotificationStore.getState().clearToasts();
 			expect(useNotificationStore.getState().toasts).toHaveLength(0);
 		});
 	});

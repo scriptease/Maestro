@@ -7,13 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import {
-	useAgentStore,
-	selectAvailableAgents,
-	selectAgentsDetected,
-	getAgentState,
-	getAgentActions,
-} from '../../../renderer/stores/agentStore';
+import { useAgentStore } from '../../../renderer/stores/agentStore';
 import type { ProcessQueuedItemDeps } from '../../../renderer/stores/agentStore';
 import { useSessionStore } from '../../../renderer/stores/sessionStore';
 import type { Session, AgentConfig, QueuedItem } from '../../../renderer/types';
@@ -919,60 +913,57 @@ describe('agentStore', () => {
 		});
 	});
 
-	describe('selectors', () => {
-		it('selectAvailableAgents returns the agents list', () => {
+	describe('store state access', () => {
+		it('availableAgents reflects setState updates', () => {
 			const agents = [createMockAgentConfig({ id: 'claude-code' })];
 			useAgentStore.setState({ availableAgents: agents });
 
-			expect(selectAvailableAgents(useAgentStore.getState())).toEqual(agents);
+			expect(useAgentStore.getState().availableAgents).toEqual(agents);
 		});
 
-		it('selectAgentsDetected returns detection status', () => {
-			expect(selectAgentsDetected(useAgentStore.getState())).toBe(false);
+		it('agentsDetected reflects setState updates', () => {
+			expect(useAgentStore.getState().agentsDetected).toBe(false);
 
 			useAgentStore.setState({ agentsDetected: true });
 
-			expect(selectAgentsDetected(useAgentStore.getState())).toBe(true);
+			expect(useAgentStore.getState().agentsDetected).toBe(true);
 		});
 	});
 
 	describe('non-React access', () => {
-		it('getAgentState returns current snapshot', () => {
+		it('getState returns current snapshot', () => {
 			const agents = [createMockAgentConfig()];
 			useAgentStore.setState({ availableAgents: agents, agentsDetected: true });
 
-			const state = getAgentState();
+			const state = useAgentStore.getState();
 			expect(state.availableAgents).toEqual(agents);
 			expect(state.agentsDetected).toBe(true);
 		});
 
-		it('getAgentState reflects latest mutations', () => {
-			expect(getAgentState().agentsDetected).toBe(false);
+		it('getState reflects latest mutations', () => {
+			expect(useAgentStore.getState().agentsDetected).toBe(false);
 
 			useAgentStore.setState({ agentsDetected: true });
 
-			expect(getAgentState().agentsDetected).toBe(true);
+			expect(useAgentStore.getState().agentsDetected).toBe(true);
 		});
 
-		it('getAgentActions returns all 10 action functions', () => {
-			const actions = getAgentActions();
+		it('getState exposes all 10 action functions', () => {
+			const state = useAgentStore.getState();
 
-			expect(typeof actions.refreshAgents).toBe('function');
-			expect(typeof actions.getAgentConfig).toBe('function');
-			expect(typeof actions.processQueuedItem).toBe('function');
-			expect(typeof actions.clearAgentError).toBe('function');
-			expect(typeof actions.startNewSessionAfterError).toBe('function');
-			expect(typeof actions.retryAfterError).toBe('function');
-			expect(typeof actions.restartAgentAfterError).toBe('function');
-			expect(typeof actions.authenticateAfterError).toBe('function');
-			expect(typeof actions.killAgent).toBe('function');
-			expect(typeof actions.interruptAgent).toBe('function');
-
-			// Verify exactly 10 actions (no extras, no missing)
-			expect(Object.keys(actions)).toHaveLength(10);
+			expect(typeof state.refreshAgents).toBe('function');
+			expect(typeof state.getAgentConfig).toBe('function');
+			expect(typeof state.processQueuedItem).toBe('function');
+			expect(typeof state.clearAgentError).toBe('function');
+			expect(typeof state.startNewSessionAfterError).toBe('function');
+			expect(typeof state.retryAfterError).toBe('function');
+			expect(typeof state.restartAgentAfterError).toBe('function');
+			expect(typeof state.authenticateAfterError).toBe('function');
+			expect(typeof state.killAgent).toBe('function');
+			expect(typeof state.interruptAgent).toBe('function');
 		});
 
-		it('getAgentActions clearAgentError works end-to-end', () => {
+		it('clearAgentError works end-to-end', () => {
 			const session = createMockSession({
 				id: 'session-1',
 				state: 'error',
@@ -980,16 +971,14 @@ describe('agentStore', () => {
 			});
 			useSessionStore.getState().setSessions([session]);
 
-			const { clearAgentError } = getAgentActions();
-			clearAgentError('session-1');
+			useAgentStore.getState().clearAgentError('session-1');
 
 			expect(useSessionStore.getState().sessions[0].state).toBe('idle');
 			expect(mockClearError).toHaveBeenCalledWith('session-1');
 		});
 
-		it('getAgentActions killAgent works end-to-end', async () => {
-			const { killAgent } = getAgentActions();
-			await killAgent('session-1', 'terminal');
+		it('killAgent works end-to-end', async () => {
+			await useAgentStore.getState().killAgent('session-1', 'terminal');
 
 			expect(mockKill).toHaveBeenCalledWith('session-1-terminal');
 		});
@@ -997,7 +986,7 @@ describe('agentStore', () => {
 
 	describe('React hook integration', () => {
 		it('useAgentStore with selector re-renders on agent detection', async () => {
-			const { result } = renderHook(() => useAgentStore(selectAgentsDetected));
+			const { result } = renderHook(() => useAgentStore((s) => s.agentsDetected));
 
 			expect(result.current).toBe(false);
 
@@ -1012,7 +1001,7 @@ describe('agentStore', () => {
 		});
 
 		it('useAgentStore with availableAgents selector updates on refresh', async () => {
-			const { result } = renderHook(() => useAgentStore(selectAvailableAgents));
+			const { result } = renderHook(() => useAgentStore((s) => s.availableAgents));
 
 			expect(result.current).toEqual([]);
 

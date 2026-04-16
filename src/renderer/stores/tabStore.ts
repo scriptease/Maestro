@@ -25,7 +25,7 @@
  */
 
 import { create } from 'zustand';
-import type { AITab, FilePreviewTab, UnifiedTab, TerminalTab, Session } from '../types';
+import type { AITab, FilePreviewTab, Session } from '../types';
 import type { GistInfo } from '../components/GistPublishModal';
 import {
 	createTab as createTabHelper,
@@ -33,12 +33,10 @@ import {
 	closeFileTab as closeFileTabHelper,
 	reopenUnifiedClosedTab as reopenUnifiedClosedTabHelper,
 	setActiveTab as setActiveTabHelper,
-	getActiveTab,
 	navigateToNextUnifiedTab as navigateToNextHelper,
 	navigateToPrevUnifiedTab as navigateToPrevHelper,
 	navigateToUnifiedTabByIndex as navigateToIndexHelper,
 	navigateToLastUnifiedTab as navigateToLastHelper,
-	buildUnifiedTabs,
 	type CreateTabOptions,
 	type CreateTabResult,
 	type CloseTabOptions,
@@ -529,204 +527,3 @@ export const useTabStore = create<TabStore>()((set) => ({
 		updateFileTab(tabId, { editMode: !tab.editMode });
 	},
 }));
-
-// ============================================================================
-// Selectors (derive from sessionStore)
-// ============================================================================
-
-/**
- * Select the active AI tab from the active session.
- * Use with useSessionStore: `useSessionStore(selectActiveTab)`
- *
- * @example
- * const activeTab = useSessionStore(selectActiveTab);
- */
-export const selectActiveTab = (
-	state: ReturnType<typeof useSessionStore.getState>
-): AITab | undefined => {
-	const session = selectActiveSession(state);
-	return session ? getActiveTab(session) : undefined;
-};
-
-/**
- * Select the active file preview tab from the active session.
- * Use with useSessionStore: `useSessionStore(selectActiveFileTab)`
- *
- * @example
- * const activeFileTab = useSessionStore(selectActiveFileTab);
- */
-export const selectActiveFileTab = (
-	state: ReturnType<typeof useSessionStore.getState>
-): FilePreviewTab | undefined => {
-	const session = selectActiveSession(state);
-	if (!session || !session.activeFileTabId) return undefined;
-	return session.filePreviewTabs.find((t) => t.id === session.activeFileTabId);
-};
-
-/**
- * Select unified tabs (AI + file) in order for the active session.
- * Use with useSessionStore: `useSessionStore(selectUnifiedTabs)`
- *
- * @example
- * const unifiedTabs = useSessionStore(selectUnifiedTabs);
- */
-export const selectUnifiedTabs = (
-	state: ReturnType<typeof useSessionStore.getState>
-): UnifiedTab[] => {
-	const session = selectActiveSession(state);
-	if (!session) return [];
-	return buildUnifiedTabs(session);
-};
-
-/**
- * Select a specific AI tab by ID from the active session.
- *
- * @example
- * const tab = useSessionStore(selectTabById('tab-123'));
- */
-export const selectTabById =
-	(tabId: string) =>
-	(state: ReturnType<typeof useSessionStore.getState>): AITab | undefined => {
-		const session = selectActiveSession(state);
-		return session?.aiTabs.find((t) => t.id === tabId);
-	};
-
-/**
- * Select a specific file preview tab by ID from the active session.
- *
- * @example
- * const fileTab = useSessionStore(selectFileTabById('file-tab-123'));
- */
-export const selectFileTabById =
-	(tabId: string) =>
-	(state: ReturnType<typeof useSessionStore.getState>): FilePreviewTab | undefined => {
-		const session = selectActiveSession(state);
-		return session?.filePreviewTabs.find((t) => t.id === tabId);
-	};
-
-/**
- * Select the count of AI tabs in the active session.
- *
- * @example
- * const tabCount = useSessionStore(selectTabCount);
- */
-export const selectTabCount = (state: ReturnType<typeof useSessionStore.getState>): number => {
-	const session = selectActiveSession(state);
-	return session?.aiTabs.length ?? 0;
-};
-
-/**
- * Select all AI tabs in the active session.
- *
- * @example
- * const tabs = useSessionStore(selectAllTabs);
- */
-export const selectAllTabs = (state: ReturnType<typeof useSessionStore.getState>): AITab[] => {
-	const session = selectActiveSession(state);
-	return session?.aiTabs ?? [];
-};
-
-/**
- * Select all file preview tabs in the active session.
- *
- * @example
- * const fileTabs = useSessionStore(selectAllFileTabs);
- */
-export const selectAllFileTabs = (
-	state: ReturnType<typeof useSessionStore.getState>
-): FilePreviewTab[] => {
-	const session = selectActiveSession(state);
-	return session?.filePreviewTabs ?? [];
-};
-
-/**
- * Select the active terminal tab from the active session.
- * Use with useSessionStore: `useSessionStore(selectActiveTerminalTab)`
- *
- * @example
- * const activeTerminalTab = useSessionStore(selectActiveTerminalTab);
- */
-export const selectActiveTerminalTab = (
-	state: ReturnType<typeof useSessionStore.getState>
-): TerminalTab | undefined => {
-	const session = selectActiveSession(state);
-	if (!session || !session.activeTerminalTabId) return undefined;
-	return session.terminalTabs?.find((t) => t.id === session.activeTerminalTabId);
-};
-
-/**
- * Select all terminal tabs in the active session.
- * Use with useSessionStore: `useSessionStore(selectTerminalTabs)`
- *
- * @example
- * const terminalTabs = useSessionStore(selectTerminalTabs);
- */
-export const selectTerminalTabs = (
-	state: ReturnType<typeof useSessionStore.getState>
-): TerminalTab[] => {
-	const session = selectActiveSession(state);
-	return session?.terminalTabs ?? [];
-};
-
-// ============================================================================
-// Non-React Access
-// ============================================================================
-
-/**
- * Get current tab store state outside React.
- *
- * @example
- * const { tabGistContent, fileGistUrls } = getTabState();
- */
-export function getTabState() {
-	return useTabStore.getState();
-}
-
-/**
- * Get stable tab action references outside React.
- *
- * @example
- * const { createTab, closeTab, selectTab } = getTabActions();
- */
-export function getTabActions() {
-	const state = useTabStore.getState();
-	return {
-		// Gist state
-		setTabGistContent: state.setTabGistContent,
-		setFileGistUrls: state.setFileGistUrls,
-		setFileGistUrl: state.setFileGistUrl,
-		clearFileGistUrl: state.clearFileGistUrl,
-		// Tab CRUD
-		createTab: state.createTab,
-		closeTab: state.closeTab,
-		closeFileTab: state.closeFileTab,
-		reopenClosedTab: state.reopenClosedTab,
-		// Tab navigation
-		selectTab: state.selectTab,
-		selectFileTab: state.selectFileTab,
-		navigateToNext: state.navigateToNext,
-		navigateToPrev: state.navigateToPrev,
-		navigateToIndex: state.navigateToIndex,
-		navigateToLast: state.navigateToLast,
-		// Tab metadata
-		starTab: state.starTab,
-		markUnread: state.markUnread,
-		updateTabName: state.updateTabName,
-		toggleReadOnly: state.toggleReadOnly,
-		toggleSaveToHistory: state.toggleSaveToHistory,
-		cycleThinkingMode: state.cycleThinkingMode,
-		// Tab reordering
-		reorderTabs: state.reorderTabs,
-		reorderUnifiedTabs: state.reorderUnifiedTabs,
-		// File tab operations
-		updateFileTabEditContent: state.updateFileTabEditContent,
-		updateFileTabScrollPosition: state.updateFileTabScrollPosition,
-		updateFileTabSearchQuery: state.updateFileTabSearchQuery,
-		toggleFileTabEditMode: state.toggleFileTabEditMode,
-		// Terminal tab CRUD
-		createTerminalTab: state.createTerminalTab,
-		closeTerminalTab: state.closeTerminalTab,
-		selectTerminalTab: state.selectTerminalTab,
-		renameTerminalTab: state.renameTerminalTab,
-	};
-}

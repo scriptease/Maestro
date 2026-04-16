@@ -17,7 +17,10 @@ import { SessionList } from '../../../renderer/components/SessionList';
 import type { Session, Group, Theme } from '../../../renderer/types';
 import { useUIStore } from '../../../renderer/stores/uiStore';
 import { useSessionStore } from '../../../renderer/stores/sessionStore';
-import { useSettingsStore, DEFAULT_AUTO_RUN_STATS } from '../../../renderer/stores/settingsStore';
+import { useSettingsStore } from '../../../renderer/stores/settingsStore';
+
+// Deep-cloned default autoRunStats captured from a fresh store (no longer exported).
+const DEFAULT_AUTO_RUN_STATS = JSON.parse(JSON.stringify(useSettingsStore.getState().autoRunStats));
 import { useBatchStore } from '../../../renderer/stores/batchStore';
 import { useModalStore } from '../../../renderer/stores/modalStore';
 import type { BatchRunState } from '../../../renderer/types';
