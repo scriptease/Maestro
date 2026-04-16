@@ -188,7 +188,12 @@ cue
 	.option('--source-agent-id <id>', 'Agent ID to pass as source context for write-back')
 	.action(cueTrigger);
 
-<<<<<<< HEAD
+cue
+	.command('list')
+	.description('List all Cue subscriptions across agents')
+	.option('--json', 'Output as JSON (for scripting)')
+	.action(cueList);
+
 // Director's Notes commands
 const directorNotes = program
 	.command('director-notes')
@@ -211,13 +216,6 @@ directorNotes
 	.option('-f, --format <type>', 'Output format: json, markdown, text (default: text)')
 	.option('--json', 'Output as JSON (shorthand for --format json)')
 	.action(directorNotesSynopsis);
-=======
-cue
-	.command('list')
-	.description('List all Cue subscriptions across agents')
-	.option('--json', 'Output as JSON (for scripting)')
-	.action(cueList);
->>>>>>> dc6377aa9 (feat: add cue list command, wire triggerSubscription callback, and document cli.trigger)
 
 // Status command - check if Maestro desktop app is running and reachable
 program
