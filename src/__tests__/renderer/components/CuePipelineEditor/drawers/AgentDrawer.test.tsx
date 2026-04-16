@@ -143,16 +143,20 @@ describe('AgentDrawer', () => {
 		);
 
 		// Verify group order: Alpha before Zeta, Ungrouped last
+		// Filter out the "Output" section header which also uses uppercase styling
 		const groupHeaders = container.querySelectorAll('[style*="text-transform: uppercase"]');
-		const headerTexts = Array.from(groupHeaders).map((el) => el.textContent);
+		const headerTexts = Array.from(groupHeaders)
+			.map((el) => el.textContent)
+			.filter((t) => t !== 'Output');
 		expect(headerTexts).toEqual(['🅰️ Alpha', '⚡ Zeta', 'Ungrouped']);
 
 		// Verify agent order within each group by checking DOM order
 		// Each draggable row: <div draggable> > <svg(Bot)> > <div(flex)> > <div(name)> + <div(toolType)>
 		// The name is in the first div child with fontWeight:500
-		const agentNames = Array.from(container.querySelectorAll('[draggable="true"]')).map(
-			(el) => el.querySelector('[style*="font-weight: 500"]')?.textContent
-		);
+		// Filter out the CLI Output node which is also draggable
+		const agentNames = Array.from(container.querySelectorAll('[draggable="true"]'))
+			.map((el) => el.querySelector('[style*="font-weight: 500"]')?.textContent)
+			.filter((name) => name !== 'CLI Output');
 		expect(agentNames).toEqual(['Alice', 'Charlie', 'Bravo', 'Delta', 'Echo']);
 	});
 

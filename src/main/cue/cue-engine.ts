@@ -139,14 +139,23 @@ export class CueEngine {
 		});
 		this.dispatchService = createCueDispatchService({
 			getSessions: deps.getSessions,
-			executeRun: (sessionId, prompt, event, subscriptionName, outputPrompt, chainDepth) => {
+			executeRun: (
+				sessionId,
+				prompt,
+				event,
+				subscriptionName,
+				outputPrompt,
+				chainDepth,
+				cliOutput
+			) => {
 				this.runManager.execute(
 					sessionId,
 					prompt,
 					event,
 					subscriptionName,
 					outputPrompt,
-					chainDepth
+					chainDepth,
+					cliOutput
 				);
 			},
 			onLog: deps.onLog,
@@ -375,7 +384,11 @@ export class CueEngine {
 	 * Creates a synthetic event and dispatches through the normal execution path.
 	 * Returns true if the subscription was found and triggered.
 	 */
-	triggerSubscription(subscriptionName: string, promptOverride?: string): boolean {
+	triggerSubscription(
+		subscriptionName: string,
+		promptOverride?: string,
+		sourceAgentId?: string
+	): boolean {
 		for (const [sessionId, state] of this.registry.snapshot()) {
 			for (const sub of state.config.subscriptions) {
 				if (sub.name !== subscriptionName) continue;
@@ -383,6 +396,7 @@ export class CueEngine {
 
 				const event = createCueEvent(sub.event, sub.name, {
 					manual: true,
+					...(sourceAgentId ? { sourceAgentId } : {}),
 					...(promptOverride ? { cliPrompt: promptOverride } : {}),
 				});
 

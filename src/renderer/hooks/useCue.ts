@@ -14,7 +14,11 @@ export interface UseCueReturn {
 	disable: () => Promise<void>;
 	stopRun: (runId: string) => Promise<void>;
 	stopAll: () => Promise<void>;
-	triggerSubscription: (subscriptionName: string) => Promise<void>;
+	triggerSubscription: (
+		subscriptionName: string,
+		prompt?: string,
+		sourceAgentId?: string
+	) => Promise<void>;
 	refresh: () => Promise<void>;
 }
 
@@ -88,8 +92,8 @@ export function useCue(): UseCueReturn {
 	}, [refresh]);
 
 	const triggerSubscription = useCallback(
-		async (subscriptionName: string) => {
-			await cueService.triggerSubscription(subscriptionName);
+		async (subscriptionName: string, prompt?: string, sourceAgentId?: string) => {
+			await cueService.triggerSubscription(subscriptionName, prompt, sourceAgentId);
 			await refresh();
 		},
 		[refresh]

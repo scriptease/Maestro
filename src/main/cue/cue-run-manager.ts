@@ -16,6 +16,9 @@ import type { CueEvent, CueRunResult, CueSettings, CueSubscription } from './cue
 import { updateCueEventStatus, safeRecordCueEvent, safeUpdateCueEventStatus } from './cue-db';
 import { SOURCE_OUTPUT_MAX_CHARS } from './cue-fan-in-tracker';
 import { captureException } from '../utils/sentry';
+import { execFileNoThrow } from '../utils/execFile';
+import { substituteTemplateVariables, type TemplateContext } from '../../shared/templateVariables';
+import { buildCueTemplateContext } from './cue-template-context-builder';
 
 /** Phase of a run in the state machine: running → stopping | finished */
 export type RunPhase = 'running' | 'stopping' | 'finished';
@@ -38,6 +41,7 @@ export interface QueuedEvent {
 	subscriptionName: string;
 	queuedAt: number;
 	chainDepth?: number;
+	cliOutput?: { target: string };
 }
 
 export interface CueRunManagerDeps {
@@ -75,7 +79,8 @@ export interface CueRunManager {
 		event: CueEvent,
 		subscriptionName: string,
 		outputPrompt?: string,
-		chainDepth?: number
+		chainDepth?: number,
+		cliOutput?: { target: string }
 	): void;
 	stopRun(runId: string): boolean;
 	stopAll(): void;
@@ -143,7 +148,8 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 				entry.event,
 				entry.subscriptionName,
 				entry.outputPrompt,
-				entry.chainDepth
+				entry.chainDepth,
+				entry.cliOutput
 			);
 		}
 
@@ -159,7 +165,8 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 		event: CueEvent,
 		subscriptionName: string,
 		outputPrompt?: string,
-		chainDepth?: number
+		chainDepth?: number,
+		cliOutput?: { target: string }
 	): Promise<void> {
 		const sessionName = getSessionName(sessionId);
 		const settings = deps.getSessionSettings(sessionId);
@@ -285,6 +292,71 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 					);
 				}
 			}
+
+			// Phase 3: CLI Output delivery — shell out to maestro-cli send --live
+			if (cliOutput && result.status === 'completed') {
+				deps.onLog(
+					'cue',
+					`[CUE] "${subscriptionName}" Phase 3: delivering CLI output to target="${cliOutput.target}" (stdout length=${result.stdout.length})`
+				);
+				try {
+					const cueContext = buildCueTemplateContext(
+						event,
+						{ name: subscriptionName, event: event.type, enabled: true, prompt: '' },
+						runId
+					);
+					const templateContext: TemplateContext = {
+						session: {
+							id: sessionId,
+							name: sessionName,
+							toolType: '',
+							cwd: '',
+						},
+						cue: cueContext,
+					};
+					const resolvedTarget = substituteTemplateVariables(cliOutput.target, templateContext);
+					if (!resolvedTarget || resolvedTarget.trim() === '') {
+						deps.onLog(
+							'warn',
+							`[CUE] "${subscriptionName}" CLI output target resolved to empty string (raw="${cliOutput.target}") — skipping delivery`
+						);
+					} else {
+						const truncatedOutput = result.stdout.substring(0, 100_000);
+						const cliScriptPath = require('path').join(
+							process.resourcesPath ?? '',
+							'maestro-cli.js'
+						);
+						const cliResult = await execFileNoThrow(
+							process.execPath,
+							[cliScriptPath, 'send', resolvedTarget, truncatedOutput, '--live'],
+							undefined,
+							{ timeout: 30_000 }
+						);
+						if (cliResult.exitCode !== 0) {
+							throw new Error(`CLI exited with code ${cliResult.exitCode}: ${cliResult.stderr}`);
+						}
+						deps.onLog(
+							'cue',
+							`[CUE] "${subscriptionName}" CLI output delivered to ${resolvedTarget}`
+						);
+					}
+				} catch (cliError) {
+					captureException(cliError, {
+						operation: 'cue:cliOutputDelivery',
+						subscriptionName,
+						target: cliOutput.target,
+					});
+					deps.onLog(
+						'warn',
+						`[CUE] "${subscriptionName}" CLI output delivery failed: ${cliError instanceof Error ? cliError.message : String(cliError)}`
+					);
+				}
+			} else if (cliOutput && result.status !== 'completed') {
+				deps.onLog(
+					'cue',
+					`[CUE] "${subscriptionName}" Phase 3 skipped: run status="${result.status}" (not completed)`
+				);
+			}
 		} catch (error) {
 			if (!activeRuns.has(runId)) {
 				return;
@@ -338,7 +410,8 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 			event: CueEvent,
 			subscriptionName: string,
 			outputPrompt?: string,
-			chainDepth?: number
+			chainDepth?: number,
+			cliOutput?: { target: string }
 		): void {
 			const settings = deps.getSessionSettings(sessionId);
 			const maxConcurrent = settings?.max_concurrent ?? 1;
@@ -367,6 +440,7 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 					subscriptionName,
 					queuedAt: Date.now(),
 					chainDepth,
+					cliOutput,
 				});
 
 				deps.onLog(
@@ -378,7 +452,15 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 
 			// Slot available — dispatch immediately
 			activeRunCount.set(sessionId, currentCount + 1);
-			doExecuteCueRun(sessionId, prompt, event, subscriptionName, outputPrompt, chainDepth);
+			doExecuteCueRun(
+				sessionId,
+				prompt,
+				event,
+				subscriptionName,
+				outputPrompt,
+				chainDepth,
+				cliOutput
+			);
 		},
 
 		stopRun(runId: string): boolean {

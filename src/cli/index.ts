@@ -19,6 +19,7 @@ import { refreshAutoRun } from './commands/refresh-auto-run';
 import { status } from './commands/status';
 import { autoRun } from './commands/auto-run';
 import { cueTrigger } from './commands/cue-trigger';
+import { cueList } from './commands/cue-list';
 import { createAgent } from './commands/create-agent';
 import { removeAgent } from './commands/remove-agent';
 import { listSshRemotes } from './commands/list-ssh-remotes';
@@ -138,6 +139,7 @@ program
 	.option('-s, --session <id>', 'Resume an existing agent session (for multi-turn conversations)')
 	.option('-r, --read-only', 'Run in read-only/plan mode (agent cannot modify files)')
 	.option('-t, --tab', 'Open/focus the session tab in Maestro desktop')
+	.option('-l, --live', 'Send message through Maestro desktop (appears in tab)')
 	.action(send);
 
 // Open file command - open a file in the Maestro desktop app
@@ -183,7 +185,14 @@ cue
 	.description('Manually trigger a Cue subscription by name')
 	.option('-p, --prompt <text>', 'Override the subscription prompt with custom text')
 	.option('--json', 'Output as JSON (for scripting)')
+	.option('--source-agent-id <id>', 'Agent ID to pass as source context for write-back')
 	.action(cueTrigger);
+
+cue
+	.command('list')
+	.description('List all Cue subscriptions across agents')
+	.option('--json', 'Output as JSON (for scripting)')
+	.action(cueList);
 
 // Director's Notes commands
 const directorNotes = program

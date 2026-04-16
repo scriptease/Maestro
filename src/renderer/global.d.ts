@@ -474,7 +474,8 @@ interface MaestroAPI {
 			callback: (
 				subscriptionName: string,
 				prompt: string | undefined,
-				responseChannel: string
+				responseChannel: string,
+				sourceAgentId: string | undefined
 			) => void
 		) => () => void;
 		sendRemoteTriggerCueSubscriptionResponse: (responseChannel: string, result: unknown) => void;
@@ -3067,7 +3068,11 @@ interface MaestroAPI {
 		disable: () => Promise<void>;
 		stopRun: (runId: string) => Promise<boolean>;
 		stopAll: () => Promise<void>;
-		triggerSubscription: (subscriptionName: string, prompt?: string) => Promise<boolean>;
+		triggerSubscription: (
+			subscriptionName: string,
+			prompt?: string,
+			sourceAgentId?: string
+		) => Promise<boolean>;
 		getQueueStatus: () => Promise<Record<string, number>>;
 		refreshSession: (sessionId: string, projectRoot: string) => Promise<void>;
 		removeSession: (sessionId: string) => Promise<void>;

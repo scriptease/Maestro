@@ -178,7 +178,11 @@ export interface MessageHandlerCallbacks {
 	getCueSubscriptions: (sessionId?: string) => Promise<CueSubscriptionInfo[]>;
 	toggleCueSubscription: (subscriptionId: string, enabled: boolean) => Promise<boolean>;
 	getCueActivity: (sessionId?: string, limit?: number) => Promise<CueActivityEntry[]>;
-	triggerCueSubscription: (subscriptionName: string, prompt?: string) => Promise<boolean>;
+	triggerCueSubscription: (
+		subscriptionName: string,
+		prompt?: string,
+		sourceAgentId?: string
+	) => Promise<boolean>;
 	getUsageDashboard: (timeRange: 'day' | 'week' | 'month' | 'all') => Promise<UsageDashboardData>;
 	getAchievements: () => Promise<AchievementData[]>;
 	generateDirectorNotesSynopsis: (
@@ -2369,8 +2373,15 @@ export class WebSocketMessageHandler {
 			return;
 		}
 
+		const rawSourceAgentId = message.sourceAgentId;
+		if (rawSourceAgentId !== undefined && typeof rawSourceAgentId !== 'string') {
+			this.sendError(client, 'Invalid sourceAgentId: must be a string when provided');
+			return;
+		}
+		const sourceAgentId = rawSourceAgentId as string | undefined;
+
 		this.callbacks
-			.triggerCueSubscription(subscriptionName, prompt as string | undefined)
+			.triggerCueSubscription(subscriptionName, prompt as string | undefined, sourceAgentId)
 			.then((success) => {
 				this.send(client, {
 					type: 'trigger_cue_subscription_result',

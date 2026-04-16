@@ -10,7 +10,8 @@ export interface CueDispatchServiceDeps {
 		event: CueEvent,
 		subscriptionName: string,
 		outputPrompt?: string,
-		chainDepth?: number
+		chainDepth?: number,
+		cliOutput?: { target: string }
 	) => void;
 	onLog: (level: MainLogLevel, message: string, data?: unknown) => void;
 }
@@ -78,7 +79,8 @@ export function createCueDispatchService(deps: CueDispatchServiceDeps): CueDispa
 						fanOutEvent,
 						sub.name,
 						sub.output_prompt,
-						chainDepth
+						chainDepth,
+						sub.cli_output
 					);
 				}
 				return;
@@ -89,7 +91,15 @@ export function createCueDispatchService(deps: CueDispatchServiceDeps): CueDispa
 				deps.onLog('warn', `[CUE] "${sub.name}" has no prompt — skipping dispatch`);
 				return;
 			}
-			deps.executeRun(ownerSessionId, prompt, event, sub.name, sub.output_prompt, chainDepth);
+			deps.executeRun(
+				ownerSessionId,
+				prompt,
+				event,
+				sub.name,
+				sub.output_prompt,
+				chainDepth,
+				sub.cli_output
+			);
 		},
 	};
 }
