@@ -35,8 +35,8 @@ export function buildUnixBasePath(): string {
  *
  * Platform-specific behavior:
  * - **Windows**: Inherits full parent environment + TERM setting
- * - **Unix/Linux/macOS**: Creates a minimal clean environment with essential variables and
- *   an expanded PATH that includes Node version manager paths
+ * - **Unix/Linux/macOS**: Inherits full parent environment with Electron/IDE variables stripped,
+ *   TERM forced to xterm-256color, and an expanded PATH that includes Node version manager paths
  *
  * @param {Record<string, string>} [shellEnvVars] - Optional custom environment variables to merge.
  *        These override process defaults. Supports `~/` path expansion (e.g., `~/workspace`).
@@ -59,7 +59,8 @@ export function buildUnixBasePath(): string {
  * // WORKSPACE will expand to /Users/john/projects (with path expansion)
  *
  * @note Path expansion (`~/` → home directory) is applied to all values
- * @note Terminal sessions do NOT strip Electron/IDE variables (full environment inherited on Windows)
+ * @note On Windows, the full environment is inherited without stripping. On Unix/Linux/macOS,
+ *       Electron/IDE variables listed in STRIPPED_ENV_VARS are removed to avoid shell/plugin issues.
  */
 export function buildPtyTerminalEnv(shellEnvVars?: Record<string, string>): NodeJS.ProcessEnv {
 	let env: NodeJS.ProcessEnv;
@@ -72,13 +73,14 @@ export function buildPtyTerminalEnv(shellEnvVars?: Record<string, string>): Node
 	} else {
 		const basePath = buildUnixBasePath();
 		env = {
-			HOME: process.env.HOME,
-			USER: process.env.USER,
-			SHELL: process.env.SHELL,
+			...process.env,
 			TERM: 'xterm-256color',
 			LANG: process.env.LANG || 'en_US.UTF-8',
 			PATH: basePath,
 		};
+		for (const key of STRIPPED_ENV_VARS) {
+			delete env[key];
+		}
 	}
 
 	// Vim arrow-key ergonomics: when users launch `vi`/`vim` with distro defaults
