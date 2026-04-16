@@ -211,9 +211,16 @@ beforeEach(() => {
 				command: 'claude',
 				args: [],
 				path: '/usr/bin/claude',
+				capabilities: { supportsStreamJsonInput: false },
 			}),
 		},
 		process: { spawn: vi.fn().mockResolvedValue(undefined) },
+		prompts: {
+			get: vi.fn().mockResolvedValue({ success: true, content: '' }),
+		},
+		history: {
+			getFilePath: vi.fn().mockResolvedValue(null),
+		},
 	};
 });
 

@@ -43,7 +43,6 @@ const createTerminalOutputRef = () => ({
 	current: { focus: vi.fn() } as unknown as HTMLDivElement,
 });
 
-
 function createMockAITab(overrides: Partial<AITab> = {}): AITab {
 	return createBaseMockAITab({
 		hasUnread: false,
