@@ -993,34 +993,33 @@ export function useMainKeyboardHandler(): UseMainKeyboardHandlerReturn {
 					});
 					trackShortcut('prevTab');
 				}
-				// Cmd+1-9, Cmd+0 — Jump to tab by index in unified order
-				// Disabled in unread-only mode (unread filter only applies to AI tabs)
-				if (!ctx.showUnreadOnly) {
-					for (let i = 1; i <= 9; i++) {
-						if (ctx.isTabShortcut(e, `goToTab${i}`)) {
-							e.preventDefault();
-							ctx.setSessions((prev: Session[]) => {
-								const current = prev.find((s: Session) => s.id === ctx.activeSessionId);
-								if (!current) return prev;
-								const result = ctx.navigateToUnifiedTabByIndex(current, i - 1);
-								if (!result) return prev;
-								return prev.map((s: Session) => (s.id === current.id ? result.session : s));
-							});
-							trackShortcut(`goToTab${i}`);
-							break;
-						}
-					}
-					if (ctx.isTabShortcut(e, 'goToLastTab')) {
+				// Cmd+1-9, Cmd+0 — Jump to tab by index in unified order.
+				// In unread-only mode, index into the filtered/visible tabs so Cmd+N matches
+				// the Nth tab currently shown in the tab bar (not the Nth tab overall).
+				for (let i = 1; i <= 9; i++) {
+					if (ctx.isTabShortcut(e, `goToTab${i}`)) {
 						e.preventDefault();
 						ctx.setSessions((prev: Session[]) => {
 							const current = prev.find((s: Session) => s.id === ctx.activeSessionId);
 							if (!current) return prev;
-							const result = ctx.navigateToLastUnifiedTab(current);
+							const result = ctx.navigateToUnifiedTabByIndex(current, i - 1, ctx.showUnreadOnly);
 							if (!result) return prev;
 							return prev.map((s: Session) => (s.id === current.id ? result.session : s));
 						});
-						trackShortcut('goToLastTab');
+						trackShortcut(`goToTab${i}`);
+						break;
 					}
+				}
+				if (ctx.isTabShortcut(e, 'goToLastTab')) {
+					e.preventDefault();
+					ctx.setSessions((prev: Session[]) => {
+						const current = prev.find((s: Session) => s.id === ctx.activeSessionId);
+						if (!current) return prev;
+						const result = ctx.navigateToLastUnifiedTab(current, ctx.showUnreadOnly);
+						if (!result) return prev;
+						return prev.map((s: Session) => (s.id === current.id ? result.session : s));
+					});
+					trackShortcut('goToLastTab');
 				}
 			}
 

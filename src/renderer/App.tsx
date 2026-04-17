@@ -535,6 +535,7 @@ function MaestroConsoleInner() {
 	const bookmarksCollapsed = useUIStore((s) => s.bookmarksCollapsed);
 	// groupChatsExpanded moved to useCycleSession hook
 	const showUnreadOnly = useUIStore((s) => s.showUnreadOnly);
+	const showUnreadAgentsOnly = useUIStore((s) => s.showUnreadAgentsOnly);
 	const fileTreeFilter = useFileExplorerStore((s) => s.fileTreeFilter);
 	const fileTreeFilterOpen = useFileExplorerStore((s) => s.fileTreeFilterOpen);
 	const editingGroupId = useUIStore((s) => s.editingGroupId);
@@ -1564,6 +1565,8 @@ function MaestroConsoleInner() {
 			sessions,
 			groups,
 			bookmarksCollapsed,
+			showUnreadAgentsOnly,
+			activeSessionId,
 		});
 
 	// --- KEYBOARD NAVIGATION ---

@@ -443,7 +443,13 @@ function TabBarInner({
 						const showSeparator = index > 0 && !isActive && !isPrevActive;
 						const isFirstTab = originalIndex === 0;
 						const isLastTab = originalIndex === allTabs.length - 1;
-						const shortcutHint = getShortcutHint(originalIndex, isLastTab, showUnreadOnly);
+						// When the unread filter is active, jump shortcuts (Cmd+N / Cmd+0) operate on
+						// the filtered list — so hints must reflect the displayed position, not the
+						// underlying unifiedTabs index.
+						const isLastDisplayed = index === displayedUnifiedTabs.length - 1;
+						const shortcutHint = showUnreadOnly
+							? getShortcutHint(index, isLastDisplayed)
+							: getShortcutHint(originalIndex, isLastTab);
 
 						if (unifiedTab.type === 'ai') {
 							return (
@@ -579,7 +585,11 @@ function TabBarInner({
 						const showSeparator = index > 0 && !isActive && !isPrevActive;
 						const isFirstTab = originalIndex === 0;
 						const isLastTab = originalIndex === tabs.length - 1;
-						const shortcutHint = getShortcutHint(originalIndex, isLastTab, showUnreadOnly);
+						// Legacy mode: displayedTabs is the filtered list when unread filter is on.
+						const isLastDisplayed = index === displayedTabs.length - 1;
+						const shortcutHint = showUnreadOnly
+							? getShortcutHint(index, isLastDisplayed)
+							: getShortcutHint(originalIndex, isLastTab);
 
 						return (
 							<React.Fragment key={tab.id}>
