@@ -33,6 +33,7 @@ import type {
 	PipelineNode,
 	TriggerNodeData,
 	AgentNodeData,
+	CommandNodeData,
 	CueEventType,
 } from '../../../shared/cue-pipeline-types';
 import { getNextPipelineColor } from '../../components/CuePipelineEditor/pipelineColors';
@@ -249,6 +250,8 @@ export function usePipelineCanvasCallbacks({
 				sessionId?: string;
 				sessionName?: string;
 				toolType?: string;
+				owningSessionId?: string;
+				owningSessionName?: string;
 			};
 			try {
 				dropData = JSON.parse(raw);
@@ -312,6 +315,21 @@ export function usePipelineCanvasCallbacks({
 						type: 'agent',
 						position,
 						data: agentData,
+					};
+				} else if (dropData.type === 'command' && dropData.owningSessionId) {
+					const suffix = Date.now().toString(36).slice(-5);
+					const commandData: CommandNodeData = {
+						name: `${targetPipeline.name}-cmd-${suffix}`,
+						mode: 'shell',
+						shell: '',
+						owningSessionId: dropData.owningSessionId,
+						owningSessionName: dropData.owningSessionName ?? 'Unknown',
+					};
+					newNode = {
+						id: `command-${dropData.owningSessionId}-${Date.now()}`,
+						type: 'command',
+						position,
+						data: commandData,
 					};
 				} else {
 					return prev;

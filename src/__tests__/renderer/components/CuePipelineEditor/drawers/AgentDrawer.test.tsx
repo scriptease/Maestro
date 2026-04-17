@@ -143,20 +143,18 @@ describe('AgentDrawer', () => {
 		);
 
 		// Verify group order: Alpha before Zeta, Ungrouped last
-		// Filter out the "Output" section header which also uses uppercase styling
 		const groupHeaders = container.querySelectorAll('[style*="text-transform: uppercase"]');
-		const headerTexts = Array.from(groupHeaders)
-			.map((el) => el.textContent)
-			.filter((t) => t !== 'Output');
+		const headerTexts = Array.from(groupHeaders).map((el) => el.textContent);
 		expect(headerTexts).toEqual(['🅰️ Alpha', '⚡ Zeta', 'Ungrouped']);
 
-		// Verify agent order within each group by checking DOM order
-		// Each draggable row: <div draggable> > <svg(Bot)> > <div(flex)> > <div(name)> + <div(toolType)>
-		// The name is in the first div child with fontWeight:500
-		// Filter out the CLI Output node which is also draggable
+		// Verify agent order within each group by checking DOM order. Each agent
+		// row: <div draggable> > <svg(Bot)> > <div(flex)> > <div(name)> + <div(toolType)>.
+		// The name is in the first div child with fontWeight:500. There's also a
+		// nested per-row draggable (the command-node drag handle), so filter to
+		// top-level rows by requiring the font-weight:500 child to exist.
 		const agentNames = Array.from(container.querySelectorAll('[draggable="true"]'))
 			.map((el) => el.querySelector('[style*="font-weight: 500"]')?.textContent)
-			.filter((name) => name !== 'CLI Output');
+			.filter((name): name is string => !!name);
 		expect(agentNames).toEqual(['Alice', 'Charlie', 'Bravo', 'Delta', 'Echo']);
 	});
 

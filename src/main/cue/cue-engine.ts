@@ -28,9 +28,11 @@ import type { SessionInfo } from '../../shared/types';
 import {
 	createCueEvent,
 	type AgentCompletionData,
+	type CueCommand,
 	type CueConfig,
 	type CueRunResult,
 	type CueEvent,
+	type CueSubscription,
 } from './cue-types';
 import { createCueActivityLog } from './cue-activity-log';
 import type { CueActivityLog } from './cue-activity-log';
@@ -65,6 +67,8 @@ export interface CueEngineDeps {
 		subscriptionName: string;
 		event: CueEvent;
 		timeoutMs: number;
+		action?: CueSubscription['action'];
+		command?: CueCommand;
 	}) => Promise<CueRunResult>;
 	onStopCueRun?: (runId: string) => boolean;
 	onLog: (level: MainLogLevel, message: string, data?: unknown) => void;
@@ -146,7 +150,9 @@ export class CueEngine {
 				subscriptionName,
 				outputPrompt,
 				chainDepth,
-				cliOutput
+				cliOutput,
+				action,
+				command
 			) => {
 				this.runManager.execute(
 					sessionId,
@@ -155,7 +161,9 @@ export class CueEngine {
 					subscriptionName,
 					outputPrompt,
 					chainDepth,
-					cliOutput
+					cliOutput,
+					action,
+					command
 				);
 			},
 			onLog: deps.onLog,

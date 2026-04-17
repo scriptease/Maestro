@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 import type { MainLogLevel } from '../../shared/logger-types';
-import type { CueEvent, CueSubscription } from './cue-types';
+import type { CueCommand, CueEvent, CueSubscription } from './cue-types';
 
 export interface CueDispatchServiceDeps {
 	getSessions: () => Array<{ id: string; name: string }>;
@@ -11,7 +11,9 @@ export interface CueDispatchServiceDeps {
 		subscriptionName: string,
 		outputPrompt?: string,
 		chainDepth?: number,
-		cliOutput?: { target: string }
+		cliOutput?: { target: string },
+		action?: CueSubscription['action'],
+		command?: CueCommand
 	) => void;
 	onLog: (level: MainLogLevel, message: string, data?: unknown) => void;
 }
@@ -80,7 +82,9 @@ export function createCueDispatchService(deps: CueDispatchServiceDeps): CueDispa
 						sub.name,
 						sub.output_prompt,
 						chainDepth,
-						sub.cli_output
+						sub.cli_output,
+						sub.action,
+						sub.command
 					);
 				}
 				return;
@@ -98,7 +102,9 @@ export function createCueDispatchService(deps: CueDispatchServiceDeps): CueDispa
 				sub.name,
 				sub.output_prompt,
 				chainDepth,
-				sub.cli_output
+				sub.cli_output,
+				sub.action,
+				sub.command
 			);
 		},
 	};

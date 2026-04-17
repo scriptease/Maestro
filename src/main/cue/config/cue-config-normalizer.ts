@@ -2,6 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import {
+	type CueAction,
+	type CueCommand,
 	type CueConfig,
 	type CueGitHubState,
 	type CueScheduleDay,
@@ -57,6 +59,35 @@ function normalizeFilter(
 	return filterObj;
 }
 
+/**
+ * Read a `command` field from a raw YAML subscription. Returns the parsed
+ * CueCommand or undefined if the field is missing or shaped incorrectly (the
+ * validator will flag invalid shapes; we just don't surface garbage).
+ */
+function normalizeCommand(rawCommand: unknown): CueCommand | undefined {
+	if (!rawCommand || typeof rawCommand !== 'object' || Array.isArray(rawCommand)) {
+		return undefined;
+	}
+	const cmd = rawCommand as Record<string, unknown>;
+	if (cmd.mode === 'shell' && typeof cmd.shell === 'string') {
+		return { mode: 'shell', shell: cmd.shell };
+	}
+	if (cmd.mode === 'cli' && cmd.cli && typeof cmd.cli === 'object' && !Array.isArray(cmd.cli)) {
+		const cli = cmd.cli as Record<string, unknown>;
+		if (cli.command === 'send' && typeof cli.target === 'string') {
+			return {
+				mode: 'cli',
+				cli: {
+					command: 'send',
+					target: cli.target,
+					message: typeof cli.message === 'string' ? cli.message : undefined,
+				},
+			};
+		}
+	}
+	return undefined;
+}
+
 function normalizeSubscription(
 	sub: Record<string, unknown>,
 	projectRoot: string
@@ -74,9 +105,22 @@ function normalizeSubscription(
 				}
 			: undefined;
 
-	const prompt =
+	const action: CueAction | undefined =
+		sub.action === 'command' || sub.action === 'prompt' ? (sub.action as CueAction) : undefined;
+	const command = normalizeCommand(sub.command);
+
+	const resolvedPrompt =
 		promptSpec.inline ??
 		(promptSpec.file ? (readPromptFile(projectRoot, promptSpec.file) ?? '') : '');
+	// For command actions, the dispatcher uses `prompt` only as a sentinel that
+	// the subscription has work to do. Back-fill from the command spec so the
+	// subscription isn't silently dropped by the "no prompt → skip" gate.
+	const commandSentinel = command
+		? command.mode === 'shell'
+			? command.shell
+			: command.cli.target
+		: '';
+	const prompt = action === 'command' && !resolvedPrompt ? commandSentinel : resolvedPrompt;
 	const outputPrompt =
 		outputPromptSpec?.inline ??
 		(outputPromptSpec?.file ? readPromptFile(projectRoot, outputPromptSpec.file) : undefined);
@@ -89,6 +133,8 @@ function normalizeSubscription(
 		outputPromptSpec,
 		prompt,
 		output_prompt: outputPrompt,
+		action,
+		command,
 		interval_minutes: typeof sub.interval_minutes === 'number' ? sub.interval_minutes : undefined,
 		schedule_times:
 			Array.isArray(sub.schedule_times) &&

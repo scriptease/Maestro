@@ -877,4 +877,151 @@ describe('auto-injected source output prefix stripping', () => {
 		);
 		expect((testerNode!.data as { inputPrompt?: string }).inputPrompt).toBeUndefined();
 	});
+
+	describe('command node deserialization', () => {
+		it('reconstructs trigger -> command(shell) from action: command subscription', () => {
+			const subs: CueSubscription[] = [
+				{
+					name: 'lint-on-save',
+					event: 'file.changed',
+					enabled: true,
+					prompt: 'npm run lint',
+					action: 'command',
+					command: { mode: 'shell', shell: 'npm run lint' },
+					watch: 'src/**/*.ts',
+					agent_id: 'session-0',
+				} as CueSubscription,
+			];
+			const sessions: SessionInfo[] = [
+				{
+					id: 'session-0',
+					name: 'agent-A',
+					toolType: 'claude-code' as const,
+					cwd: '/tmp',
+					projectRoot: '/tmp',
+				},
+			];
+
+			const pipelines = subscriptionsToPipelines(subs, sessions);
+			expect(pipelines).toHaveLength(1);
+			const trigger = pipelines[0].nodes.find((n) => n.type === 'trigger');
+			const command = pipelines[0].nodes.find((n) => n.type === 'command');
+			expect(trigger).toBeDefined();
+			expect(command).toBeDefined();
+			const data = command!.data as {
+				name: string;
+				mode: string;
+				shell?: string;
+				owningSessionId: string;
+				owningSessionName: string;
+			};
+			expect(data.mode).toBe('shell');
+			expect(data.shell).toBe('npm run lint');
+			expect(data.owningSessionId).toBe('session-0');
+			expect(data.owningSessionName).toBe('agent-A');
+			expect(pipelines[0].edges).toHaveLength(1);
+			expect(pipelines[0].edges[0].source).toBe(trigger!.id);
+			expect(pipelines[0].edges[0].target).toBe(command!.id);
+		});
+
+		it('reconstructs agent -> command(cli) chain', () => {
+			const subs: CueSubscription[] = [
+				{
+					name: 'pipe',
+					event: 'time.heartbeat',
+					enabled: true,
+					prompt: 'do work',
+					interval_minutes: 5,
+					agent_id: 'session-0',
+				},
+				{
+					// Auto-named command follows `<pipeline>-cmd-<base36>` so the
+					// deserializer's base-name strip groups it with the parent pipeline.
+					name: 'pipe-cmd-abc12',
+					event: 'agent.completed',
+					enabled: true,
+					prompt: 'session-research',
+					action: 'command',
+					command: {
+						mode: 'cli',
+						cli: { command: 'send', target: '{{CUE_FROM_AGENT}}' },
+					},
+					source_session: 'researcher',
+					agent_id: 'session-0',
+				} as CueSubscription,
+			];
+			const sessions: SessionInfo[] = [
+				{
+					id: 'session-0',
+					name: 'researcher',
+					toolType: 'claude-code' as const,
+					cwd: '/tmp',
+					projectRoot: '/tmp',
+				},
+			];
+
+			const pipelines = subscriptionsToPipelines(subs, sessions);
+			expect(pipelines).toHaveLength(1);
+			const commandNode = pipelines[0].nodes.find((n) => n.type === 'command');
+			const agentNode = pipelines[0].nodes.find((n) => n.type === 'agent');
+			expect(commandNode).toBeDefined();
+			expect(agentNode).toBeDefined();
+			const data = commandNode!.data as {
+				mode: string;
+				cliCommand?: string;
+				cliTarget?: string;
+			};
+			expect(data.mode).toBe('cli');
+			expect(data.cliCommand).toBe('send');
+			expect(data.cliTarget).toBe('{{CUE_FROM_AGENT}}');
+			const edge = pipelines[0].edges.find(
+				(e) => e.source === agentNode!.id && e.target === commandNode!.id
+			);
+			expect(edge).toBeDefined();
+		});
+
+		it('silently migrates legacy cli_output: { target } into a downstream command(cli) node', () => {
+			const subs: CueSubscription[] = [
+				{
+					name: 'old-pipe',
+					event: 'time.heartbeat',
+					enabled: true,
+					prompt: 'do work',
+					interval_minutes: 5,
+					agent_id: 'session-0',
+					cli_output: { target: 'session-downstream' },
+				} as CueSubscription,
+			];
+			const sessions: SessionInfo[] = [
+				{
+					id: 'session-0',
+					name: 'agent-A',
+					toolType: 'claude-code' as const,
+					cwd: '/tmp',
+					projectRoot: '/tmp',
+				},
+			];
+
+			const pipelines = subscriptionsToPipelines(subs, sessions);
+			expect(pipelines).toHaveLength(1);
+			const commandNode = pipelines[0].nodes.find((n) => n.type === 'command');
+			expect(commandNode).toBeDefined();
+			const data = commandNode!.data as {
+				mode: string;
+				cliCommand?: string;
+				cliTarget?: string;
+				owningSessionId: string;
+			};
+			expect(data.mode).toBe('cli');
+			expect(data.cliCommand).toBe('send');
+			expect(data.cliTarget).toBe('session-downstream');
+			expect(data.owningSessionId).toBe('session-0');
+			// Edge from the agent (the upstream of the old cli_output) to the new command node.
+			const agentNode = pipelines[0].nodes.find((n) => n.type === 'agent');
+			expect(agentNode).toBeDefined();
+			expect(
+				pipelines[0].edges.some((e) => e.source === agentNode!.id && e.target === commandNode!.id)
+			).toBe(true);
+		});
+	});
 });

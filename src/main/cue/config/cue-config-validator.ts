@@ -18,6 +18,49 @@ function validateGlobPattern(pattern: string, prefix: string, errors: string[]):
 }
 
 /**
+ * Validate a `command` field, required when `action === 'command'`. Accepts:
+ *   { mode: 'shell', shell: <non-empty string> }
+ *   { mode: 'cli', cli: { command: 'send', target: <non-empty string>, message?: string } }
+ */
+function validateCommandField(value: unknown, prefix: string, errors: string[]): void {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		errors.push(`${prefix}: "command" is required and must be an object when action is "command"`);
+		return;
+	}
+	const cmd = value as Record<string, unknown>;
+	const mode = cmd.mode;
+	if (mode === 'shell') {
+		if (typeof cmd.shell !== 'string' || cmd.shell.trim().length === 0) {
+			errors.push(
+				`${prefix}: "command.shell" is required and must be a non-empty string when command.mode is "shell"`
+			);
+		}
+	} else if (mode === 'cli') {
+		const cli = cmd.cli;
+		if (!cli || typeof cli !== 'object' || Array.isArray(cli)) {
+			errors.push(
+				`${prefix}: "command.cli" is required and must be an object when command.mode is "cli"`
+			);
+			return;
+		}
+		const cliRecord = cli as Record<string, unknown>;
+		if (cliRecord.command !== 'send') {
+			errors.push(
+				`${prefix}: "command.cli.command" must be "send" (only supported maestro-cli sub-command for now)`
+			);
+		}
+		if (typeof cliRecord.target !== 'string' || cliRecord.target.trim().length === 0) {
+			errors.push(`${prefix}: "command.cli.target" is required and must be a non-empty string`);
+		}
+		if (cliRecord.message !== undefined && typeof cliRecord.message !== 'string') {
+			errors.push(`${prefix}: "command.cli.message" must be a string when provided`);
+		}
+	} else {
+		errors.push(`${prefix}: "command.mode" must be "shell" or "cli"`);
+	}
+}
+
+/**
  * Validate a single subscription. Returns errors specific to this subscription
  * (with the supplied `prefix` prepended). Used both by the strict whole-config
  * validator and the lenient per-subscription partitioner used by the loader.
@@ -51,10 +94,21 @@ export function validateSubscription(sub: unknown, prefix: string): string[] {
 		errors.push(`${prefix}: "prompt_file" must be a string when provided`);
 	}
 
-	const hasPrompt = typeof subRecord.prompt === 'string';
-	const hasPromptFile = typeof subRecord.prompt_file === 'string';
-	if (!hasPrompt && !hasPromptFile) {
-		errors.push(`${prefix}: "prompt" or "prompt_file" is required`);
+	const action = subRecord.action;
+	if (action !== undefined && action !== 'prompt' && action !== 'command') {
+		errors.push(`${prefix}: "action" must be "prompt" or "command" when provided`);
+	}
+
+	const isCommand = action === 'command';
+
+	if (isCommand) {
+		validateCommandField(subRecord.command, prefix, errors);
+	} else {
+		const hasPrompt = typeof subRecord.prompt === 'string';
+		const hasPromptFile = typeof subRecord.prompt_file === 'string';
+		if (!hasPrompt && !hasPromptFile) {
+			errors.push(`${prefix}: "prompt" or "prompt_file" is required`);
+		}
 	}
 
 	validateEventSpecificFields(subRecord, prefix, errors);

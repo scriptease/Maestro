@@ -6,8 +6,13 @@
  * for visual differentiation on the React Flow canvas.
  */
 
-import type { CueEventType, CueGraphSession as SharedCueGraphSession } from './cue';
-export type { CueEventType } from './cue';
+import type {
+	CueCommand,
+	CueCommandMode,
+	CueEventType,
+	CueGraphSession as SharedCueGraphSession,
+} from './cue';
+export type { CueCommand, CueCommandMode, CueEventType } from './cue';
 
 /** Cue brand color — single source of truth for all Cue UI */
 export const CUE_COLOR = '#06b6d4';
@@ -70,17 +75,70 @@ export interface AgentNodeData {
 	fanInTimeoutOnFail?: 'break' | 'continue';
 }
 
-export interface CliOutputNodeData {
-	target: string;
+/**
+ * A command node represents a `action: command` subscription. It runs either
+ * an arbitrary shell command (`mode: 'shell'`) in the owning session's project
+ * root, or a structured maestro-cli call (`mode: 'cli'`) such as `send`.
+ */
+export interface CommandNodeData {
+	/** Subscription name (unique within the project's cue.yaml). */
+	name: string;
+	/** Selected sub-mode of the unified command node. */
+	mode: CueCommandMode;
+	/** Shell command (used when `mode === 'shell'`). */
+	shell?: string;
+	/** maestro-cli sub-command name. Only `'send'` is supported today. */
+	cliCommand?: 'send';
+	/** maestro-cli send target session ID (used when `mode === 'cli'`). */
+	cliTarget?: string;
+	/** Optional message override for `mode === 'cli'`. Defaults to {{CUE_SOURCE_OUTPUT}} when blank. */
+	cliMessage?: string;
+	/** Owning session that provides cwd/project root + agent_id binding. */
+	owningSessionId: string;
+	/** Cached owning session name for display. */
+	owningSessionName: string;
 }
 
-export type PipelineNodeType = 'trigger' | 'agent' | 'cli_output';
+export type PipelineNodeType = 'trigger' | 'agent' | 'command';
 
 export interface PipelineNode {
 	id: string;
 	type: PipelineNodeType;
 	position: PipelineNodePosition;
-	data: TriggerNodeData | AgentNodeData | CliOutputNodeData;
+	data: TriggerNodeData | AgentNodeData | CommandNodeData;
+}
+
+/** Convert a CommandNodeData to the wire-format CueCommand object. */
+export function commandNodeDataToCueCommand(data: CommandNodeData): CueCommand | undefined {
+	if (data.mode === 'shell') {
+		return data.shell ? { mode: 'shell', shell: data.shell } : undefined;
+	}
+	if (data.cliTarget) {
+		return {
+			mode: 'cli',
+			cli: {
+				command: 'send',
+				target: data.cliTarget,
+				message: data.cliMessage || undefined,
+			},
+		};
+	}
+	return undefined;
+}
+
+/** Build CommandNodeData from a wire-format CueCommand (for deserialization). */
+export function cueCommandToCommandNodeFields(
+	cmd: CueCommand
+): Pick<CommandNodeData, 'mode' | 'shell' | 'cliCommand' | 'cliTarget' | 'cliMessage'> {
+	if (cmd.mode === 'shell') {
+		return { mode: 'shell', shell: cmd.shell };
+	}
+	return {
+		mode: 'cli',
+		cliCommand: cmd.cli.command,
+		cliTarget: cmd.cli.target,
+		cliMessage: cmd.cli.message,
+	};
 }
 
 export interface PipelineEdge {

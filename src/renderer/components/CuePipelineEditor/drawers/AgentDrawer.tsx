@@ -31,6 +31,19 @@ function handleDragStart(e: React.DragEvent, session: AgentSessionInfo) {
 	e.dataTransfer.effectAllowed = 'move';
 }
 
+function handleCommandDragStart(e: React.DragEvent, session: AgentSessionInfo) {
+	e.stopPropagation();
+	e.dataTransfer.setData(
+		'application/cue-pipeline',
+		JSON.stringify({
+			type: 'command',
+			owningSessionId: session.id,
+			owningSessionName: session.name,
+		})
+	);
+	e.dataTransfer.effectAllowed = 'move';
+}
+
 export const AgentDrawer = memo(function AgentDrawer({
 	isOpen,
 	onClose,
@@ -238,6 +251,33 @@ export const AgentDrawer = memo(function AgentDrawer({
 											{session.toolType}
 										</div>
 									</div>
+									<div
+										draggable
+										onDragStart={(e) => handleCommandDragStart(e, session)}
+										onClick={(e) => e.stopPropagation()}
+										style={{
+											display: 'flex',
+											alignItems: 'center',
+											justifyContent: 'center',
+											width: 22,
+											height: 22,
+											borderRadius: 4,
+											backgroundColor: theme.colors.bgMain,
+											border: `1px solid ${theme.colors.border}`,
+											cursor: 'grab',
+											color: theme.colors.textDim,
+											flexShrink: 0,
+										}}
+										title={`Drag to add a command node bound to ${session.name}'s project root`}
+										onMouseEnter={(e) => {
+											(e.currentTarget as HTMLElement).style.color = theme.colors.textMain;
+										}}
+										onMouseLeave={(e) => {
+											(e.currentTarget as HTMLElement).style.color = theme.colors.textDim;
+										}}
+									>
+										<Terminal size={11} />
+									</div>
 									{isOnCanvas && (
 										<div
 											style={{
@@ -285,72 +325,24 @@ export const AgentDrawer = memo(function AgentDrawer({
 					</div>
 				)}
 
-				{/* CLI Output node */}
-				{!search.trim() && (
-					<>
-						<div
-							style={{
-								height: 1,
-								backgroundColor: theme.colors.border,
-								margin: '8px 4px',
-							}}
-						/>
-						<div
-							style={{
-								color: theme.colors.textDim,
-								fontSize: 10,
-								fontWeight: 600,
-								textTransform: 'uppercase',
-								letterSpacing: '0.05em',
-								padding: '4px 4px 4px',
-							}}
-						>
-							Output
-						</div>
-						<div
-							draggable
-							onDragStart={(e) => {
-								e.dataTransfer.setData(
-									'application/cue-pipeline',
-									JSON.stringify({ type: 'cli_output' })
-								);
-								e.dataTransfer.effectAllowed = 'move';
-							}}
-							style={{
-								display: 'flex',
-								alignItems: 'center',
-								gap: 8,
-								padding: '8px 10px',
-								marginBottom: 4,
-								borderRadius: 6,
-								backgroundColor: theme.colors.bgActivity,
-								cursor: 'grab',
-								transition: 'filter 0.15s',
-							}}
-							onMouseEnter={(e) => {
-								(e.currentTarget as HTMLElement).style.filter = 'brightness(1.2)';
-							}}
-							onMouseLeave={(e) => {
-								(e.currentTarget as HTMLElement).style.filter = 'brightness(1)';
-							}}
-						>
-							<Terminal size={14} style={{ color: theme.colors.textDim, flexShrink: 0 }} />
-							<div style={{ flex: 1, minWidth: 0 }}>
-								<div
-									style={{
-										color: theme.colors.textMain,
-										fontSize: 12,
-										fontWeight: 500,
-									}}
-								>
-									CLI Output
-								</div>
-								<div style={{ color: theme.colors.textDim, fontSize: 10 }}>
-									Route agent output to a session via CLI
-								</div>
-							</div>
-						</div>
-					</>
+				{/* Command nodes: drag the terminal pill on a session row to add a
+				 *  command node bound to that session's project root. Replaces the
+				 *  legacy "CLI Output" item — command nodes can run shell commands
+				 *  or maestro-cli sub-commands like `send`. */}
+				{!search.trim() && filtered.length > 0 && (
+					<div
+						style={{
+							color: theme.colors.textDim,
+							fontSize: 10,
+							padding: '8px 6px 4px',
+							borderTop: `1px solid ${theme.colors.border}`,
+							marginTop: 8,
+							lineHeight: 1.4,
+						}}
+					>
+						Drag the <Terminal size={9} style={{ verticalAlign: 'middle' }} /> on a session row to
+						add a command node (shell or maestro-cli) bound to that project.
+					</div>
 				)}
 			</div>
 		</div>

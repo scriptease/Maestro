@@ -11,12 +11,15 @@ import type {
 	PipelineEdge,
 	TriggerNodeData,
 	AgentNodeData,
-	CliOutputNodeData,
+	CommandNodeData,
 	CueEventType,
 	EdgeMode,
 } from '../../../../shared/cue-pipeline-types';
-import { getNextPipelineColor } from '../../../../shared/cue-pipeline-types';
-import type { CueSubscription } from '../../../../shared/cue';
+import {
+	cueCommandToCommandNodeFields,
+	getNextPipelineColor,
+} from '../../../../shared/cue-pipeline-types';
+import type { CueCommand, CueSubscription } from '../../../../shared/cue';
 
 /** Minimal graph session input - compatible with both local and cue-types CueGraphSession */
 interface GraphSessionInput {
@@ -46,6 +49,8 @@ interface GraphSessionInput {
 		include_output_from?: string[];
 		forward_output_from?: string[];
 		cli_output?: { target: string };
+		action?: 'prompt' | 'command';
+		command?: CueCommand;
 	}>;
 }
 
@@ -66,10 +71,17 @@ const LAYOUT = {
 } as const;
 
 /**
- * Extracts the base pipeline name by stripping `-chain-N` and `-fanin` suffixes.
+ * Extracts the base pipeline name by stripping `-chain-N`, `-fanin`, and
+ * `-cmd-<id>` suffixes. Command nodes auto-named via the editor's drop handler
+ * follow `<pipeline>-cmd-<base36>` so round-tripping keeps them grouped with
+ * their parent pipeline. User-renamed command nodes end up in their own
+ * pipeline group on reload (acceptable; renaming signals intent).
  */
 function getBasePipelineName(subscriptionName: string): string {
-	return subscriptionName.replace(/-chain-\d+$/, '').replace(/-fanin$/, '');
+	return subscriptionName
+		.replace(/-chain-\d+$/, '')
+		.replace(/-fanin$/, '')
+		.replace(/-cmd-[a-z0-9]+$/i, '');
 }
 
 /**
@@ -201,6 +213,49 @@ function getOrCreateAgentNode(
 }
 
 /**
+ * Create a fresh command node for a subscription. Resolves the owning session
+ * from `agent_id` (preferred) or the first graph-session that owns the
+ * subscription (`_ownerSessions[0]`).
+ *
+ * `commandFromCliOutput` is the inline override used when migrating legacy
+ * `cli_output: { target }` fields — we synthesize a `mode: 'cli'` command
+ * locally rather than reading `sub.command`.
+ */
+function createCommandNode(
+	sub: CueSubscription,
+	sessions: PipelineSessionInfo[],
+	nodeMap: Map<string, PipelineNode>,
+	position: { x: number; y: number },
+	commandFromCliOutput?: CueCommand
+): PipelineNode {
+	const owners = (sub as CueSubscription & { _ownerSessions?: string[] })._ownerSessions ?? [];
+	let owningSession: PipelineSessionInfo | undefined;
+	if (sub.agent_id) owningSession = sessions.find((s) => s.id === sub.agent_id);
+	if (!owningSession && owners[0]) {
+		owningSession = sessions.find((s) => s.name === owners[0]);
+	}
+	if (!owningSession) owningSession = sessions[0];
+
+	const cmd = commandFromCliOutput ?? sub.command;
+	const fields = cmd ? cueCommandToCommandNodeFields(cmd) : { mode: 'shell' as const };
+	const data: CommandNodeData = {
+		name: sub.name,
+		owningSessionId: owningSession?.id ?? sub.agent_id ?? '',
+		owningSessionName: owningSession?.name ?? owners[0] ?? 'Unknown',
+		...fields,
+	};
+	const nodeId = `command-${sub.name}-${nodeMap.size}`;
+	const node: PipelineNode = {
+		id: nodeId,
+		type: 'command',
+		position,
+		data,
+	};
+	nodeMap.set(nodeId, node);
+	return node;
+}
+
+/**
  * Converts CueSubscription objects back into visual CuePipeline structures.
  *
  * Groups subscriptions by name prefix, reconstructs trigger and agent nodes,
@@ -294,6 +349,21 @@ export function subscriptionsToPipelines(
 							...(edgePrompt ? { prompt: edgePrompt } : {}),
 						});
 					}
+				} else if (sub.action === 'command') {
+					// Trigger → command node (no agent)
+					const pos = {
+						x: LAYOUT.firstAgentX,
+						y: LAYOUT.baseY + (triggerCount - 1) * LAYOUT.verticalSpacing,
+					};
+					const commandNode = createCommandNode(sub, sessions, nodeMap, pos);
+					sessionColumn.set(commandNode.id, 1);
+					sessionRow.set(commandNode.id, triggerCount - 1);
+					edges.push({
+						id: `edge-${edgeCount++}`,
+						source: triggerId,
+						target: commandNode.id,
+						mode: 'pass' as EdgeMode,
+					});
 				} else {
 					// Single target - infer target from subscription context
 					const targetSessionName = findTargetSession(sub, subs, sessions);
@@ -350,6 +420,38 @@ export function subscriptionsToPipelines(
 					: sub.source_session
 						? [sub.source_session]
 						: [];
+
+				// Command-node chain target: create a command node and edges from
+				// each source. Skip the agent-target branch entirely.
+				if (sub.action === 'command') {
+					const targetCol = columnIndex;
+					const existingRows = [...sessionColumn.entries()].filter(
+						([, col]) => col === targetCol
+					).length;
+					const pos = {
+						x: LAYOUT.firstAgentX + (targetCol - 1) * LAYOUT.stepSpacing,
+						y: LAYOUT.baseY + existingRows * LAYOUT.verticalSpacing,
+					};
+					const commandNode = createCommandNode(sub, sessions, nodeMap, pos);
+					sessionColumn.set(commandNode.id, targetCol);
+					sessionRow.set(commandNode.id, existingRows);
+
+					for (const sourceSessionName of sourceSessions) {
+						const sourceNode =
+							sessionToNode.get(sourceSessionName) ??
+							getOrCreateAgentNode(sourceSessionName, sessions, nodeMap, {
+								x: LAYOUT.firstAgentX,
+								y: LAYOUT.baseY,
+							});
+						edges.push({
+							id: `edge-${edgeCount++}`,
+							source: sourceNode.id,
+							target: commandNode.id,
+							mode: 'pass' as EdgeMode,
+						});
+					}
+					continue;
+				}
 
 				// Find or create target agent node
 				// Target is inferred from the next chain subscription or from session matching
@@ -440,7 +542,11 @@ export function subscriptionsToPipelines(
 				const forwardSet = sub.forward_output_from ? new Set(sub.forward_output_from) : null;
 				for (const sourceNode of resolvedSources) {
 					const sourceName =
-						sourceNode.type === 'agent' ? (sourceNode.data as AgentNodeData).sessionName : '';
+						sourceNode.type === 'agent'
+							? (sourceNode.data as AgentNodeData).sessionName
+							: sourceNode.type === 'command'
+								? (sourceNode.data as CommandNodeData).owningSessionName
+								: '';
 					const edge: PipelineEdge = {
 						id: `edge-${edgeCount++}`,
 						source: sourceNode.id,
@@ -461,35 +567,39 @@ export function subscriptionsToPipelines(
 			}
 		}
 
-		// After all nodes and edges are created, add cli_output nodes for subscriptions
-		// that have a cli_output field. Position them after the last agent in the chain.
+		// Silent migration: legacy `cli_output: { target }` field on an agent's
+		// subscription becomes a downstream command node (mode: cli, send) bound
+		// to the same owning session. The runtime's Phase 3 path still handles
+		// unmigrated YAML; saving the pipeline upgrades it to the new schema.
 		for (const sub of sorted) {
-			if (sub.cli_output?.target) {
-				// Find the agent node this cli_output belongs to
-				const targetSessionName = findTargetSession(sub, subs, sessions);
-				const agentNode = targetSessionName ? sessionToNode.get(targetSessionName) : undefined;
-				if (agentNode) {
-					const cliOutputId = `cli-output-${nodeMap.size}`;
-					const cliOutputNode: PipelineNode = {
-						id: cliOutputId,
-						type: 'cli_output',
-						position: {
-							x: agentNode.position.x + LAYOUT.stepSpacing,
-							y: agentNode.position.y,
-						},
-						data: {
-							target: sub.cli_output.target,
-						} as CliOutputNodeData,
-					};
-					nodeMap.set(cliOutputId, cliOutputNode);
-					edges.push({
-						id: `edge-${edgeCount++}`,
-						source: agentNode.id,
-						target: cliOutputId,
-						mode: 'pass' as EdgeMode,
-					});
-				}
-			}
+			if (!sub.cli_output?.target) continue;
+			const targetSessionName = findTargetSession(sub, subs, sessions);
+			const agentNode = targetSessionName ? sessionToNode.get(targetSessionName) : undefined;
+			if (!agentNode) continue;
+			const migratedSub: CueSubscription = {
+				...sub,
+				name: `${sub.name}-cli-out`,
+			};
+			const cmd: CueCommand = {
+				mode: 'cli',
+				cli: { command: 'send', target: sub.cli_output.target },
+			};
+			const commandNode = createCommandNode(
+				migratedSub,
+				sessions,
+				nodeMap,
+				{
+					x: agentNode.position.x + LAYOUT.stepSpacing,
+					y: agentNode.position.y,
+				},
+				cmd
+			);
+			edges.push({
+				id: `edge-${edgeCount++}`,
+				source: agentNode.id,
+				target: commandNode.id,
+				mode: 'pass' as EdgeMode,
+			});
 		}
 
 		const pipeline: CuePipeline = {

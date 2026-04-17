@@ -24,6 +24,7 @@ import type {
 	PipelineEdge as PipelineEdgeType,
 	TriggerNodeData,
 	AgentNodeData,
+	CommandNodeData,
 } from '../../../shared/cue-pipeline-types';
 import type { CueSettings } from '../../../shared/cue';
 import { usePipelineLayout } from './usePipelineLayout';
@@ -93,7 +94,10 @@ export interface UsePipelineStateReturn {
 	renamePipeline: (id: string, name: string) => void;
 	selectPipeline: (id: string | null) => void;
 	changePipelineColor: (id: string, color: string) => void;
-	onUpdateNode: (nodeId: string, data: Partial<TriggerNodeData | AgentNodeData>) => void;
+	onUpdateNode: (
+		nodeId: string,
+		data: Partial<TriggerNodeData | AgentNodeData | CommandNodeData>
+	) => void;
 	onUpdateEdgePrompt: (edgeId: string, prompt: string) => void;
 	onDeleteNode: (nodeId: string) => void;
 	onUpdateEdge: (edgeId: string, updates: Partial<PipelineEdgeType>) => void;

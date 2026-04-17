@@ -49,8 +49,36 @@ export type CueGitHubState = 'open' | 'closed' | 'merged' | 'all';
 /** All valid GitHub state values */
 export const CUE_GITHUB_STATES: CueGitHubState[] = ['open', 'closed', 'merged', 'all'];
 
+/** What a subscription does when it fires. */
+export type CueAction = 'prompt' | 'command';
+
+/** Sub-mode of a `command` action. */
+export type CueCommandMode = 'shell' | 'cli';
+
 /**
- * A Cue subscription defines a trigger-prompt pairing.
+ * A maestro-cli sub-command. Currently only `send` is supported, but the
+ * shape leaves room for future sub-commands.
+ */
+export interface CueCommandCliCall {
+	command: 'send';
+	/** Session ID (or template variable) to send the message to. */
+	target: string;
+	/** Message body. Defaults to `{{CUE_SOURCE_OUTPUT}}` when omitted. */
+	message?: string;
+}
+
+/**
+ * A `command` action — either an arbitrary shell command (PATH-aware, runs in
+ * the owning session's project root) or a structured maestro-cli call.
+ */
+export type CueCommand = { mode: 'shell'; shell: string } | { mode: 'cli'; cli: CueCommandCliCall };
+
+/**
+ * A Cue subscription defines a trigger-action pairing.
+ *
+ * `action` defaults to `'prompt'` (run an AI agent with the substituted
+ * `prompt`). When `action` is `'command'`, the subscription instead spawns a
+ * shell command or invokes maestro-cli — see {@link CueCommand}.
  *
  * Note: prompt content is always materialized at config-load time. The raw YAML
  * `prompt_file` / `output_prompt_file` fields are resolved by the normalizer and
@@ -63,6 +91,10 @@ export interface CueSubscription {
 	enabled: boolean;
 	prompt: string;
 	output_prompt?: string;
+	/** Action type — defaults to `'prompt'` when omitted. */
+	action?: CueAction;
+	/** Required when `action === 'command'`. */
+	command?: CueCommand;
 	interval_minutes?: number;
 	schedule_times?: string[];
 	schedule_days?: CueScheduleDay[];
@@ -88,6 +120,12 @@ export interface CueSubscription {
 	 *  agents later in the chain can access it via per-source template variables
 	 *  like {{CUE_OUTPUT_<NAME>}}. */
 	forward_output_from?: string[];
+	/**
+	 * @deprecated Replaced by a downstream `action: command` subscription with
+	 * `command: { mode: 'cli', cli: { command: 'send', target } }`. The
+	 * normalizer migrates legacy YAML automatically; new code should not write
+	 * this field.
+	 */
 	cli_output?: {
 		target: string;
 	};

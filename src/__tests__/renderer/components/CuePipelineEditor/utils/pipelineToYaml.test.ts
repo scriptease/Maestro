@@ -1286,3 +1286,130 @@ describe('fan-out to fan-in pipeline', () => {
 		expect(fanInSub!).not.toHaveProperty('fan_in_timeout_on_fail');
 	});
 });
+
+describe('command node serialization', () => {
+	it('emits action: command with shell mode for trigger -> command(shell)', () => {
+		const pipeline = makePipeline({
+			nodes: [
+				{
+					id: 't1',
+					type: 'trigger',
+					position: { x: 0, y: 0 },
+					data: {
+						eventType: 'file.changed',
+						label: 'File Change',
+						config: { watch: 'src/**/*.ts' },
+					},
+				},
+				{
+					id: 'cmd1',
+					type: 'command',
+					position: { x: 300, y: 0 },
+					data: {
+						name: 'lint-on-save',
+						mode: 'shell',
+						shell: 'npm run lint',
+						owningSessionId: 'sess-A',
+						owningSessionName: 'agent-A',
+					},
+				},
+			],
+			edges: [{ id: 'e1', source: 't1', target: 'cmd1', mode: 'pass' }],
+		});
+
+		const subs = pipelineToYamlSubscriptions(pipeline);
+		expect(subs).toHaveLength(1);
+		expect(subs[0].name).toBe('lint-on-save');
+		expect(subs[0].event).toBe('file.changed');
+		expect(subs[0].action).toBe('command');
+		expect(subs[0].command).toEqual({ mode: 'shell', shell: 'npm run lint' });
+		expect(subs[0].watch).toBe('src/**/*.ts');
+	});
+
+	it('emits action: command with cli mode for trigger -> command(cli)', () => {
+		const pipeline = makePipeline({
+			nodes: [
+				{
+					id: 't1',
+					type: 'trigger',
+					position: { x: 0, y: 0 },
+					data: { eventType: 'cli.trigger', label: 'CLI', config: {} },
+				},
+				{
+					id: 'cmd1',
+					type: 'command',
+					position: { x: 300, y: 0 },
+					data: {
+						name: 'forward-output',
+						mode: 'cli',
+						cliCommand: 'send',
+						cliTarget: '{{CUE_FROM_AGENT}}',
+						cliMessage: 'msg: {{CUE_SOURCE_OUTPUT}}',
+						owningSessionId: 'sess-deploy',
+						owningSessionName: 'deployer',
+					},
+				},
+			],
+			edges: [{ id: 'e1', source: 't1', target: 'cmd1', mode: 'pass' }],
+		});
+
+		const { yaml: out } = pipelinesToYaml([pipeline]);
+		expect(out).toContain('action: command');
+		expect(out).toContain('mode: cli');
+		expect(out).toContain('command: send');
+		expect(out).toContain("target: '{{CUE_FROM_AGENT}}'");
+		expect(out).toContain("message: 'msg: {{CUE_SOURCE_OUTPUT}}'");
+		expect(out).toContain('agent_id: sess-deploy');
+		// Command subs should NOT emit prompt_file.
+		expect(out).not.toContain('prompt_file:');
+	});
+
+	it('chains agent -> command with source_session = upstream agent name', () => {
+		const pipeline = makePipeline({
+			nodes: [
+				{
+					id: 't1',
+					type: 'trigger',
+					position: { x: 0, y: 0 },
+					data: { eventType: 'time.heartbeat', label: 'Sched', config: { interval_minutes: 10 } },
+				},
+				{
+					id: 'a1',
+					type: 'agent',
+					position: { x: 300, y: 0 },
+					data: {
+						sessionId: 's-agent',
+						sessionName: 'researcher',
+						toolType: 'claude-code',
+						inputPrompt: 'go',
+					},
+				},
+				{
+					id: 'cmd1',
+					type: 'command',
+					position: { x: 600, y: 0 },
+					data: {
+						name: 'persist',
+						mode: 'shell',
+						shell: 'echo done >> log.txt',
+						owningSessionId: 's-agent',
+						owningSessionName: 'researcher',
+					},
+				},
+			],
+			edges: [
+				{ id: 'e1', source: 't1', target: 'a1', mode: 'pass' },
+				{ id: 'e2', source: 'a1', target: 'cmd1', mode: 'pass' },
+			],
+		});
+
+		const subs = pipelineToYamlSubscriptions(pipeline);
+		expect(subs).toHaveLength(2);
+		const cmdSub = subs.find((s) => s.action === 'command');
+		expect(cmdSub).toBeDefined();
+		expect(cmdSub!.name).toBe('persist');
+		expect(cmdSub!.event).toBe('agent.completed');
+		expect(cmdSub!.source_session).toBe('researcher');
+		expect(cmdSub!.command).toEqual({ mode: 'shell', shell: 'echo done >> log.txt' });
+	});
+});

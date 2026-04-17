@@ -10,13 +10,25 @@ import type {
 	CuePipelineState,
 	TriggerNodeData,
 	AgentNodeData,
-	CliOutputNodeData,
+	CommandNodeData,
 } from '../../../../shared/cue-pipeline-types';
 import type { Theme } from '../../../../shared/theme-types';
 import type { TriggerNodeDataProps } from '../nodes/TriggerNode';
 import type { AgentNodeDataProps } from '../nodes/AgentNode';
-import type { CliOutputNodeDataProps } from '../nodes/CliOutputNode';
+import type { CommandNodeDataProps } from '../nodes/CommandNode';
 import type { PipelineEdgeData } from '../edges/PipelineEdge';
+
+/** Build the one-line summary shown under the command node's name. */
+function summarizeCommandNode(data: CommandNodeData): string {
+	if (data.mode === 'shell') {
+		const text = data.shell?.trim() ?? '';
+		if (!text) return '(no command)';
+		const firstLine = text.split('\n')[0];
+		return '$ ' + (firstLine.length > 36 ? firstLine.slice(0, 33) + '…' : firstLine);
+	}
+	const target = data.cliTarget?.trim() || '(no target)';
+	return `cli send → ${target}`;
+}
 
 // ─── Trigger config summary ──────────────────────────────────────────────────
 
@@ -239,11 +251,14 @@ export function convertToReactFlowNodes(
 					data: nodeData,
 					dragHandle: '.drag-handle',
 				});
-			} else if (pNode.type === 'cli_output') {
-				const cliData = pNode.data as CliOutputNodeData;
-				const nodeData: CliOutputNodeDataProps = {
+			} else if (pNode.type === 'command') {
+				const cmdData = pNode.data as CommandNodeData;
+				const nodeData: CommandNodeDataProps = {
 					compositeId,
-					target: cliData.target,
+					name: cmdData.name,
+					mode: cmdData.mode,
+					summary: summarizeCommandNode(cmdData),
+					owningSessionName: cmdData.owningSessionName,
 					pipelineColor: pipeline.color,
 					pipelineCount: 1,
 					pipelineColors: [pipeline.color],
@@ -252,7 +267,7 @@ export function convertToReactFlowNodes(
 				};
 				nodes.push({
 					id: compositeId,
-					type: 'cli_output',
+					type: 'command',
 					position: { x: pNode.position.x, y: pNode.position.y + yOffset },
 					data: nodeData,
 					dragHandle: '.drag-handle',

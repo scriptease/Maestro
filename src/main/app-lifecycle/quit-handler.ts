@@ -12,6 +12,7 @@ import type { HistoryManager } from '../history-manager';
 import { isWebContentsAvailable } from '../utils/safe-send';
 import { deleteCliServerInfo } from '../../shared/cli-server-discovery';
 import { stopAllCueRuns } from '../cue/cue-executor';
+import { stopAllCueShellRuns } from '../cue/cue-shell-executor';
 import { powerManager as powerManagerInstance } from '../power-manager';
 
 /**
@@ -231,6 +232,7 @@ export function createQuitHandler(deps: QuitHandlerDependencies): QuitHandler {
 		// Kill all active Cue processes (tracked separately from ProcessManager)
 		logger.info('Killing active Cue processes', 'Shutdown');
 		stopAllCueRuns();
+		stopAllCueShellRuns();
 
 		// Clean up all running processes
 		logger.info('Killing all running processes', 'Shutdown');

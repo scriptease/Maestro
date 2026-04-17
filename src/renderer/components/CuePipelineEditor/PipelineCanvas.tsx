@@ -26,13 +26,14 @@ import type {
 	PipelineEdge as PipelineEdgeType,
 	TriggerNodeData,
 	AgentNodeData,
+	CommandNodeData,
 	CuePipelineSessionInfo as SessionInfo,
 	IncomingAgentEdgeInfo,
 } from '../../../shared/cue-pipeline-types';
 import type { CueSettings } from '../../../shared/cue';
 import { TriggerNode, type TriggerNodeDataProps } from './nodes/TriggerNode';
 import { AgentNode, type AgentNodeDataProps } from './nodes/AgentNode';
-import { CliOutputNode } from './nodes/CliOutputNode';
+import { CommandNode, type CommandNodeDataProps } from './nodes/CommandNode';
 import { edgeTypes } from './edges/PipelineEdge';
 import { TriggerDrawer } from './drawers/TriggerDrawer';
 import { AgentDrawer } from './drawers/AgentDrawer';
@@ -44,7 +45,7 @@ import { EVENT_COLORS } from './cueEventConstants';
 const nodeTypes = {
 	trigger: TriggerNode,
 	agent: AgentNode,
-	cli_output: CliOutputNode,
+	command: CommandNode,
 };
 
 export interface PipelineCanvasProps {
@@ -100,7 +101,10 @@ export interface PipelineCanvasProps {
 	incomingAgentEdgeCount: number;
 	incomingAgentEdges: IncomingAgentEdgeInfo[];
 	incomingTriggerEdges: IncomingTriggerEdgeInfo[];
-	onUpdateNode: (nodeId: string, data: Partial<TriggerNodeData | AgentNodeData>) => void;
+	onUpdateNode: (
+		nodeId: string,
+		data: Partial<TriggerNodeData | AgentNodeData | CommandNodeData>
+	) => void;
 	onUpdateEdgePrompt: (edgeId: string, prompt: string) => void;
 	onDeleteNode: (nodeId: string) => void;
 	onSwitchToSession: (id: string) => void;
@@ -296,8 +300,9 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 							const data = node.data as AgentNodeDataProps;
 							return data.pipelineColor ?? theme.colors.accent;
 						}
-						if (node.type === 'cli_output') {
-							return theme.colors.textDim;
+						if (node.type === 'command') {
+							const data = node.data as CommandNodeDataProps;
+							return data.pipelineColor ?? theme.colors.accent;
 						}
 						return theme.colors.accent;
 					}}
