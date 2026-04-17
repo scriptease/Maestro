@@ -96,22 +96,21 @@ export async function autoRun(docs: string[], options: AutoRunOptions): Promise<
 		if (!options.launch) {
 			console.error('Error: --worktree requires --launch');
 			process.exit(1);
-		}
-		if (!options.branch || options.branch.trim() === '') {
+		} else if (!options.branch || options.branch.trim() === '') {
 			console.error('Error: --worktree requires --branch <name>');
 			process.exit(1);
-		}
-		if (!options.worktreePath || options.worktreePath.trim() === '') {
+		} else if (!options.worktreePath || options.worktreePath.trim() === '') {
 			console.error('Error: --worktree requires --worktree-path <path>');
 			process.exit(1);
+		} else {
+			worktree = {
+				enabled: true,
+				path: path.resolve(options.worktreePath),
+				branchName: options.branch.trim(),
+				createPROnCompletion: options.createPr || false,
+				prTargetBranch: options.prTargetBranch?.trim() || '',
+			};
 		}
-		worktree = {
-			enabled: true,
-			path: path.resolve(options.worktreePath),
-			branchName: options.branch.trim(),
-			createPROnCompletion: options.createPr || false,
-			prTargetBranch: options.prTargetBranch?.trim() || '',
-		};
 	} else if (options.branch || options.worktreePath || options.createPr || options.prTargetBranch) {
 		console.error(
 			'Error: --branch, --worktree-path, --create-pr, and --pr-target-branch require --worktree'
