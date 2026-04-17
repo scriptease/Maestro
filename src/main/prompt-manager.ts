@@ -11,10 +11,13 @@
  * - On save: Writes to customizations JSON AND updates in-memory cache immediately
  * - On reset: Removes from customizations JSON AND updates in-memory cache immediately
  *
- * Include directives:
- * - Prompts can reference other files via {{INCLUDE:name}}
- * - Resolution: prompt cache first, then <promptsDir>/<name>.md on disk
- * - Max depth of 3 to prevent runaway recursion; cycles are detected
+ * Directives:
+ * - {{INCLUDE:name}} — full inlining. Resolves recursively (max depth 3) with cycle detection.
+ *   Use for foundational content the recipient must always have (e.g., file-access rules).
+ * - {{REF:name}} — pointer-style. Expands to a one-line bullet with the include's description
+ *   plus a `maestro-cli prompts get <name>` fetch instruction. Use for heavy reference material
+ *   the agent only needs in some sessions; keeps the parent prompt small and lets the agent
+ *   self-fetch on demand.
  */
 
 import { app } from 'electron';
@@ -160,7 +163,8 @@ export async function initializePrompts(): Promise<void> {
 }
 
 /**
- * Get a prompt by ID. Resolves {{INCLUDE:name}} directives in the content.
+ * Get a prompt by ID. Resolves {{INCLUDE:name}} (full inline) and {{REF:name}}
+ * (pointer-style stub) directives in the content.
  */
 export function getPrompt(id: string): string {
 	if (!initialized) {
@@ -172,7 +176,8 @@ export function getPrompt(id: string): string {
 		throw new Error(`Unknown prompt ID: ${id}`);
 	}
 
-	return resolveIncludes(cached.content, new Set([id]), 0);
+	const withRefs = resolveRefs(cached.content);
+	return resolveIncludes(withRefs, new Set([id]), 0);
 }
 
 /**
@@ -305,11 +310,32 @@ export async function listPromptFiles(): Promise<
 }
 
 // ============================================================================
-// Include Resolution
+// Directive Resolution
 // ============================================================================
 
 const INCLUDE_PATTERN = /\{\{INCLUDE:([a-zA-Z0-9_-]+)\}\}/g;
+const REF_PATTERN = /\{\{REF:([a-zA-Z0-9_-]+)\}\}/g;
 const MAX_INCLUDE_DEPTH = 3;
+
+/**
+ * Expand {{REF:name}} into a single-line pointer the agent can act on. The
+ * description is sourced from CORE_PROMPTS so updating the registry keeps
+ * pointers in sync. Refs are resolved before includes and are not recursive —
+ * a ref produces literal text, not a fetch the resolver follows.
+ */
+function resolveRefs(content: string): string {
+	if (!REF_PATTERN.test(content)) return content;
+	REF_PATTERN.lastIndex = 0;
+
+	return content.replace(REF_PATTERN, (match, name: string) => {
+		const def = CORE_PROMPTS.find((p) => p.id === name);
+		if (!def) {
+			logger.warn(`REF target not found in registry: ${name}`, LOG_CONTEXT);
+			return match;
+		}
+		return `- **\`${name}\`** — ${def.description}. Fetch with \`maestro-cli prompts get ${name}\`.`;
+	});
+}
 
 function resolveIncludes(content: string, visited: Set<string>, depth: number): string {
 	if (depth >= MAX_INCLUDE_DEPTH) return content;

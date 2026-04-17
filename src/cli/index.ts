@@ -37,6 +37,7 @@ import {
 	settingsAgentSet,
 	settingsAgentReset,
 } from './commands/settings-agent';
+import { promptsGet, promptsList } from './commands/prompts-get';
 
 // Read version from package.json at runtime
 function getVersion(): string {
@@ -355,5 +356,22 @@ agent
 	.description('Remove an agent config key')
 	.option('--json', 'Output as JSON line (for scripting)')
 	.action(settingsAgentReset);
+
+// Prompts command — read Maestro's bundled or user-customized system prompts.
+// Designed for agent self-fetch: parent prompts reference includes via `{{REF:_name}}`
+// and the agent retrieves the full content on demand with `prompts get _name`.
+const prompts = program.command('prompts').description('Read Maestro system prompts');
+
+prompts
+	.command('list')
+	.description('List all known prompt ids with descriptions')
+	.option('--json', 'Output as JSON (for scripting)')
+	.action(promptsList);
+
+prompts
+	.command('get <id>')
+	.description('Print a prompt by id (honors user customizations from Settings → Maestro Prompts)')
+	.option('--json', 'Output as JSON object with metadata + content')
+	.action(promptsGet);
 
 program.parse();

@@ -1,0 +1,32 @@
+<!--
+Master index of Maestro prompt includes. Agents: scan this to discover what reference material exists, then either rely on the inlined content or fetch the pointer-only references on demand. Each include is self-contained and agent-dense.
+-->
+
+# Maestro Reference Index
+
+Two assembly directives shape what reaches you:
+
+- `{{INCLUDE:name}}` — fully inlined into the parent prompt before delivery. You already have the content.
+- `{{REF:name}}` — replaced with a one-line pointer. Fetch on demand: `maestro-cli prompts get <name>` (add `--json` for metadata + content). Honors any user customizations made in Settings → Maestro Prompts.
+
+| Include                 | Covers                                                                                                           | Pull when...                                                               |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `_interface-primitives` | Read / Write / Peek / Poke access model across CLI + filesystem                                                  | explaining how the agent interacts with Maestro at a high level            |
+| `_documentation-index`  | Curated table of external docs URLs (Cue, playbooks, CLI, SSH, worktrees, etc.)                                  | the agent may need authoritative reference material to fetch               |
+| `_history-format`       | JSON schema of session history entries stored at `{{AGENT_HISTORY_PATH}}`                                        | the agent needs to recall prior work                                       |
+| `_autorun-playbooks`    | Auto Run document spec: file naming, mandatory checkbox task format, grouping rules, examples, Playbook Exchange | the agent is authoring or modifying playbooks / auto-run documents         |
+| `_maestro-cli`          | Full `maestro-cli` reference: settings, send, list/show, cue, playbooks, open-file, refresh, prompts             | the agent needs to manipulate Maestro state, coordinate agents, or inspect |
+| `_maestro-cue`          | Cue event types, YAML config location, trigger sources, template variables, CLI hooks                            | the agent is building or debugging a Cue pipeline                          |
+| `_file-access-rules`    | Agent write restrictions: `{{AGENT_PATH}}` + `{{AUTORUN_FOLDER}}` carve-out, allowed / prohibited operations     | enforcing boundaries for an executing agent                                |
+| `_file-access-wizard`   | Wizard-only write restrictions: writes limited to `{{AUTORUN_FOLDER}}`                                           | a planning/wizard agent that must not modify project files                 |
+
+**Fetch examples:**
+
+```bash
+maestro-cli prompts list                # discover everything
+maestro-cli prompts get _maestro-cli    # full CLI reference
+maestro-cli prompts get _maestro-cue    # Cue authoring guide
+maestro-cli prompts get _autorun-playbooks --json
+```
+
+Edits made through **Settings → Maestro Prompts** are persisted in `userData/core-prompts-customizations.json` and survive app updates.

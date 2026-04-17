@@ -47,6 +47,7 @@ const CATEGORY_INFO: Record<string, { label: string }> = {
 	commands: { label: 'Commands' },
 	context: { label: 'Context' },
 	'group-chat': { label: 'Group Chat' },
+	includes: { label: 'Includes' },
 	'inline-wizard': { label: 'Inline Wizard' },
 	system: { label: 'System' },
 	wizard: { label: 'Wizard' },
@@ -66,6 +67,8 @@ const CATEGORY_HELP: Record<string, string> = {
 		'Prompts for context management — grooming (trimming context), transferring context between sessions, and summarization.',
 	commands:
 		'Prompts for built-in commands — image-only message handling and git commit message generation.',
+	includes:
+		'Reusable blocks referenced from other prompts. Two directives consume them: {{INCLUDE:name}} fully inlines the content at assembly time (use for foundational rules every agent must have); {{REF:name}} expands to a one-line pointer that tells the agent to fetch it on demand via `maestro-cli prompts get <name>` (use for heavy reference material only some sessions need). Keeps shared content (history format, Auto Run spec, CLI reference, Cue model, file-access rules) in one place so every agent that needs it gets the same wording.',
 	system:
 		"System-level prompts — the Maestro system context injected into agents, tab naming, Director's Notes, and feedback.",
 };
@@ -144,18 +147,35 @@ function PromptsHelpPanel({ theme, onClose }: { theme: Theme; onClose?: () => vo
 
 			<div className="prompts-help-section">
 				<h3 className="prompts-help-heading" style={{ color: theme.colors.accent }}>
-					Include Directive
+					Include Directives
 				</h3>
 				<p className="prompts-help-text" style={{ color: theme.colors.textDim }}>
-					Use{' '}
 					<code
 						className="prompts-help-code"
 						style={{ backgroundColor: theme.colors.bgMain, color: theme.colors.accent }}
 					>
 						{'{{INCLUDE:name}}'}
 					</code>{' '}
-					to embed the contents of another prompt file. This keeps prompts modular and avoids
-					duplication. Nesting up to 3 levels deep is supported.
+					fully inlines another prompt file at assembly time. Nesting up to 3 levels deep is
+					supported and cycles are detected. Use this for foundational rules every recipient must
+					see.
+				</p>
+				<p className="prompts-help-text" style={{ color: theme.colors.textDim }}>
+					<code
+						className="prompts-help-code"
+						style={{ backgroundColor: theme.colors.bgMain, color: theme.colors.accent }}
+					>
+						{'{{REF:name}}'}
+					</code>{' '}
+					expands to a one-line pointer telling the agent how to fetch the include on demand via{' '}
+					<code
+						className="prompts-help-code"
+						style={{ backgroundColor: theme.colors.bgMain, color: theme.colors.accent }}
+					>
+						maestro-cli prompts get &lt;name&gt;
+					</code>
+					. Use this for heavy reference material only some sessions need — it keeps the parent
+					prompt small and lets the agent pull the detail when relevant.
 				</p>
 			</div>
 

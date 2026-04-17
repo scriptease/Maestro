@@ -168,6 +168,62 @@ export const CORE_PROMPTS: PromptDefinition[] = [
 		description: 'Feedback conversation prompt',
 		category: 'system',
 	},
+	// Includes — reusable blocks referenced from other prompts via {{INCLUDE:name}}.
+	// Filenames are leading-underscore by convention; id matches filename stem.
+	{
+		id: '_toc',
+		filename: '_toc.md',
+		description: 'Table of contents listing all include files and when to pull them',
+		category: 'includes',
+	},
+	{
+		id: '_interface-primitives',
+		filename: '_interface-primitives.md',
+		description: 'Read / Write / Peek / Poke access model across CLI + filesystem',
+		category: 'includes',
+	},
+	{
+		id: '_documentation-index',
+		filename: '_documentation-index.md',
+		description: 'Curated table of external Maestro documentation URLs',
+		category: 'includes',
+	},
+	{
+		id: '_history-format',
+		filename: '_history-format.md',
+		description: 'JSON schema of session history entries at {{AGENT_HISTORY_PATH}}',
+		category: 'includes',
+	},
+	{
+		id: '_autorun-playbooks',
+		filename: '_autorun-playbooks.md',
+		description: 'Auto Run document spec: file naming, task format, grouping, examples',
+		category: 'includes',
+	},
+	{
+		id: '_maestro-cli',
+		filename: '_maestro-cli.md',
+		description: 'Full maestro-cli command reference (settings, send, list, cue, playbooks)',
+		category: 'includes',
+	},
+	{
+		id: '_maestro-cue',
+		filename: '_maestro-cue.md',
+		description: 'Cue event types, YAML config, template variables, and CLI hooks',
+		category: 'includes',
+	},
+	{
+		id: '_file-access-rules',
+		filename: '_file-access-rules.md',
+		description: 'Agent write restrictions and Auto Run folder carve-out',
+		category: 'includes',
+	},
+	{
+		id: '_file-access-wizard',
+		filename: '_file-access-wizard.md',
+		description: 'Wizard-only file restrictions (writes limited to Auto Run folder)',
+		category: 'includes',
+	},
 ];
 
 /**
