@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { logger } from '../../../renderer/utils/logger';
 import { renderHook, act, cleanup } from '@testing-library/react';
 
 // ============================================================================
@@ -220,7 +221,7 @@ describe('useTabExportHandlers', () => {
 
 		it('shows an error toast when clipboard write fails', async () => {
 			mockClipboardWriteText.mockRejectedValueOnce(new Error('Permission denied'));
-			const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleError = vi.spyOn(logger, 'error').mockImplementation(() => {});
 
 			const tab = createMockTab({ id: 'tab-1' });
 			const session = createMockSession({ aiTabs: [tab] });
@@ -247,7 +248,7 @@ describe('useTabExportHandlers', () => {
 		it('logs the error to console when clipboard write fails', async () => {
 			const clipboardError = new Error('Permission denied');
 			mockClipboardWriteText.mockRejectedValueOnce(clipboardError);
-			const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleError = vi.spyOn(logger, 'error').mockImplementation(() => {});
 
 			const tab = createMockTab({ id: 'tab-1' });
 			const session = createMockSession({ aiTabs: [tab] });
@@ -261,7 +262,11 @@ describe('useTabExportHandlers', () => {
 				await Promise.resolve();
 			});
 
-			expect(consoleError).toHaveBeenCalledWith('Failed to copy context:', clipboardError);
+			expect(consoleError).toHaveBeenCalledWith(
+				'Failed to copy context:',
+				undefined,
+				clipboardError
+			);
 
 			consoleError.mockRestore();
 		});
@@ -403,7 +408,7 @@ describe('useTabExportHandlers', () => {
 
 		it('shows an error toast when downloadTabExport throws', async () => {
 			mockDownloadTabExport.mockRejectedValueOnce(new Error('Write failed'));
-			const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleError = vi.spyOn(logger, 'error').mockImplementation(() => {});
 
 			const tab = createMockTab({ id: 'tab-1' });
 			const session = createMockSession({ aiTabs: [tab] });
@@ -427,7 +432,7 @@ describe('useTabExportHandlers', () => {
 		it('logs the error to console when export throws', async () => {
 			const exportError = new Error('Write failed');
 			mockDownloadTabExport.mockRejectedValueOnce(exportError);
-			const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleError = vi.spyOn(logger, 'error').mockImplementation(() => {});
 
 			const tab = createMockTab({ id: 'tab-1' });
 			const session = createMockSession({ aiTabs: [tab] });
@@ -439,7 +444,7 @@ describe('useTabExportHandlers', () => {
 				await result.current.handleExportHtml('tab-1');
 			});
 
-			expect(consoleError).toHaveBeenCalledWith('Failed to export tab:', exportError);
+			expect(consoleError).toHaveBeenCalledWith('Failed to export tab:', undefined, exportError);
 			consoleError.mockRestore();
 		});
 

@@ -16,6 +16,7 @@ import Store from 'electron-store';
 import { v4 as uuidv4 } from 'uuid';
 import type { ModeratorConfig, GroupChatHistoryEntry } from '../../shared/group-chat-types';
 import { hasCapability } from '../agents/capabilities';
+import { logger } from '../utils/logger';
 
 // ---------------------------------------------------------------------------
 // Write serialization & atomic file I/O
@@ -597,7 +598,7 @@ export async function getGroupChatHistory(groupChatId: string): Promise<GroupCha
 					entries.push(JSON.parse(line));
 				} catch {
 					// Skip malformed lines
-					console.warn(`[GroupChatHistory] Skipping malformed line: ${line.substring(0, 50)}...`);
+					logger.warn(`[GroupChatHistory] Skipping malformed line: ${line.substring(0, 50)}...`);
 				}
 			}
 		}

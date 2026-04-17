@@ -28,6 +28,7 @@ import {
 } from '../../shared-history-manager';
 import { withIpcErrorLogging, CreateHandlerOptions } from '../../utils/ipcHandler';
 import type { SafeSendFn } from '../../utils/safe-send';
+import { captureException } from '../../utils/sentry';
 
 const LOG_CONTEXT = '[History]';
 
@@ -106,6 +107,7 @@ export function registerHistoryHandlers(deps: HistoryHandlerDependencies): void 
 						sharedEntries = readRemoteEntriesLocal(projectPath, maxEntries);
 					}
 				} catch (error) {
+					void captureException(error);
 					logger.warn(`Failed to read shared history: ${error}`, LOG_CONTEXT);
 				}
 

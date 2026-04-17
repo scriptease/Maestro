@@ -1,5 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { logger } from '../../../renderer/utils/logger';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { FileExplorerPanel } from '../../../renderer/components/FileExplorerPanel';
 import type { Session, Theme } from '../../../renderer/types';
@@ -844,7 +845,7 @@ describe('FileExplorerPanel', () => {
 		});
 
 		it('handles auto-refresh errors gracefully', async () => {
-			const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
 			const failingRefresh = vi.fn().mockRejectedValue(new Error('network failure'));
 			const session = createMockSession({ fileTreeAutoRefreshInterval: 5 });
 			render(
@@ -858,6 +859,7 @@ describe('FileExplorerPanel', () => {
 			expect(failingRefresh).toHaveBeenCalledTimes(1);
 			expect(errorSpy).toHaveBeenCalledWith(
 				'[FileExplorer] Auto-refresh failed:',
+				undefined,
 				expect.any(Error)
 			);
 

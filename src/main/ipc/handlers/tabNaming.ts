@@ -25,6 +25,7 @@ import { getPrompt } from '../../prompt-manager';
 import type { ProcessManager } from '../../process-manager';
 import type { AgentDetector } from '../../agents';
 import type { MaestroSettings } from './persistence';
+import { captureException } from '../../utils/sentry';
 
 const LOG_CONTEXT = '[TabNaming]';
 
@@ -311,6 +312,7 @@ export function registerTabNamingHandlers(deps: TabNamingHandlerDependencies): v
 						});
 					});
 				} catch (error) {
+					void captureException(error);
 					logger.error('Tab naming request failed', LOG_CONTEXT, {
 						sessionId,
 						error: String(error),

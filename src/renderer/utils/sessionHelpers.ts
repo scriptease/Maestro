@@ -11,6 +11,7 @@
 import type { Session, ToolType, ProcessConfig } from '../types';
 import { createMergedSession } from './tabHelpers';
 import { getStdinFlags, prepareMaestroSystemPrompt } from './spawnHelpers';
+import { logger } from './logger';
 
 /**
  * Options for creating a session for a specific agent type.
@@ -135,12 +136,12 @@ export async function buildSpawnConfigForAgent(
 	const agentConfig = await window.maestro.agents.get(toolType);
 
 	if (!agentConfig) {
-		console.error(`[sessionHelpers] Agent not found: ${toolType}`);
+		logger.error(`[sessionHelpers] Agent not found: ${toolType}`);
 		return null;
 	}
 
 	if (!agentConfig.available) {
-		console.error(`[sessionHelpers] Agent not available: ${toolType}`);
+		logger.error(`[sessionHelpers] Agent not available: ${toolType}`);
 		return null;
 	}
 
@@ -232,12 +233,12 @@ export async function createSessionForAgent(
 	const agentConfig = await window.maestro.agents.get(agentType);
 
 	if (!agentConfig) {
-		console.error(`[sessionHelpers] Agent not found: ${agentType}`);
+		logger.error(`[sessionHelpers] Agent not found: ${agentType}`);
 		return null;
 	}
 
 	if (!agentConfig.available) {
-		console.error(`[sessionHelpers] Agent not available: ${agentType}`);
+		logger.error(`[sessionHelpers] Agent not available: ${agentType}`);
 		return null;
 	}
 

@@ -23,6 +23,7 @@ import { buildSshCommand, RemoteCommandOptions } from '../../utils/ssh-command-b
 import { stripAnsi } from '../../utils/stripAnsi';
 import { SshRemoteConfig } from '../../../shared/types';
 import { MaestroSettings } from './persistence';
+import { captureException } from '../../utils/sentry';
 
 const LOG_CONTEXT = '[AgentDetector]';
 const CONFIG_LOG_CONTEXT = '[AgentConfig]';
@@ -1307,6 +1308,7 @@ export function registerAgentsHandlers(deps: AgentsHandlerDependencies): void {
 					logger.warn(`No init message found in slash command discovery output`, LOG_CONTEXT);
 					return null;
 				} catch (error) {
+					void captureException(error);
 					logger.error(`Error discovering slash commands for ${agentId}`, LOG_CONTEXT, {
 						error: String(error),
 					});

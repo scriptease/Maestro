@@ -27,6 +27,7 @@ import { notifyToast } from '../../stores/notificationStore';
 import { useTimeTracking } from './useTimeTracking';
 import { useWorktreeManager } from './useWorktreeManager';
 import { useDocumentProcessor } from './useDocumentProcessor';
+import { logger } from '../../utils/logger';
 
 // Debounce delay for batch state updates (Quick Win 1)
 const BATCH_STATE_DEBOUNCE_MS = 200;
@@ -244,15 +245,18 @@ export function useBatchProcessor({
 			action.type === 'COMPLETE_BATCH'
 		) {
 			const sessionId = action.sessionId;
-			console.log('[BatchProcessor:dispatch]', action.type, {
-				sessionId,
-				prevIsRunning: prevStates[sessionId]?.isRunning,
-				newIsRunning: newStates[sessionId]?.isRunning,
-				prevIsStopping: prevStates[sessionId]?.isStopping,
-				newIsStopping: newStates[sessionId]?.isStopping,
-				prevCompleted: prevStates[sessionId]?.completedTasksAcrossAllDocs,
-				newCompleted: newStates[sessionId]?.completedTasksAcrossAllDocs,
-			});
+			logger.info('[BatchProcessor:dispatch]', undefined, [
+				action.type,
+				{
+					sessionId,
+					prevIsRunning: prevStates[sessionId]?.isRunning,
+					newIsRunning: newStates[sessionId]?.isRunning,
+					prevIsStopping: prevStates[sessionId]?.isStopping,
+					newIsStopping: newStates[sessionId]?.isStopping,
+					prevCompleted: prevStates[sessionId]?.completedTasksAcrossAllDocs,
+					newCompleted: newStates[sessionId]?.completedTasksAcrossAllDocs,
+				},
+			]);
 		}
 	}, []);
 
@@ -286,10 +290,10 @@ export function useBatchProcessor({
 	// This handles React 18 StrictMode double-render and ensures ref is always correct
 	useEffect(() => {
 		isMountedRef.current = true;
-		console.log('[BatchProcessor] Mounted, isMountedRef set to true');
+		logger.info('[BatchProcessor] Mounted, isMountedRef set to true');
 		return () => {
 			isMountedRef.current = false;
-			console.log('[BatchProcessor] Unmounting, isMountedRef set to false');
+			logger.info('[BatchProcessor] Unmounting, isMountedRef set to false');
 
 			// Reject all pending error resolution promises with 'abort' to unblock any waiting async code
 			// This prevents memory leaks from promises that would never resolve
@@ -354,7 +358,7 @@ export function useBatchProcessor({
 						newStateForSession = newState[sessionId] || null;
 
 						// DEBUG: Log to trace progress updates
-						console.log('[BatchProcessor:onUpdate] Debounce fired:', {
+						logger.info('[BatchProcessor:onUpdate] Debounce fired:', undefined, {
 							sessionId,
 							refHasSession: !!currentState[sessionId],
 							refCompletedTasks: currentState[sessionId]?.completedTasksAcrossAllDocs,
@@ -431,7 +435,7 @@ export function useBatchProcessor({
 
 						broadcastAutoRunState(sessionId, newStateForSession);
 					} catch (error) {
-						console.error('[BatchProcessor:onUpdate] ERROR in debounce callback:', error);
+						logger.error('[BatchProcessor:onUpdate] ERROR in debounce callback:', undefined, error);
 					}
 				},
 				[broadcastAutoRunState]
@@ -523,11 +527,15 @@ export function useBatchProcessor({
 			const newState = updater(currentState);
 			const newStateForSession = newState[sessionId] || null;
 
-			console.log('[BatchProcessor:updateBatchStateAndBroadcast] DIRECT update (no debounce)', {
-				sessionId,
-				prevCompleted: currentState[sessionId]?.completedTasksAcrossAllDocs,
-				newCompleted: newStateForSession?.completedTasksAcrossAllDocs,
-			});
+			logger.info(
+				'[BatchProcessor:updateBatchStateAndBroadcast] DIRECT update (no debounce)',
+				undefined,
+				{
+					sessionId,
+					prevCompleted: currentState[sessionId]?.completedTasksAcrossAllDocs,
+					newCompleted: newStateForSession?.completedTasksAcrossAllDocs,
+				}
+			);
 
 			if (newStateForSession) {
 				const prevSessionState = currentState[sessionId] || DEFAULT_BATCH_STATE;
@@ -882,7 +890,7 @@ export function useBatchProcessor({
 				});
 			} catch (statsError) {
 				// Don't fail the batch if stats tracking fails
-				console.warn('[BatchProcessor] Failed to start stats tracking:', statsError);
+				logger.warn('[BatchProcessor] Failed to start stats tracking:', undefined, statsError);
 			}
 
 			// Collect Claude session IDs and track completion
@@ -1031,8 +1039,9 @@ export function useBatchProcessor({
 							docCheckedCount = workingCopyResult.checkedCount;
 							docTasksTotal = remainingTasks;
 						} catch (err) {
-							console.error(
+							logger.error(
 								`[BatchProcessor] Failed to create working copy for ${docEntry.filename}:`,
+								undefined,
 								err
 							);
 							// Continue with original document as fallback
@@ -1241,7 +1250,11 @@ export function useBatchProcessor({
 									});
 								} catch (statsError) {
 									// Don't fail the batch if stats tracking fails
-									console.warn('[BatchProcessor] Failed to record task stats:', statsError);
+									logger.warn(
+										'[BatchProcessor] Failed to record task stats:',
+										undefined,
+										statsError
+									);
 								}
 							}
 
@@ -1276,7 +1289,11 @@ export function useBatchProcessor({
 										timeSpent: timeTracking.getElapsedTime(sessionId),
 									})
 									.catch((err: unknown) => {
-										console.warn('[BatchProcessor] Failed to update Symphony progress:', err);
+										logger.warn(
+											'[BatchProcessor] Failed to update Symphony progress:',
+											undefined,
+											err
+										);
 									});
 							}
 
@@ -1354,7 +1371,7 @@ export function useBatchProcessor({
 								window.maestro.notification
 									.speak(shortSummary, audioFeedbackCommandRef.current)
 									.catch((err) => {
-										console.error('[BatchProcessor] Failed to speak synopsis:', err);
+										logger.error('[BatchProcessor] Failed to speak synopsis:', undefined, err);
 									});
 							}
 
@@ -1418,8 +1435,9 @@ export function useBatchProcessor({
 							docContent = taskResult.contentAfterTask;
 						} catch (error) {
 							clearInterval(progressPollInterval);
-							console.error(
+							logger.error(
 								`[BatchProcessor] Error running task in ${docEntry.filename} for session ${sessionId}:`,
+								undefined,
 								error
 							);
 
@@ -1839,14 +1857,14 @@ export function useBatchProcessor({
 					);
 				} catch (statsError) {
 					// Don't fail cleanup if stats tracking fails
-					console.warn('[BatchProcessor] Failed to end stats tracking:', statsError);
+					logger.warn('[BatchProcessor] Failed to end stats tracking:', undefined, statsError);
 				}
 			}
 
 			// Critical: Always flush debounced updates and dispatch COMPLETE_BATCH to clean up state.
 			// These operations are safe regardless of mount state - React handles reducer dispatches gracefully,
 			// and broadcasts are external calls that don't affect React state.
-			console.log(
+			logger.info(
 				'[BatchProcessor:startBatchRun] Flushing debounced updates before COMPLETE_BATCH'
 			);
 			flushDebouncedUpdate(sessionId);
@@ -1920,7 +1938,7 @@ export function useBatchProcessor({
 	 */
 	const stopBatchRun = useCallback(
 		(sessionId: string) => {
-			console.log('[BatchProcessor:stopBatchRun] Called with sessionId:', sessionId);
+			logger.info('[BatchProcessor:stopBatchRun] Called with sessionId:', undefined, sessionId);
 			stopRequestedRefs.current[sessionId] = true;
 			const errorResolution = errorResolutionRefs.current[sessionId];
 			if (errorResolution) {
@@ -1945,13 +1963,13 @@ export function useBatchProcessor({
 	 */
 	const killBatchRun = useCallback(
 		async (sessionId: string) => {
-			console.log('[BatchProcessor:killBatchRun] Force killing session:', sessionId);
+			logger.info('[BatchProcessor:killBatchRun] Force killing session:', undefined, sessionId);
 
 			// 1. Kill the agent process and wait for termination before cleaning up state
 			try {
 				await window.maestro.process.kill(sessionId);
 			} catch (error) {
-				console.error('[BatchProcessor:killBatchRun] Failed to kill process:', error);
+				logger.error('[BatchProcessor:killBatchRun] Failed to kill process:', undefined, error);
 			}
 
 			// 2. Set stop flag so the processing loop exits if it's still running

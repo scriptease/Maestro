@@ -16,6 +16,7 @@
 
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { logger } from '../../../renderer/utils/logger';
 import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react';
 import { SettingsModal } from '../../../renderer/components/Settings/SettingsModal';
 import { formatEnterToSend } from '../../../renderer/utils/shortcutFormatter';
@@ -1450,7 +1451,7 @@ describe('SettingsModal', () => {
 		it('should handle font detection failure gracefully', async () => {
 			(window.maestro as any).fonts.detect.mockRejectedValue(new Error('Font detection failed'));
 
-			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
 
 			render(<SettingsModal {...createDefaultProps({ initialTab: 'display' })} />);
 
@@ -1476,7 +1477,7 @@ describe('SettingsModal', () => {
 				new Error('Shell detection failed')
 			);
 
-			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
 
 			render(<SettingsModal {...createDefaultProps()} />);
 
@@ -1674,7 +1675,7 @@ describe('SettingsModal', () => {
 			});
 			vi.mocked(window.maestro.notification.stopSpeak).mockRejectedValue(new Error('Stop failed'));
 
-			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
 
 			render(<SettingsModal {...createDefaultProps({ initialTab: 'notifications' })} />);
 
@@ -1704,7 +1705,7 @@ describe('SettingsModal', () => {
 		it('should handle speak error gracefully', async () => {
 			vi.mocked(window.maestro.notification.speak).mockRejectedValue(new Error('Speak failed'));
 
-			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
 
 			render(<SettingsModal {...createDefaultProps({ initialTab: 'notifications' })} />);
 

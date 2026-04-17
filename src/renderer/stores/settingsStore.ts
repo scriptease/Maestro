@@ -37,6 +37,8 @@ import { DEFAULT_SHORTCUTS, TAB_SHORTCUTS, FIXED_SHORTCUTS } from '../constants/
 import { getLevelIndex } from '../constants/keyboardMastery';
 import type { FileExplorerIconTheme } from '../utils/fileExplorerIcons/shared';
 import { isFileExplorerIconTheme } from '../utils/fileExplorerIcons/shared';
+import { logger } from '../utils/logger';
+
 // ============================================================================
 // Prompt cache (loaded via IPC at startup)
 // ============================================================================
@@ -814,7 +816,11 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 							try {
 								await window.maestro.live.clearPersistentToken();
 							} catch (clearError) {
-								console.error('[Settings] Failed to clear stale persistent web link:', clearError);
+								logger.error(
+									'[Settings] Failed to clear stale persistent web link:',
+									undefined,
+									clearError
+								);
 							}
 						}
 						return;
@@ -822,13 +828,13 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 					if (!result.success) {
 						// Rollback optimistic update on soft failure
 						set({ persistentWebLink: false });
-						console.warn('[Settings] Failed to persist web link token:', result.message);
+						logger.warn('[Settings] Failed to persist web link token:', undefined, result.message);
 					}
 				} catch (error) {
 					if (requestSeq === persistentWebLinkRequestSeq) {
 						// Rollback optimistic update on hard failure
 						set({ persistentWebLink: false });
-						console.error('[Settings] Failed to persist web link token:', error);
+						logger.error('[Settings] Failed to persist web link token:', undefined, error);
 					}
 				}
 			} else {
@@ -843,13 +849,17 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 					if (!result.success) {
 						// Rollback optimistic update on soft failure
 						set({ persistentWebLink: true });
-						console.warn('[Settings] Failed to clear persistent web link:', result.message);
+						logger.warn(
+							'[Settings] Failed to clear persistent web link:',
+							undefined,
+							result.message
+						);
 					}
 				} catch (error) {
 					if (requestSeq === persistentWebLinkRequestSeq) {
 						// Clear failed — rollback Zustand to match main-side state
 						set({ persistentWebLink: true });
-						console.error('[Settings] Failed to clear persistent web link:', error);
+						logger.error('[Settings] Failed to clear persistent web link:', undefined, error);
 					}
 					// else: stale — a newer call is in charge, nothing to do
 				}
@@ -1768,7 +1778,7 @@ export async function loadAllSettings(): Promise<void> {
 				};
 				window.maestro.settings.set('autoRunStats', stats);
 				window.maestro.settings.set('concurrentAutoRunTimeMigrationApplied', true);
-				console.log(
+				logger.info(
 					'[Settings] Applied concurrent Auto Run time migration: added 3 hours to cumulative time'
 				);
 			}
@@ -1981,7 +1991,7 @@ export async function loadAllSettings(): Promise<void> {
 		patch.settingsLoaded = true;
 		useSettingsStore.setState(patch);
 	} catch (error) {
-		console.error('[Settings] Failed to load settings:', error);
+		logger.error('[Settings] Failed to load settings:', undefined, error);
 		// Mark settings as loaded even if there was an error (use defaults)
 		useSettingsStore.setState({ settingsLoaded: true });
 	}

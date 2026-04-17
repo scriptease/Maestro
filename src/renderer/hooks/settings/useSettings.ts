@@ -34,6 +34,7 @@ import {
 	selectIsLeaderboardRegistered,
 } from '../../stores/settingsStore';
 import type { DocumentGraphLayoutType } from '../../stores/settingsStore';
+import { logger } from '../../utils/logger';
 
 export interface UseSettingsReturn {
 	// Loading state
@@ -353,7 +354,7 @@ export function useSettings(): UseSettingsReturn {
 			return;
 		}
 		const cleanup = window.maestro.app.onSystemResume(() => {
-			console.log('[Settings] System resumed from sleep, reloading settings');
+			logger.info('[Settings] System resumed from sleep, reloading settings');
 			loadAllSettings();
 		});
 		return cleanup;
@@ -365,7 +366,7 @@ export function useSettings(): UseSettingsReturn {
 			return;
 		}
 		const cleanup = window.maestro.settings.onExternalChange(() => {
-			console.log('[Settings] External settings change detected, reloading');
+			logger.info('[Settings] External settings change detected, reloading');
 			loadAllSettings();
 		});
 		return cleanup;

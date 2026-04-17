@@ -16,6 +16,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useDebouncedCallback } from '../utils/useThrottle';
+import { logger } from '../../utils/logger';
 
 // Stats time range type matching the backend API
 export type StatsTimeRange = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'all';
@@ -100,7 +101,7 @@ export function useStats(range: StatsTimeRange, enabled: boolean = true): UseSta
 					setData(stats);
 				}
 			} catch (err) {
-				console.error('Failed to fetch usage stats:', err);
+				logger.error('Failed to fetch usage stats:', undefined, err);
 				if (mountedRef.current) {
 					setError(err instanceof Error ? err.message : 'Failed to load stats');
 				}

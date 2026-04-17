@@ -35,7 +35,7 @@ import { ChartErrorBoundary } from './ChartErrorBoundary';
 import type { Theme, Session } from '../../types';
 import { useModalLayer } from '../../hooks/ui/useModalLayer';
 import { MODAL_PRIORITIES } from '../../constants/modalPriorities';
-import { getRendererPerfMetrics } from '../../utils/logger';
+import { getRendererPerfMetrics, logger } from '../../utils/logger';
 import { PERFORMANCE_THRESHOLDS } from '../../../shared/performance-metrics';
 
 // Section IDs for keyboard navigation
@@ -211,8 +211,9 @@ export function UsageDashboardModal({
 
 				// Warn if fetch is slow
 				if (fetchDuration > PERFORMANCE_THRESHOLDS.DASHBOARD_LOAD) {
-					console.warn(
+					logger.warn(
 						`[UsageDashboard] fetchStats took ${fetchDuration.toFixed(0)}ms (threshold: ${PERFORMANCE_THRESHOLDS.DASHBOARD_LOAD}ms)`,
+						undefined,
 						{ timeRange, totalQueries: stats?.totalQueries }
 					);
 				}
@@ -223,7 +224,7 @@ export function UsageDashboardModal({
 					setTimeout(() => setShowNewDataIndicator(false), 3000);
 				}
 			} catch (err) {
-				console.error('Failed to fetch usage stats:', err);
+				logger.error('Failed to fetch usage stats:', undefined, err);
 				setError(err instanceof Error ? err.message : 'Failed to load stats');
 				perfMetrics.end(fetchStart, 'fetchStats:error', { timeRange, error: String(err) });
 			} finally {
@@ -473,7 +474,7 @@ export function UsageDashboardModal({
 			const csv = await window.maestro.stats.exportCsv(timeRange);
 			await window.maestro.fs.writeFile(filePath, csv);
 		} catch (err) {
-			console.error('Failed to export CSV:', err);
+			logger.error('Failed to export CSV:', undefined, err);
 		} finally {
 			setIsExporting(false);
 		}

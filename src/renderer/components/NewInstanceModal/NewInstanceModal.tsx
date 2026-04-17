@@ -14,6 +14,7 @@ import { useRemotePathValidation } from '../../hooks/agent/useRemotePathValidati
 import { NudgeMessageField } from './NudgeMessageField';
 import { RemotePathStatus } from './RemotePathStatus';
 import { AgentPickerGrid } from './AgentPickerGrid';
+import { logger } from '../../utils/logger';
 
 export function NewInstanceModal({
 	isOpen,
@@ -255,7 +256,7 @@ export function NewInstanceModal({
 				}
 			}
 		} catch (error) {
-			console.error('Failed to load agents:', error);
+			logger.error('Failed to load agents:', undefined, error);
 		} finally {
 			setLoading(false);
 		}
@@ -278,7 +279,7 @@ export function NewInstanceModal({
 				setDebugInfo(result.debugInfo);
 			}
 		} catch (error) {
-			console.error('Failed to refresh agent:', error);
+			logger.error('Failed to refresh agent:', undefined, error);
 		} finally {
 			setRefreshingAgent(null);
 		}
@@ -299,7 +300,7 @@ export function NewInstanceModal({
 				const models = await window.maestro.agents.getModels(agentId, forceRefresh);
 				setAvailableModels((prev) => ({ ...prev, [agentId]: models }));
 			} catch (error) {
-				console.error(`Failed to load models for ${agentId}:`, error);
+				logger.error(`Failed to load models for ${agentId}:`, undefined, error);
 			} finally {
 				setLoadingModels((prev) => ({ ...prev, [agentId]: false }));
 			}
@@ -528,7 +529,7 @@ export function NewInstanceModal({
 						setSshRemotes(sshConfigsResult.configs);
 					}
 				} catch (sshError) {
-					console.error('Failed to load SSH remote configs:', sshError);
+					logger.error('Failed to load SSH remote configs:', undefined, sshError);
 				}
 			};
 			loadSshConfigs();
@@ -714,7 +715,7 @@ export function NewInstanceModal({
 							[key]: value,
 						};
 						void window.maestro.agents.setConfig(agentId, updatedConfig).catch((error) => {
-							console.error(`Failed to persist config for ${agentId}:`, error);
+							logger.error(`Failed to persist config for ${agentId}:`, undefined, error);
 						});
 					}}
 					onRefreshModels={(agentId) => loadModelsForAgent(agentId, true)}

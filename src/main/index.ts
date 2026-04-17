@@ -585,6 +585,7 @@ app.whenReady().then(async () => {
 			}
 		});
 	} catch (error) {
+		void captureException(error);
 		// Migration failed - log error but continue with app startup
 		// History will be unavailable but the app will still function
 		logger.error(`Failed to initialize history manager: ${error}`, 'Startup');
@@ -597,6 +598,7 @@ app.whenReady().then(async () => {
 		initializeStatsDB();
 		logger.info('Stats database initialized', 'Startup');
 	} catch (error) {
+		void captureException(error);
 		// Stats initialization failed - log error but continue with app startup
 		// Stats will be unavailable but the app will still function
 		logger.error(`Failed to initialize stats database: ${error}`, 'Startup');
@@ -618,6 +620,7 @@ app.whenReady().then(async () => {
 		try {
 			cueEngine.start('system-boot');
 		} catch (err) {
+			void captureException(err);
 			logger.error(
 				`Cue engine failed to start at boot — will remain available for retry via Settings: ${err}`,
 				'Startup'
