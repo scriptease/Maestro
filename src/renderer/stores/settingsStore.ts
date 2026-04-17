@@ -322,6 +322,7 @@ export interface SettingsStoreState {
 	autoHideMenuBar: boolean;
 	moderatorStandingInstructions: string;
 	autoRunDisabled: boolean;
+	autoRunInactivityTimeoutMin: number;
 }
 
 export interface SettingsStoreActions {
@@ -404,6 +405,7 @@ export interface SettingsStoreActions {
 	setAutoHideMenuBar: (value: boolean) => void;
 	setModeratorStandingInstructions: (value: string) => void;
 	setAutoRunDisabled: (value: boolean) => void;
+	setAutoRunInactivityTimeoutMin: (value: number) => void;
 
 	// Async setters
 	setLogLevel: (value: string) => Promise<void>;
@@ -566,6 +568,7 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 		autoHideMenuBar: false,
 		moderatorStandingInstructions: '',
 		autoRunDisabled: false,
+		autoRunInactivityTimeoutMin: 30,
 
 		// ============================================================================
 		// Simple Setters
@@ -1027,6 +1030,12 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 		setAutoRunDisabled: (value) => {
 			set({ autoRunDisabled: value });
 			window.maestro.settings.set('autoRunDisabled', value);
+		},
+
+		setAutoRunInactivityTimeoutMin: (value) => {
+			const clamped = Math.max(1, Math.min(600, Math.round(value)));
+			set({ autoRunInactivityTimeoutMin: clamped });
+			window.maestro.settings.set('autoRunInactivityTimeoutMin', clamped);
 		},
 
 		// ============================================================================
@@ -1976,6 +1985,9 @@ export async function loadAllSettings(): Promise<void> {
 
 		if (allSettings['autoRunDisabled'] !== undefined)
 			patch.autoRunDisabled = allSettings['autoRunDisabled'] as boolean;
+
+		if (allSettings['autoRunInactivityTimeoutMin'] !== undefined)
+			patch.autoRunInactivityTimeoutMin = allSettings['autoRunInactivityTimeoutMin'] as number;
 
 		// Apply the entire patch in one setState call
 		patch.settingsLoaded = true;

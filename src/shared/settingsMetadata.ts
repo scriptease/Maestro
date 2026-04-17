@@ -461,6 +461,13 @@ export const SETTINGS_METADATA: Record<string, SettingMetadata> = {
 		default: false,
 		category: 'advanced',
 	},
+	autoRunInactivityTimeoutMin: {
+		description:
+			'Minutes of no agent output before the Auto Run watchdog considers a task stalled and force-kills it.',
+		type: 'number',
+		default: 30,
+		category: 'advanced',
+	},
 
 	// --- Stats & Tracking ---
 	statsCollectionEnabled: {

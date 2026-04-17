@@ -335,6 +335,8 @@ export interface UseSettingsReturn {
 	// Auto Run kill switch
 	autoRunDisabled: boolean;
 	setAutoRunDisabled: (value: boolean) => void;
+	autoRunInactivityTimeoutMin: number;
+	setAutoRunInactivityTimeoutMin: (value: number) => void;
 }
 
 export function useSettings(): UseSettingsReturn {

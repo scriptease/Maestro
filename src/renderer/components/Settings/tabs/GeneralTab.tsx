@@ -29,6 +29,7 @@ import {
 	ExternalLink,
 	Keyboard,
 	AlertTriangle,
+	Clock,
 } from 'lucide-react';
 import { useSettings } from '../../../hooks';
 import { captureException } from '../../../utils/sentry';
@@ -100,6 +101,9 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 		setForcedParallelExecution,
 		forcedParallelAcknowledged,
 		setForcedParallelAcknowledged,
+		// Auto Run
+		autoRunInactivityTimeoutMin,
+		setAutoRunInactivityTimeoutMin,
 		// Shortcuts
 		shortcuts,
 	} = useSettings();
@@ -622,6 +626,30 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 					onCancel={handleForcedParallelCancel}
 					theme={theme}
 				/>
+			</div>
+
+			{/* Auto Run Inactivity Timeout */}
+			<div data-setting-id="general-autorun-inactivity-timeout">
+				<div className="block text-xs font-bold opacity-70 uppercase mb-2 flex items-center gap-2">
+					<Clock className="w-3 h-3" />
+					Auto Run Inactivity Timeout
+				</div>
+				<ToggleButtonGroup
+					options={[
+						{ value: 10, label: '10 min' },
+						{ value: 20, label: '20 min' },
+						{ value: 30, label: '30 min' },
+						{ value: 60, label: '60 min' },
+						{ value: 120, label: '2 hr' },
+					]}
+					value={autoRunInactivityTimeoutMin}
+					onChange={setAutoRunInactivityTimeoutMin}
+					theme={theme}
+				/>
+				<p className="text-xs opacity-50 mt-2">
+					Auto Run force-kills a task if the agent produces no output for this many minutes.
+					Increase if long refactors or heavy test runs are being killed prematurely.
+				</p>
 			</div>
 
 			{/* Default History Toggle */}

@@ -11,6 +11,7 @@ import { getActiveTab } from '../../utils/tabHelpers';
 import { getStdinFlags, prepareMaestroSystemPrompt } from '../../utils/spawnHelpers';
 import { generateId } from '../../utils/ids';
 import { estimateContextUsage } from '../../utils/contextUsage';
+import { useSettingsStore } from '../../stores/settingsStore';
 
 /**
  * Result from agent spawn operations.
@@ -35,7 +36,6 @@ export type AgentSpawnErrorKind =
 	| 'process-exit-unknown'
 	| 'spawn-failed';
 
-const BATCH_INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes without output
 const BATCH_HARD_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes wall clock per task
 const BATCH_WATCHDOG_CHECK_MS = 15 * 1000; // Check every 15 seconds
 
@@ -479,13 +479,16 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 					// Watchdog for hung Auto Run batch tasks:
 					// detect long silence or excessive wall-clock runtime and force-kill.
 					if (isBatchProcess) {
+						const inactivityTimeoutMin = useSettingsStore.getState().autoRunInactivityTimeoutMin;
+						const inactivityTimeoutMs = inactivityTimeoutMin * 60 * 1000;
+
 						inactivityTimer = setInterval(() => {
 							if (settled) return;
-							if (Date.now() - lastOutputAt <= BATCH_INACTIVITY_TIMEOUT_MS) return;
+							if (Date.now() - lastOutputAt <= inactivityTimeoutMs) return;
 							window.maestro.process.kill(targetSessionId).catch(() => {});
 							resolveOnce({
 								success: false,
-								error: `Agent task stalled: no output for ${Math.floor(BATCH_INACTIVITY_TIMEOUT_MS / 60000)} minutes`,
+								error: `Agent task stalled: no output for ${inactivityTimeoutMin} minutes`,
 								errorKind: 'watchdog-stalled',
 								response: responseText,
 								agentSessionId,
