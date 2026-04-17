@@ -39,7 +39,10 @@ interface ActiveShellProcess {
 
 const activeShellProcesses = new Map<string, ActiveShellProcess>();
 
-function killShellProcess(child: ChildProcess, sync = false): void {
+function killShellProcess(
+	child: ChildProcess,
+	sync = false
+): ReturnType<typeof setTimeout> | undefined {
 	if (isWindows() && child.pid) {
 		if (sync) {
 			try {
@@ -50,19 +53,22 @@ function killShellProcess(child: ChildProcess, sync = false): void {
 		} else {
 			execFile('taskkill', ['/pid', String(child.pid), '/t', '/f'], (error) => {
 				if (!error) return;
-				const msg = error.message.toLowerCase();
-				if (msg.includes('not found') || msg.includes('no running instance')) return;
+				// If the child has already exited by the time taskkill runs, the
+				// non-zero exit is just "process already dead" — benign. Checking
+				// `child.exitCode` is locale-independent, unlike matching the
+				// error message text.
+				if (child.exitCode !== null || child.signalCode !== null) return;
 				captureException(error, { operation: 'cue:shell:taskkill', pid: child.pid });
 			});
 		}
-	} else {
-		child.kill('SIGTERM');
-		setTimeout(() => {
-			if (child.exitCode === null && child.signalCode === null) {
-				child.kill('SIGKILL');
-			}
-		}, SIGKILL_DELAY_MS);
+		return undefined;
 	}
+	child.kill('SIGTERM');
+	return setTimeout(() => {
+		if (child.exitCode === null && child.signalCode === null) {
+			child.kill('SIGKILL');
+		}
+	}, SIGKILL_DELAY_MS);
 }
 
 /**
@@ -138,7 +144,9 @@ export async function executeCueShell(config: CueShellExecutionConfig): Promise<
 		let stdout = '';
 		let stderr = '';
 		let settled = false;
+		let timedOut = false;
 		let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+		let sigkillTimer: ReturnType<typeof setTimeout> | undefined;
 
 		const finish = (status: CueRunStatus, exitCode: number | null) => {
 			if (settled) return;
@@ -146,6 +154,7 @@ export async function executeCueShell(config: CueShellExecutionConfig): Promise<
 
 			activeShellProcesses.delete(runId);
 			if (timeoutTimer) clearTimeout(timeoutTimer);
+			if (sigkillTimer) clearTimeout(sigkillTimer);
 
 			resolve({
 				runId,
@@ -173,11 +182,20 @@ export async function executeCueShell(config: CueShellExecutionConfig): Promise<
 			stderr += data;
 		});
 
+		// Use a `timedOut` flag rather than swapping listeners. Swapping races
+		// with a queued 'close' event: Node timers fire in the timers phase
+		// before the I/O phase, so a child that exits naturally at nearly the
+		// same instant as the timeout can have its 'close' event re-routed to
+		// the new handler, falsely reporting a timeout.
 		child.on('close', (code) => {
-			finish(code === 0 ? 'completed' : 'failed', code);
+			finish(timedOut ? 'timeout' : code === 0 ? 'completed' : 'failed', code);
 		});
 
 		child.on('error', (error) => {
+			// During a timeout-triggered kill the OS/process may emit 'error'
+			// before 'close'. Short-circuit so the run is reported as 'timeout'
+			// rather than 'failed'.
+			if (timedOut) return;
 			captureException(error, {
 				operation: 'cue:shell:childProcess:error',
 				runId,
@@ -191,11 +209,8 @@ export async function executeCueShell(config: CueShellExecutionConfig): Promise<
 			timeoutTimer = setTimeout(() => {
 				if (settled) return;
 				onLog('cue', `[CUE] Shell run ${runId} timed out after ${timeoutMs}ms, killing process`);
-				killShellProcess(child);
-				child.removeAllListeners('close');
-				child.on('close', (code) => {
-					finish('timeout', code);
-				});
+				timedOut = true;
+				sigkillTimer = killShellProcess(child);
 			}, timeoutMs);
 		}
 	});

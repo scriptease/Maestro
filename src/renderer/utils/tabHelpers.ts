@@ -310,6 +310,46 @@ export function hasActiveWizard(tab: AITab): boolean {
 }
 
 /**
+ * Filter a unified tab order down to the refs that TabBar actually displays when the
+ * "unread only" tab filter is active. Matches TabBar.tsx's displayedUnifiedTabs logic so
+ * keyboard jump shortcuts (Cmd+1..9, Cmd+0) stay aligned with the rendered tab strip.
+ *
+ * AI tabs pass if they're unread, busy, the active AI tab (in AI mode), have a draft, or
+ * are starred (when that setting is on). File tabs pass only when the file-preview setting
+ * is enabled. Terminal and browser tabs always pass (no unread semantics to filter on).
+ *
+ * @param session - The Maestro session supplying activeTabId / inputMode / aiTabs
+ * @param order   - Unified tab order to filter (typically getRepairedUnifiedTabOrder(session))
+ * @returns Filtered UnifiedTabRef[] in the same relative order
+ */
+export function filterUnifiedTabOrderForUnread(
+	session: Session,
+	order: UnifiedTabRef[]
+): UnifiedTabRef[] {
+	const settings = useSettingsStore.getState();
+	const showStarred = settings.showStarredInUnreadFilter;
+	const showFilePreviews = settings.showFilePreviewsInUnreadFilter;
+	const inputMode = session.inputMode ?? 'ai';
+	const activeTabId = session.activeTabId ?? null;
+
+	return order.filter((ref) => {
+		if (ref.type === 'ai') {
+			const tab = session.aiTabs.find((t) => t.id === ref.id);
+			if (!tab) return false;
+			return (
+				tab.hasUnread ||
+				tab.state === 'busy' ||
+				(inputMode === 'ai' && tab.id === activeTabId) ||
+				hasDraft(tab) ||
+				(showStarred && !!tab.starred)
+			);
+		}
+		if (ref.type === 'file') return showFilePreviews;
+		return true;
+	});
+}
+
+/**
  * Get the list of navigable tabs based on filter settings.
  * When showUnreadOnly is true, only returns unread tabs and tabs with unsent drafts/staged images.
  * When false (default), returns all tabs.
@@ -1671,14 +1711,21 @@ export interface NavigateToUnifiedTabResult {
  */
 export function navigateToUnifiedTabByIndex(
 	session: Session,
-	index: number
+	index: number,
+	showUnreadOnly = false
 ): NavigateToUnifiedTabResult | null {
 	// Use repaired order that includes any orphaned tabs (keeps navigation
 	// consistent with what buildUnifiedTabs renders in the tab bar)
-	const effectiveOrder = getRepairedUnifiedTabOrder(session);
-	if (!session || effectiveOrder.length === 0) {
+	const repairedOrder = getRepairedUnifiedTabOrder(session);
+	if (!session || repairedOrder.length === 0) {
 		return null;
 	}
+
+	// When the unread filter is active, index into the filtered order so Cmd+N matches
+	// the Nth tab the user actually sees in the tab bar.
+	const effectiveOrder = showUnreadOnly
+		? filterUnifiedTabOrderForUnread(session, repairedOrder)
+		: repairedOrder;
 
 	// Check if index is within bounds
 	if (index < 0 || index >= effectiveOrder.length) {
@@ -1688,8 +1735,8 @@ export function navigateToUnifiedTabByIndex(
 	const targetTabRef = effectiveOrder[index];
 	// If orphans were repaired, persist the fix in the returned session
 	const repairedSession =
-		effectiveOrder !== session.unifiedTabOrder
-			? { ...session, unifiedTabOrder: effectiveOrder }
+		repairedOrder !== session.unifiedTabOrder
+			? { ...session, unifiedTabOrder: repairedOrder }
 			: session;
 
 	if (targetTabRef.type === 'ai') {
@@ -1816,16 +1863,24 @@ export function navigateToUnifiedTabByIndex(
  * @param session - The Maestro session
  * @returns Object with the tab type, id, and updated session, or null if no tabs
  */
-export function navigateToLastUnifiedTab(session: Session): NavigateToUnifiedTabResult | null {
+export function navigateToLastUnifiedTab(
+	session: Session,
+	showUnreadOnly = false
+): NavigateToUnifiedTabResult | null {
 	// Use repaired order so orphaned tabs are reachable via Cmd+0
-	const effectiveOrder = getRepairedUnifiedTabOrder(session);
-	if (!session || effectiveOrder.length === 0) {
+	const repairedOrder = getRepairedUnifiedTabOrder(session);
+	if (!session || repairedOrder.length === 0) {
 		return null;
 	}
 
+	// When unread filter is active, "last" means the last tab currently shown in the tab bar.
+	const effectiveOrder = showUnreadOnly
+		? filterUnifiedTabOrderForUnread(session, repairedOrder)
+		: repairedOrder;
+
 	// Find the last valid tab, skipping orphaned entries
 	for (let i = effectiveOrder.length - 1; i >= 0; i--) {
-		const result = navigateToUnifiedTabByIndex(session, i);
+		const result = navigateToUnifiedTabByIndex(session, i, showUnreadOnly);
 		if (result) return result;
 	}
 	return null;
@@ -1868,89 +1923,45 @@ function getCurrentUnifiedTabIndex(session: Session, effectiveOrder?: UnifiedTab
 
 /**
  * Navigate to the next tab in the unified tab order.
- * Cycles through both AI tabs and file preview tabs in their visual order.
- * Wraps around to the first tab if currently on the last tab.
+ * Cycles through AI, file, terminal, and browser tabs in their visual order with wrap-around.
  *
- * Note: The showUnreadOnly parameter is included for API compatibility but
- * only filters AI tabs - file tabs are always included in navigation.
+ * When showUnreadOnly is true, walks within the same filtered list TabBar renders
+ * (via filterUnifiedTabOrderForUnread) so keyboard navigation and display never diverge.
  *
  * @param session - The Maestro session
- * @param showUnreadOnly - If true, skip AI tabs that are not unread and don't have drafts
+ * @param showUnreadOnly - If true, cycle only through tabs visible under the unread filter
  * @returns Object with the tab type, id, and updated session, or null if no navigation possible
- *
- * @example
- * const result = navigateToNextUnifiedTab(session);
- * if (result) {
- *   setSessions(prev => prev.map(s => s.id === session.id ? result.session : s));
- * }
  */
 export function navigateToNextUnifiedTab(
 	session: Session,
 	showUnreadOnly = false
 ): NavigateToUnifiedTabResult | null {
 	// Use repaired order so orphaned tabs are included (consistent with tab bar rendering)
-	const effectiveOrder = getRepairedUnifiedTabOrder(session);
-	if (!session || effectiveOrder.length < 2) {
+	const repairedOrder = getRepairedUnifiedTabOrder(session);
+	if (!session || repairedOrder.length < 2) {
+		return null;
+	}
+
+	// When the unread filter is on, walk within the exact list TabBar renders — the shared
+	// filter is the single source of truth so navigation and display can never drift.
+	const effectiveOrder = showUnreadOnly
+		? filterUnifiedTabOrderForUnread(session, repairedOrder)
+		: repairedOrder;
+	if (effectiveOrder.length < 2) {
 		return null;
 	}
 
 	const currentIndex = getCurrentUnifiedTabIndex(session, effectiveOrder);
 	const length = effectiveOrder.length;
 
-	// If current tab not found, go to first valid tab
+	// If current tab isn't in the visible list, land on the first visible tab
 	if (currentIndex === -1) {
-		for (let i = 0; i < length; i++) {
-			const result = navigateToUnifiedTabByIndex(session, i);
-			if (result) return result;
-		}
-		return null;
+		return navigateToUnifiedTabByIndex(session, 0, showUnreadOnly);
 	}
 
-	// When showUnreadOnly is true, we need to skip AI tabs that are read and have no drafts.
-	// The active AI tab (session.activeTabId) is always navigable because the TabBar always
-	// displays it — without this, switching to a terminal/file tab and pressing next/prev
-	// would fail to navigate back to the visible AI tab.
-	if (showUnreadOnly) {
-		for (let offset = 1; offset < length; offset++) {
-			const nextIndex = (currentIndex + offset) % length;
-			const tabRef = effectiveOrder[nextIndex];
-
-			// File tabs: only navigable if setting enabled; terminal/browser tabs always navigable
-			if (tabRef.type === 'file') {
-				if (useSettingsStore.getState().showFilePreviewsInUnreadFilter) {
-					const result = navigateToUnifiedTabByIndex(session, nextIndex);
-					if (result) return result;
-				}
-				continue;
-			}
-			if (tabRef.type === 'terminal' || tabRef.type === 'browser') {
-				const result = navigateToUnifiedTabByIndex(session, nextIndex);
-				if (result) return result;
-				continue;
-			}
-
-			// For AI tabs, check if it's unread, busy, has a draft, starred (if setting enabled), or is the active tab
-			// (the active tab is always shown in the tab bar, so it must be reachable)
-			const aiTab = session.aiTabs.find((t) => t.id === tabRef.id);
-			if (
-				aiTab &&
-				(aiTab.hasUnread ||
-					aiTab.state === 'busy' ||
-					hasDraft(aiTab) ||
-					tabRef.id === session.activeTabId ||
-					(useSettingsStore.getState().showStarredInUnreadFilter && aiTab.starred))
-			) {
-				return navigateToUnifiedTabByIndex(session, nextIndex);
-			}
-		}
-		// No navigable tab found
-		return null;
-	}
-
-	// Find next valid tab with wrap-around, skipping orphaned entries
 	for (let offset = 1; offset < length; offset++) {
 		const nextIndex = (currentIndex + offset) % length;
-		const result = navigateToUnifiedTabByIndex(session, nextIndex);
+		const result = navigateToUnifiedTabByIndex(session, nextIndex, showUnreadOnly);
 		if (result) return result;
 	}
 	return null;
@@ -1958,89 +1969,45 @@ export function navigateToNextUnifiedTab(
 
 /**
  * Navigate to the previous tab in the unified tab order.
- * Cycles through both AI tabs and file preview tabs in their visual order.
- * Wraps around to the last tab if currently on the first tab.
+ * Cycles through AI, file, terminal, and browser tabs in their visual order with wrap-around.
  *
- * Note: The showUnreadOnly parameter is included for API compatibility but
- * only filters AI tabs - file tabs are always included in navigation.
+ * When showUnreadOnly is true, walks within the same filtered list TabBar renders
+ * (via filterUnifiedTabOrderForUnread) so keyboard navigation and display never diverge.
  *
  * @param session - The Maestro session
- * @param showUnreadOnly - If true, skip AI tabs that are not unread and don't have drafts
+ * @param showUnreadOnly - If true, cycle only through tabs visible under the unread filter
  * @returns Object with the tab type, id, and updated session, or null if no navigation possible
- *
- * @example
- * const result = navigateToPrevUnifiedTab(session);
- * if (result) {
- *   setSessions(prev => prev.map(s => s.id === session.id ? result.session : s));
- * }
  */
 export function navigateToPrevUnifiedTab(
 	session: Session,
 	showUnreadOnly = false
 ): NavigateToUnifiedTabResult | null {
 	// Use repaired order so orphaned tabs are included (consistent with tab bar rendering)
-	const effectiveOrder = getRepairedUnifiedTabOrder(session);
-	if (!session || effectiveOrder.length < 2) {
+	const repairedOrder = getRepairedUnifiedTabOrder(session);
+	if (!session || repairedOrder.length < 2) {
+		return null;
+	}
+
+	// When the unread filter is on, walk within the exact list TabBar renders — the shared
+	// filter is the single source of truth so navigation and display can never drift.
+	const effectiveOrder = showUnreadOnly
+		? filterUnifiedTabOrderForUnread(session, repairedOrder)
+		: repairedOrder;
+	if (effectiveOrder.length < 2) {
 		return null;
 	}
 
 	const currentIndex = getCurrentUnifiedTabIndex(session, effectiveOrder);
 	const length = effectiveOrder.length;
 
-	// If current tab not found, go to last valid tab
+	// If current tab isn't in the visible list, land on the last visible tab
 	if (currentIndex === -1) {
-		for (let i = length - 1; i >= 0; i--) {
-			const result = navigateToUnifiedTabByIndex(session, i);
-			if (result) return result;
-		}
-		return null;
+		return navigateToUnifiedTabByIndex(session, length - 1, showUnreadOnly);
 	}
 
-	// When showUnreadOnly is true, we need to skip AI tabs that are read and have no drafts.
-	// The active AI tab (session.activeTabId) is always navigable because the TabBar always
-	// displays it — without this, switching to a terminal/file tab and pressing next/prev
-	// would fail to navigate back to the visible AI tab.
-	if (showUnreadOnly) {
-		for (let offset = 1; offset < length; offset++) {
-			const prevIndex = (currentIndex - offset + length) % length;
-			const tabRef = effectiveOrder[prevIndex];
-
-			// File tabs: only navigable if setting enabled; terminal/browser tabs always navigable
-			if (tabRef.type === 'file') {
-				if (useSettingsStore.getState().showFilePreviewsInUnreadFilter) {
-					const result = navigateToUnifiedTabByIndex(session, prevIndex);
-					if (result) return result;
-				}
-				continue;
-			}
-			if (tabRef.type === 'terminal' || tabRef.type === 'browser') {
-				const result = navigateToUnifiedTabByIndex(session, prevIndex);
-				if (result) return result;
-				continue;
-			}
-
-			// For AI tabs, check if it's unread, busy, has a draft, starred (if setting enabled), or is the active tab
-			// (the active tab is always shown in the tab bar, so it must be reachable)
-			const aiTab = session.aiTabs.find((t) => t.id === tabRef.id);
-			if (
-				aiTab &&
-				(aiTab.hasUnread ||
-					aiTab.state === 'busy' ||
-					hasDraft(aiTab) ||
-					tabRef.id === session.activeTabId ||
-					(useSettingsStore.getState().showStarredInUnreadFilter && aiTab.starred))
-			) {
-				return navigateToUnifiedTabByIndex(session, prevIndex);
-			}
-		}
-		// No navigable tab found
-		return null;
-	}
-
-	// Find previous valid tab with wrap-around, skipping orphaned entries
 	for (let offset = 1; offset < length; offset++) {
 		const prevIndex = (currentIndex - offset + length) % length;
-		const result = navigateToUnifiedTabByIndex(session, prevIndex);
+		const result = navigateToUnifiedTabByIndex(session, prevIndex, showUnreadOnly);
 		if (result) return result;
 	}
 	return null;

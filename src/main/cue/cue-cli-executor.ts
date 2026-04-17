@@ -11,6 +11,7 @@
  * one implementation.
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import type { CueCommandCliCall, CueEvent, CueRunResult, CueSubscription } from './cue-types';
 import type { SessionInfo } from '../../shared/types';
@@ -48,6 +49,33 @@ export interface CliSendResult {
 }
 
 /**
+ * Resolve the bundled `maestro-cli.js` script path. Mirrors the candidate list
+ * in `maestro-cli-manager.ts` so dev/test environments (where
+ * `process.resourcesPath` is undefined or points at electron's built-in
+ * resources) still find the compiled script at `dist/cli/maestro-cli.js`.
+ */
+function resolveMaestroCliScriptPath(): string {
+	const candidates: string[] = [];
+	if (process.resourcesPath) {
+		candidates.push(path.join(process.resourcesPath, 'maestro-cli.js'));
+	}
+	// Compiled dev layout: main/cue/cue-cli-executor.js lives next to cli/.
+	candidates.push(path.resolve(__dirname, '..', 'cli', 'maestro-cli.js'));
+
+	for (const candidate of candidates) {
+		try {
+			fs.accessSync(candidate, fs.constants.R_OK);
+			return candidate;
+		} catch {
+			continue;
+		}
+	}
+	// Fall back to the first candidate so execFile surfaces a clear ENOENT
+	// with the attempted path rather than a bare filename.
+	return candidates[0] ?? path.resolve(__dirname, '..', 'cli', 'maestro-cli.js');
+}
+
+/**
  * Spawn `node maestro-cli.js send <target> <message> --live`. Used by both the
  * primary cli executor and the legacy cli_output Phase 3 path.
  */
@@ -56,7 +84,7 @@ export async function runMaestroCliSend(
 	message: string,
 	timeoutMs: number = CLI_SEND_TIMEOUT_MS
 ): Promise<CliSendResult> {
-	const cliScriptPath = path.join(process.resourcesPath ?? '', 'maestro-cli.js');
+	const cliScriptPath = resolveMaestroCliScriptPath();
 	const truncated = message.substring(0, CLI_SEND_OUTPUT_MAX_CHARS);
 	const cliResult = await execFileNoThrow(
 		process.execPath,
@@ -116,11 +144,11 @@ export async function executeCueCli(config: CueCliExecutionConfig): Promise<CueR
 	);
 
 	try {
-		const result = await runMaestroCliSend(
-			resolvedTarget,
-			resolvedMessage,
-			Math.max(1, Math.min(timeoutMs, CLI_SEND_TIMEOUT_MS))
-		);
+		// Treat <=0 as "no explicit cap — use default" rather than clamping to
+		// 1ms (which would kill the process almost immediately).
+		const clampedTimeout =
+			timeoutMs > 0 ? Math.min(timeoutMs, CLI_SEND_TIMEOUT_MS) : CLI_SEND_TIMEOUT_MS;
+		const result = await runMaestroCliSend(resolvedTarget, resolvedMessage, clampedTimeout);
 		const status = result.ok ? 'completed' : 'failed';
 		if (!result.ok) {
 			onLog(

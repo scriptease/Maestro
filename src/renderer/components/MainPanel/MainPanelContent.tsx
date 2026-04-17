@@ -383,6 +383,7 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 	const activeFocus = useUIStore((s) => s.activeFocus);
 	const outputSearchOpen = useUIStore((s) => s.outputSearchOpen);
 	const outputSearchQuery = useUIStore((s) => s.outputSearchQuery);
+	const outputSearchRegex = useUIStore((s) => s.outputSearchRegex);
 
 	return (
 		/* Content area: Show FilePreview when file tab is active, otherwise show terminal output */
@@ -534,8 +535,10 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 								activeFocus={activeFocus}
 								outputSearchOpen={outputSearchOpen}
 								outputSearchQuery={outputSearchQuery}
+								outputSearchRegex={outputSearchRegex}
 								setOutputSearchOpen={useUIStore.getState().setOutputSearchOpen}
 								setOutputSearchQuery={useUIStore.getState().setOutputSearchQuery}
+								setOutputSearchRegex={useUIStore.getState().setOutputSearchRegex}
 								setActiveFocus={useUIStore.getState().setActiveFocus}
 								setLightboxImage={setLightboxImage}
 								inputRef={inputRef}

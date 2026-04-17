@@ -1409,4 +1409,59 @@ describe('useInputProcessing', () => {
 			expect(mockGenerateTabName).toHaveBeenCalled();
 		});
 	});
+
+	describe('retry after agent error', () => {
+		// Regression: on retry, thinking pill stayed hidden because session-level
+		// agentError was still set. That pinned session.state to 'error' via the
+		// `state === 'error' && agentError` branch in useAgentListeners (onExit:703,
+		// onData:548), even though processInput flipped state to 'busy'.
+		it('clears session and tab agent error state on AI retry', async () => {
+			const priorError = {
+				type: 'unknown' as const,
+				message: 'Agent exited with code 143',
+				timestamp: Date.now(),
+				raw: 'Agent exited with code 143',
+			};
+			const erroredTab = createMockTab({
+				state: 'idle',
+				agentError: priorError,
+			});
+			const erroredSession = createMockSession({
+				state: 'error',
+				busySource: undefined,
+				agentError: priorError,
+				agentErrorTabId: erroredTab.id,
+				agentErrorPaused: true,
+				aiTabs: [erroredTab],
+				activeTabId: erroredTab.id,
+			});
+
+			const deps = createDeps({
+				activeSession: erroredSession,
+				sessionsRef: { current: [erroredSession] },
+				inputValue: 'retry after crash',
+			});
+			const { result } = renderHook(() => useInputProcessing(deps));
+
+			await act(async () => {
+				await result.current.processInput();
+			});
+
+			expect(mockSetSessions).toHaveBeenCalled();
+			const updater = mockSetSessions.mock.calls[0][0];
+			const [updated] = updater([erroredSession]);
+
+			// Session transitions to busy with AI source — required by thinking pill
+			expect(updated.state).toBe('busy');
+			expect(updated.busySource).toBe('ai');
+			// Prior error fields are wiped so late onAgentError/onExit branches
+			// can't re-enter the 'error' state path
+			expect(updated.agentError).toBeUndefined();
+			expect(updated.agentErrorTabId).toBeUndefined();
+			expect(updated.agentErrorPaused).toBe(false);
+			// Active tab transitions to busy and its banner error is cleared too
+			expect(updated.aiTabs[0].state).toBe('busy');
+			expect(updated.aiTabs[0].agentError).toBeUndefined();
+		});
+	});
 });

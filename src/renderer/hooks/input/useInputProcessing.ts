@@ -705,6 +705,10 @@ export function useInputProcessing(deps: UseInputProcessingDeps): UseInputProces
 									// Mark this tab as awaiting session ID so we can assign it correctly
 									// when the session ID comes back (prevents cross-tab assignment)
 									awaitingSessionId: isNewSession ? true : tab.awaitingSessionId,
+									// Clear any prior tab-level agent error so a late onAgentError
+									// event for the dead PID can't keep the session pinned to 'error'
+									// and hide the thinking pill on retry
+									agentError: undefined,
 								}
 							: tab
 					);
@@ -720,6 +724,12 @@ export function useInputProcessing(deps: UseInputProcessingDeps): UseInputProces
 						shellCwd: newShellCwd,
 						[historyKey]: newHistory,
 						aiTabs: updatedAiTabs,
+						// Clear session-level error fields so `state === 'error' && agentError`
+						// branches (useAgentListeners onExit/onAgentError) can't override the
+						// fresh busy transition and suppress the thinking pill on retry
+						agentError: undefined,
+						agentErrorTabId: undefined,
+						agentErrorPaused: false,
 					};
 				})
 			);

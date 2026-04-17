@@ -4,9 +4,11 @@ description: Customize the system prompts that control how Maestro's AI features
 icon: wand-magic-sparkles
 ---
 
-Maestro ships with 23 core system prompts that control wizard conversations, Auto Run behavior, group chat moderation, context management, and more. Every prompt is a Markdown template you can edit, and changes take effect immediately — no restart required.
+Maestro ships with 23 core system prompts that control wizard conversations, Auto Run behavior, group chat moderation, context management, and more — plus a library of reusable **include** fragments (Auto Run spec, CLI reference, Cue model, file-access rules, etc.) that other prompts reference. Every prompt is a Markdown template you can edit, and changes take effect immediately — no restart required.
 
 ## Opening the Prompt Editor
+
+![Maestro Prompts settings tab](./screenshots/settings-prompts.png)
 
 1. Open **Settings** (`Cmd+,` / `Ctrl+,`)
 2. Select the **Maestro Prompts** tab
@@ -23,15 +25,16 @@ Click the expand button (top-right of the editor) to give the editor the full wi
 
 Prompts are organized by the feature they control:
 
-| Category          | What It Controls                                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------ |
-| **Wizard**        | The planning wizard for Auto Run documents — system prompt, continuation flow, and document generation             |
-| **Inline Wizard** | The inline wizard that operates within the editor — new sessions, iteration, and generation                        |
-| **Auto Run**      | Auto Run behavior — the default execution prompt and synopsis generation                                           |
-| **Group Chat**    | Group chat sessions — moderator system/synthesis prompts, participant behavior, and participant request formatting |
-| **Context**       | Context window management — grooming (trimming), transferring between sessions, and summarization                  |
-| **Commands**      | Built-in commands — image-only message handling and git commit message generation                                  |
-| **System**        | Core system behavior — the Maestro system prompt injected into agents, tab naming, Director's Notes, and feedback  |
+| Category          | What It Controls                                                                                                                                           |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Wizard**        | The planning wizard for Auto Run documents — system prompt, continuation flow, and document generation                                                     |
+| **Inline Wizard** | The inline wizard that operates within the editor — new sessions, iteration, and generation                                                                |
+| **Auto Run**      | Auto Run behavior — the default execution prompt and synopsis generation                                                                                   |
+| **Group Chat**    | Group chat sessions — moderator system/synthesis prompts, participant behavior, and participant request formatting                                         |
+| **Context**       | Context window management — grooming (trimming), transferring between sessions, and summarization                                                          |
+| **Commands**      | Built-in commands — image-only message handling and git commit message generation                                                                          |
+| **System**        | Core system behavior — the Maestro system prompt injected into agents, tab naming, Director's Notes, and feedback                                          |
+| **Includes**      | Reusable fragments (filenames begin with `_`) referenced from other prompts via `{{INCLUDE:name}}` or `{{REF:name}}` — never sent to an agent on their own |
 
 ## Template Variables
 
@@ -143,9 +146,13 @@ Only available in [Cue](/maestro-cue)-triggered prompts. See [Cue Events](/maest
 | `{{CUE_GH_MERGED_AT}}`        | PR merge timestamp                               |
 | `{{CUE_CLI_PROMPT}}`          | Prompt text passed via --prompt flag             |
 
-## Include Directive
+## Include Directives
 
-Use `{{INCLUDE:name}}` to embed the contents of another prompt file. This keeps prompts modular — define shared instructions once and reference them wherever needed.
+Maestro composes prompts at assembly time using two directives. Both reference the same library of fragments — the difference is whether the content is delivered up-front or fetched on demand.
+
+### `{{INCLUDE:name}}` — full inlining
+
+Embeds the contents of another prompt file directly into the parent. Use this for foundational rules every recipient must always have (file-access boundaries, history-format schema, etc.).
 
 ```markdown
 ## Your Role
@@ -159,30 +166,64 @@ You are an expert code reviewer.
 Review the code changes below...
 ```
 
-### How Includes Resolve
+### `{{REF:name}}` — pointer-style (progressive disclosure)
 
-1. Maestro first checks the **prompt cache** — any core prompt (bundled or customized) can be referenced by its ID (e.g., `maestro-system-prompt`, `autorun-default`)
-2. If not found in cache, Maestro looks for a **file on disk** at `<prompts-directory>/<name>.md`
+Replaces the directive with a single-line bullet that names the include, summarizes its content, and tells the agent how to fetch it on demand:
 
-This means you can create your own reusable prompt fragments by placing `.md` files in the prompts directory (click **Open Folder** in the editor to find it), then reference them from any core prompt.
+```markdown
+- **`_maestro-cue`** — Cue event types, YAML config, template variables, and CLI hooks. Fetch with `maestro-cli prompts get _maestro-cue`.
+```
+
+The agent then runs `maestro-cli prompts get _maestro-cue` only if the task actually needs that detail. This keeps the parent prompt small and pushes heavy reference material out of the default context.
+
+Use `{{REF:}}` for bulky reference material (CLI surface, Cue model, playbook spec, doc index) that only some sessions need, and `{{INCLUDE:}}` for short, must-always-have content.
+
+### Discovering and Fetching Includes from the CLI
+
+```bash
+# List every available prompt id with description and category
+maestro-cli prompts list
+
+# Fetch a single prompt's content (honors any user customizations)
+maestro-cli prompts get _maestro-cli
+maestro-cli prompts get _maestro-cue --json   # adds metadata
+```
+
+The `prompts get` command returns the same content the desktop app would deliver, so an agent following a `{{REF:}}` pointer always sees your latest customizations.
+
+### How Resolution Works
+
+The two directives use slightly different lookup paths.
+
+**`{{INCLUDE:name}}`** resolves in this order:
+
+1. Maestro first checks the **prompt cache** — any core prompt (bundled or customized) can be referenced by its id (e.g., `maestro-system-prompt`, `_maestro-cli`).
+2. If not found in cache, Maestro looks for a **file on disk** at `<prompts-directory>/<name>.md`.
+
+This means you can create your own reusable prompt fragments by placing `.md` files in the prompts directory (click **Open Folder** in the editor to find it), then reference them from any core prompt with `{{INCLUDE:name}}`.
+
+**`{{REF:name}}`** only resolves names that are in the core prompt registry. The expansion uses the registered description, so the directive needs metadata that on-disk-only fragments don't have. To use `{{REF:}}` with your own content, edit one of the existing core prompts (e.g., add an `_includes` of your own to the registry by extending the codebase) or stick with `{{INCLUDE:}}` for ad-hoc fragments.
 
 ### Rules
 
-- **Max depth**: Includes nest up to 3 levels deep. Beyond that, the directive is left as-is.
+- **Naming convention**: Bundled include fragments use a leading underscore (e.g., `_maestro-cli.md`, `_history-format.md`). Your own fragments can use any name; the underscore is purely a visual signal that the file is meant to be referenced rather than used standalone.
+- **Resolution order**: `{{REF:}}` directives are expanded first (they consult the in-memory prompt registry only), then `{{INCLUDE:}}` directives are inlined recursively against cache + disk.
+- **Max depth**: `{{INCLUDE:}}` nests up to 3 levels deep. Beyond that, the directive is left as-is.
 - **Circular references**: If prompt A includes B which includes A, the cycle is detected and the second inclusion is skipped.
-- **Missing references**: If a name can't be resolved, the `{{INCLUDE:name}}` text is left unchanged in the output.
+- **Missing references**: If a name can't be resolved, the directive text is left unchanged in the output.
 - **Case-sensitive**: The name must match exactly (e.g., `{{INCLUDE:my-fragment}}` looks for `my-fragment` in cache or `my-fragment.md` on disk).
+- **Refs are non-recursive**: A `{{REF:name}}` always expands to a literal pointer line; the resolver does not chase further directives inside the referenced file.
 
 ### Creating Reusable Fragments
 
 You can create your own prompt fragments that aren't part of the core set:
 
-1. Click **Open Folder** in the prompt editor to open the prompts directory
-2. Create a new `.md` file (e.g., `my-coding-standards.md`)
-3. Write your reusable content
-4. Reference it from any core prompt with `{{INCLUDE:my-coding-standards}}`
+1. Click **Open Folder** in the prompt editor to open the prompts directory.
+2. Create a new `.md` file (e.g., `_my-coding-standards.md` — leading underscore optional but recommended for fragments).
+3. Write your reusable content.
+4. Reference it from any core prompt with `{{INCLUDE:_my-coding-standards}}`.
 
-This is useful for shared instructions you want injected into multiple prompts — coding standards, project context, team conventions, response formatting rules, etc.
+This is useful for shared instructions you want injected into multiple prompts — coding standards, project context, team conventions, response formatting rules, etc. (`{{REF:}}` only works against the bundled registry — use `{{INCLUDE:}}` for your own files.)
 
 <Info>
 Custom fragment files in the prompts directory are not shown in the editor's category list — they're referenced via `{{INCLUDE:name}}` only. Core prompts are the ones you browse and edit in the sidebar.
@@ -198,6 +239,7 @@ Customizations are stored in a separate file (`core-prompts-customizations.json`
 
 - **Start small**: Try editing the `maestro-system-prompt` first — it's the system context injected into every agent session and has the highest impact.
 - **Use includes for shared context**: If you want the same instructions in multiple prompts, create a fragment file and use `{{INCLUDE:name}}` rather than duplicating text.
+- **Use refs for big optional context**: When the shared content is bulky and only some sessions need it (CLI reference, Cue model, playbook spec), use `{{REF:name}}` instead of `{{INCLUDE:name}}` so the parent prompt stays small and the agent can self-fetch via `maestro-cli prompts get <name>`.
 - **Test with Quick Actions**: The four most common prompts are accessible from `Cmd+K` / `Ctrl+K` for fast iteration.
 - **Variables are case-insensitive**: `{{date}}` and `{{DATE}}` both work, but uppercase is conventional.
 - **Autocomplete helps**: Type `{{` in the editor and browse all available variables with descriptions. No need to memorize them.

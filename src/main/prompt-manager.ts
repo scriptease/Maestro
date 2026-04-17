@@ -11,10 +11,16 @@
  * - On save: Writes to customizations JSON AND updates in-memory cache immediately
  * - On reset: Removes from customizations JSON AND updates in-memory cache immediately
  *
- * Include directives:
- * - Prompts can reference other files via {{INCLUDE:name}}
- * - Resolution: prompt cache first, then <promptsDir>/<name>.md on disk
- * - Max depth of 3 to prevent runaway recursion; cycles are detected
+ * Directives:
+ * - {{INCLUDE:name}} — full inlining. Resolves recursively (max depth 3) with cycle detection.
+ *   Use for foundational content the recipient must always have (e.g., file-access rules).
+ * - {{REF:name}} — expands to just the absolute on-disk path of the bundled `.md`, in the host
+ *   OS's native separator format. Nothing else — no bullet, no description, no quoting. Authors
+ *   wrap the directive with whatever surrounding prose, list markers, or context they want.
+ *   Use for heavy reference material the agent only needs in some sessions; the agent reads the
+ *   file on demand. NOTE: the path serves the bundled file, not user customizations from
+ *   Settings → Maestro Prompts. Agents that need customization-aware content should fetch via
+ *   `maestro-cli prompts get <name>` instead.
  */
 
 import { app } from 'electron';
@@ -160,7 +166,8 @@ export async function initializePrompts(): Promise<void> {
 }
 
 /**
- * Get a prompt by ID. Resolves {{INCLUDE:name}} directives in the content.
+ * Get a prompt by ID. Resolves {{INCLUDE:name}} (full inline) and {{REF:name}}
+ * (pointer-style stub) directives in the content.
  */
 export function getPrompt(id: string): string {
 	if (!initialized) {
@@ -172,7 +179,8 @@ export function getPrompt(id: string): string {
 		throw new Error(`Unknown prompt ID: ${id}`);
 	}
 
-	return resolveIncludes(cached.content, new Set([id]), 0);
+	const withRefs = resolveRefs(cached.content);
+	return resolveIncludes(withRefs, new Set([id]), 0);
 }
 
 /**
@@ -305,11 +313,36 @@ export async function listPromptFiles(): Promise<
 }
 
 // ============================================================================
-// Include Resolution
+// Directive Resolution
 // ============================================================================
 
 const INCLUDE_PATTERN = /\{\{INCLUDE:([a-zA-Z0-9_-]+)\}\}/g;
+const REF_PATTERN = /\{\{REF:([a-zA-Z0-9_-]+)\}\}/g;
 const MAX_INCLUDE_DEPTH = 3;
+
+/**
+ * Expand {{REF:name}} into the absolute on-disk path of the bundled `.md`.
+ * `path.resolve` guarantees an absolute path on every OS and emits native
+ * separators (`/` on macOS/Linux, `\` on Windows). Nothing else is emitted —
+ * authors supply their own surrounding prose. Refs are resolved before
+ * includes and are not recursive: a ref produces literal text, not a fetch
+ * the resolver follows.
+ */
+function resolveRefs(content: string): string {
+	if (!REF_PATTERN.test(content)) return content;
+	REF_PATTERN.lastIndex = 0;
+
+	const promptsPath = getBundledPromptsPath();
+
+	return content.replace(REF_PATTERN, (match, name: string) => {
+		const def = CORE_PROMPTS.find((p) => p.id === name);
+		if (!def) {
+			logger.warn(`REF target not found in registry: ${name}`, LOG_CONTEXT);
+			return match;
+		}
+		return path.resolve(promptsPath, def.filename);
+	});
+}
 
 function resolveIncludes(content: string, visited: Set<string>, depth: number): string {
 	if (depth >= MAX_INCLUDE_DEPTH) return content;

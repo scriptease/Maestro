@@ -71,17 +71,20 @@ const LAYOUT = {
 } as const;
 
 /**
- * Extracts the base pipeline name by stripping `-chain-N`, `-fanin`, and
- * `-cmd-<id>` suffixes. Command nodes auto-named via the editor's drop handler
- * follow `<pipeline>-cmd-<base36>` so round-tripping keeps them grouped with
- * their parent pipeline. User-renamed command nodes end up in their own
- * pipeline group on reload (acceptable; renaming signals intent).
+ * Extracts the base pipeline name by stripping `-chain-N`, `-fanin`,
+ * `-cmd-<id>`, and `-cli-out` suffixes. Command nodes auto-named via the
+ * editor's drop handler follow `<pipeline>-cmd-<base36>` and legacy
+ * `cli_output` migrations synthesize `<pipeline>-cli-out` — both normalize
+ * back to their parent so round-tripping keeps them grouped. User-renamed
+ * command nodes end up in their own pipeline group on reload (acceptable;
+ * renaming signals intent).
  */
 function getBasePipelineName(subscriptionName: string): string {
 	return subscriptionName
 		.replace(/-chain-\d+$/, '')
 		.replace(/-fanin$/, '')
-		.replace(/-cmd-[a-z0-9]+$/i, '');
+		.replace(/-cmd-[a-z0-9]+$/i, '')
+		.replace(/-cli-out$/, '');
 }
 
 /**

@@ -168,6 +168,66 @@ export const CORE_PROMPTS: PromptDefinition[] = [
 		description: 'Feedback conversation prompt',
 		category: 'system',
 	},
+	// Includes — reusable blocks referenced from other prompts via {{INCLUDE:name}}.
+	// Filenames are leading-underscore by convention; id matches filename stem.
+	{
+		id: '_toc',
+		filename: '_toc.md',
+		description: 'Table of contents listing all include files and when to pull them',
+		category: 'includes',
+	},
+	{
+		id: '_interface-primitives',
+		filename: '_interface-primitives.md',
+		description:
+			'Read / Write / Peek / Poke access model plus an intent→action routing table (recurring tasks → Cue, theme/preference asks → Settings, recall → history, peer coordination → send) and offline fallback rules',
+		category: 'includes',
+	},
+	{
+		id: '_documentation-index',
+		filename: '_documentation-index.md',
+		description: 'Curated table of external Maestro documentation URLs',
+		category: 'includes',
+	},
+	{
+		id: '_history-format',
+		filename: '_history-format.md',
+		description: 'JSON schema of session history entries at {{AGENT_HISTORY_PATH}}',
+		category: 'includes',
+	},
+	{
+		id: '_autorun-playbooks',
+		filename: '_autorun-playbooks.md',
+		description:
+			'Auto Run / autorun / auto-run documents — a.k.a. **playbooks** (also: "play book", "auto run doc", "autorun doc", "auto-run doc"). Spec for file naming, the mandatory `- [ ]` checkbox task format, grouping rules, structured artifacts, and Playbook Exchange. Pull this whenever the user mentions any of those terms or asks you to author/modify automation docs',
+		category: 'includes',
+	},
+	{
+		id: '_maestro-cli',
+		filename: '_maestro-cli.md',
+		description:
+			'Full `maestro-cli` reference: settings (incl. the Encore feature flags gating workflow + pitch copy), send, list/show, agents, ssh-remotes, auto-run, playbooks, cue, director-notes, prompts, status, open-file, refresh-files, refresh-auto-run',
+		category: 'includes',
+	},
+	{
+		id: '_maestro-cue',
+		filename: '_maestro-cue.md',
+		description:
+			'Maestro Cue (event-driven automation, subscriptions, triggers, watchers): event types, `maestro-cue.yaml` schema, pipeline topologies (chain / fan-in / fan-out / forwarding), template variables, and CLI hooks',
+		category: 'includes',
+	},
+	{
+		id: '_file-access-rules',
+		filename: '_file-access-rules.md',
+		description: 'Agent write restrictions and Auto Run folder carve-out',
+		category: 'includes',
+	},
+	{
+		id: '_file-access-wizard',
+		filename: '_file-access-wizard.md',
+		description: 'Wizard-only file restrictions (writes limited to Auto Run folder)',
+		category: 'includes',
+	},
 ];
 
 /**

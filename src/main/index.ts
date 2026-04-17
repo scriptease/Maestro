@@ -500,7 +500,15 @@ app.whenReady().then(async () => {
 
 			// `action: command` runs a shell command or maestro-cli call instead of an
 			// AI prompt — skip agent path resolution and SSH wrapping.
-			if (action === 'command' && command) {
+			if (action === 'command') {
+				if (!command) {
+					// Should be unreachable post-validator, but guard anyway so a
+					// misconfigured subscription fails loudly instead of silently
+					// executing `prompt` (a shell/cli sentinel) as an AI prompt.
+					throw new Error(
+						`Cue subscription "${subscriptionName}" has action='command' but no command payload`
+					);
+				}
 				const sessionInfo = {
 					id: storedSession.id,
 					name: storedSession.name,

@@ -286,6 +286,27 @@ The file format is:
 }
 ```
 
+### Reading Prompts (`prompts list` / `prompts get`)
+
+The CLI exposes Maestro's prompt registry directly so other agents can self-fetch reference material on demand. Parent prompts can use the `{{REF:name}}` directive (see [Prompt Customization → Include Directives](/prompt-customization#include-directives)) to expand into a one-line pointer; the agent then runs `prompts get` to retrieve the full content.
+
+```bash
+# List every available prompt id with description and category
+maestro-cli prompts list
+
+# JSON output for scripting
+maestro-cli prompts list --json
+
+# Print a specific prompt's content (honors user customizations)
+maestro-cli prompts get _maestro-cli
+maestro-cli prompts get autorun-default
+
+# Include metadata in the response
+maestro-cli prompts get _maestro-cue --json
+```
+
+`prompts get` returns the same content the desktop app would deliver, so customizations made via Settings → **Maestro Prompts** are reflected immediately. Bundled include fragments use a leading underscore in their id (e.g., `_maestro-cli`, `_history-format`); standalone prompts do not.
+
 ### Managing Settings
 
 View and modify any Maestro configuration setting directly from the CLI. Changes take effect immediately in the running desktop app — no restart required.

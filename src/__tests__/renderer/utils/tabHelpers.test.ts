@@ -1434,6 +1434,34 @@ describe('tabHelpers', () => {
 			expect(navigateToUnifiedTabByIndex(session, 0)).toBeNull();
 		});
 
+		it('when showUnreadOnly is true, index points into the filtered (visible) tab list', () => {
+			// Three AI tabs. Only the "unread" one matches the filter; the other inactive, read
+			// tab gets hidden from the tab bar. The active AI tab always remains visible because
+			// the TabBar renders it regardless of filter.
+			const readTab = createMockTab({ id: 'ai-read', hasUnread: false });
+			const unreadTab = createMockTab({ id: 'ai-unread', hasUnread: true });
+			const activeTab = createMockTab({ id: 'ai-active', hasUnread: false });
+			const session = createMockSession({
+				aiTabs: [readTab, unreadTab, activeTab],
+				activeTabId: 'ai-active',
+				inputMode: 'ai',
+				unifiedTabOrder: [
+					{ type: 'ai', id: 'ai-read' },
+					{ type: 'ai', id: 'ai-unread' },
+					{ type: 'ai', id: 'ai-active' },
+				],
+			});
+
+			// Without filter: index 0 → first tab in original order
+			expect(navigateToUnifiedTabByIndex(session, 0)!.id).toBe('ai-read');
+
+			// With filter: read tab is hidden, so the visible list is [unread, active].
+			// Index 0 → unread, index 1 → active, index 2 falls off the end.
+			expect(navigateToUnifiedTabByIndex(session, 0, true)!.id).toBe('ai-unread');
+			expect(navigateToUnifiedTabByIndex(session, 1, true)!.id).toBe('ai-active');
+			expect(navigateToUnifiedTabByIndex(session, 2, true)).toBeNull();
+		});
+
 		it('handles mixed AI and file tabs correctly', () => {
 			const aiTab1 = createMockTab({ id: 'ai-1' });
 			const aiTab2 = createMockTab({ id: 'ai-2' });
@@ -2530,6 +2558,44 @@ describe('tabHelpers', () => {
 			// Should skip orphaned file and read AI tab, navigate to unread tab
 			expect(result!.type).toBe('ai');
 			expect(result!.id).toBe('unread-tab');
+		});
+
+		it('does not jump to the last-active AI tab when on a terminal tab in unread filter', () => {
+			// Regression: prev/next used to treat activeTabId as reachable regardless of
+			// inputMode, so pressing next/prev on a terminal tab while an AI tab was the
+			// last-active one would jump through the hidden AI tab. TabBar hides that AI
+			// tab when inputMode !== 'ai', and navigation must match.
+			const unreadAi = createMockTab({ id: 'ai-unread', hasUnread: true });
+			const readAi = createMockTab({ id: 'ai-read', hasUnread: false, inputValue: '' });
+			const session = createMockSession({
+				aiTabs: [unreadAi, readAi],
+				terminalTabs: [
+					{ id: 'term-1', name: 'Terminal 1' } as any,
+					{ id: 'term-2', name: 'Terminal 2' } as any,
+				],
+				activeTabId: 'ai-read', // last-active AI tab (read, not busy, no draft)
+				activeTerminalTabId: 'term-2',
+				activeFileTabId: null,
+				inputMode: 'terminal',
+				unifiedTabOrder: [
+					{ type: 'ai', id: 'ai-unread' },
+					{ type: 'terminal', id: 'term-1' },
+					{ type: 'ai', id: 'ai-read' },
+					{ type: 'terminal', id: 'term-2' },
+				],
+			});
+
+			// From Terminal 2, next (with wrap) should land on the unread AI tab, not the
+			// hidden read AI tab sitting between term-1 and term-2.
+			const forward = navigateToNextUnifiedTab(session, true);
+			expect(forward!.type).toBe('ai');
+			expect(forward!.id).toBe('ai-unread');
+
+			// From Terminal 2, prev should land on Terminal 1 — the hidden AI tab
+			// between them must be skipped.
+			const backward = navigateToPrevUnifiedTab(session, true);
+			expect(backward!.type).toBe('terminal');
+			expect(backward!.id).toBe('term-1');
 		});
 	});
 
