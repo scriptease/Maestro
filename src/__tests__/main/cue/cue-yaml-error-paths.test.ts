@@ -132,16 +132,16 @@ describe('recovery-service negative-gap guard', () => {
 	// moved-backward handling added in this release.
 	let mockGetLastHeartbeat: ReturnType<typeof vi.fn>;
 	let mockRecordHeartbeat: ReturnType<typeof vi.fn>;
-	let originalDateNow: typeof Date.now;
 
 	beforeEach(() => {
 		mockGetLastHeartbeat = vi.fn();
 		mockRecordHeartbeat = vi.fn();
-		originalDateNow = Date.now;
 	});
 
 	afterEach(() => {
-		Date.now = originalDateNow;
+		// vi.restoreAllMocks undoes vi.spyOn(Date, 'now') below (and any other
+		// spies), removing the need for manual save/restore bookkeeping.
+		vi.restoreAllMocks();
 		vi.resetModules();
 	});
 
@@ -154,27 +154,34 @@ describe('recovery-service negative-gap guard', () => {
 			recordHeartbeat: mockRecordHeartbeat,
 			getCueEventsBySession: () => [],
 			closeCueDb: () => {},
+			pruneCueEvents: vi.fn(),
 		}));
 
 		const { createCueRecoveryService } = await import('../../../main/cue/cue-recovery-service');
 
 		const onLog = vi.fn();
+		const reconcileSession = vi.fn();
 		const service = createCueRecoveryService({
 			enabled: () => true,
 			getSessions: () => new Map(),
 			onLog,
-			reconcileSession: vi.fn(),
+			reconcileSession,
 		});
 
-		// Init to open the DB path.
+		// Init opens the DB (mocked as a no-op here).
 		service.init();
 
 		// Heartbeat is 10 seconds in the future — gapMs will be negative.
-		Date.now = vi.fn(() => 1000);
+		vi.spyOn(Date, 'now').mockReturnValue(1000);
 		mockGetLastHeartbeat.mockReturnValue(11000);
 
 		service.detectSleepAndReconcile();
 
 		expect(onLog).toHaveBeenCalledWith('cue', expect.stringContaining('Clock moved backward'));
+		// Regression gate: a future version that logged the warning but
+		// ALSO ran reconciliation (or rewrote the heartbeat) would defeat
+		// the whole point of the guard. Pin both side-effects off.
+		expect(reconcileSession).not.toHaveBeenCalled();
+		expect(mockRecordHeartbeat).not.toHaveBeenCalled();
 	});
 });

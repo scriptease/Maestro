@@ -279,13 +279,18 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 					`[CUE] "${subscriptionName}" executing output prompt for downstream handoff`
 				);
 
+				// Compute the sliced output ONCE — used for both the recorded
+				// payload's sourceOutput and the context prompt below. The prior
+				// code called sliceHeadByChars twice with identical arguments.
+				const slicedOutput = sliceHeadByChars(result.stdout, SOURCE_OUTPUT_MAX_CHARS);
+
 				const outputRunId = crypto.randomUUID();
 				const outputEvent: CueEvent = {
 					...event,
 					id: crypto.randomUUID(),
 					payload: {
 						...event.payload,
-						sourceOutput: sliceHeadByChars(result.stdout, SOURCE_OUTPUT_MAX_CHARS),
+						sourceOutput: slicedOutput,
 						outputPromptPhase: true,
 					},
 				};
@@ -304,7 +309,7 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 				const run = activeRuns.get(runId);
 				if (run) run.processRunId = outputRunId;
 
-				const contextPrompt = `${outputPrompt}\n\n---\n\nContext from completed task:\n${sliceHeadByChars(result.stdout, SOURCE_OUTPUT_MAX_CHARS)}`;
+				const contextPrompt = `${outputPrompt}\n\n---\n\nContext from completed task:\n${slicedOutput}`;
 				// Wrap the output-prompt phase in try/finally so the DB row is
 				// ALWAYS finalized — even if both the run and the status-update
 				// call fail. Without this, a double-failure leaves the row
@@ -341,6 +346,26 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 				}
 
 				if (!activeRuns.has(runId)) {
+					// Engine reset between the main task finishing and the output
+					// prompt completing. The output-phase DB row was finalized in
+					// the inner finally above, but the PARENT runId is still
+					// `running` because the outer finally at the bottom of this
+					// function is gated on `activeRuns.has(runId)` — which is now
+					// false. Finalize it here so the activity log doesn't show a
+					// phantom never-ending run. Mirrors the earlier handling at
+					// line ~245 for the pre-output-prompt case.
+					safeUpdateCueEventStatus(runId, result.status);
+					deps.onLog(
+						'cue',
+						`[CUE] Run "${subscriptionName}" output phase completed after engine stop — parent status recorded (${result.status}), result discarded`,
+						{
+							type: 'runFinished',
+							runId,
+							sessionId,
+							subscriptionName,
+							status: result.status,
+						}
+					);
 					return;
 				}
 

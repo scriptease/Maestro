@@ -585,6 +585,60 @@ describe('createCueRunManager', () => {
 			// onRunCompleted should NOT be called
 			expect(deps.onRunCompleted).not.toHaveBeenCalled();
 		});
+
+		it('reset during output-prompt phase: finalizes parent run status', async () => {
+			// Regression gate for the output-prompt analog of the
+			// engine-stopped-mid-run bug: if reset() fires AFTER the main
+			// task completed and DURING the output-prompt call, the outer
+			// finally's cleanup is bypassed (activeRuns no longer has the
+			// runId), so without the explicit finalize the PARENT runId DB
+			// row stays at `running` forever. Mirrors the earlier guard for
+			// the pre-output-prompt case.
+			let onCueRunCallCount = 0;
+			let resolveOutputRun: ((val: CueRunResult) => void) | undefined;
+			const deps = createDeps({
+				onCueRun: vi.fn(() => {
+					onCueRunCallCount++;
+					if (onCueRunCallCount === 1) {
+						return Promise.resolve(makeResult({ status: 'completed' }));
+					}
+					return new Promise<CueRunResult>((resolve) => {
+						resolveOutputRun = resolve;
+					});
+				}),
+			});
+			const manager = createCueRunManager(deps);
+
+			manager.execute('session-1', 'prompt', createEvent(), 'test-sub', 'output prompt');
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Main task finished, output prompt is pending. Reset the engine
+			// — this clears activeRuns before the output prompt resolves.
+			manager.reset();
+
+			// Output prompt now completes after reset. The inner finally
+			// writes the output-prompt row; the new guard must also write
+			// the PARENT row so the activity log doesn't strand it.
+			vi.mocked(safeUpdateCueEventStatus).mockClear();
+			resolveOutputRun!(makeResult({ status: 'completed' }));
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Expect TWO finalization calls: one for the output run (in the
+			// inner finally — technically via updateCueEventStatus, not the
+			// safe variant, so it won't show here) and one for the PARENT
+			// via safeUpdateCueEventStatus with the main task's status.
+			// Only the parent-side safe call is asserted because that's the
+			// regression we're guarding.
+			expect(safeUpdateCueEventStatus).toHaveBeenCalledWith(expect.any(String), 'completed');
+			// And the post-stop log MUST include the structured runFinished
+			// payload so renderer listeners observe the transition.
+			expect(deps.onLog).toHaveBeenCalledWith(
+				'cue',
+				expect.stringContaining('output phase completed after engine stop'),
+				expect.objectContaining({ type: 'runFinished', status: 'completed' })
+			);
+			expect(deps.onRunCompleted).not.toHaveBeenCalled();
+		});
 	});
 
 	describe('output prompt', () => {

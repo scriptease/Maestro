@@ -18,16 +18,27 @@ import {
 	type IncomingAgentEdgeInfo,
 	type PipelineEdge,
 } from '../../../../shared/cue-pipeline-types';
-import { computeTransitiveUpstream } from '../utils/transitiveUpstream';
+import { computeTransitiveUpstream, type TransitiveUpstream } from '../utils/transitiveUpstream';
 
 interface UpstreamSourcesPanelProps {
 	theme: Theme;
 	incomingAgentEdges: IncomingAgentEdgeInfo[];
 	onUpdateEdge?: (edgeId: string, updates: Partial<PipelineEdge>) => void;
-	/** Full pipeline graph for forwarded-source discovery. When omitted the
-	 *  forwarded rows are hidden (e.g. isolated test/storybook scaffolding). */
+	/**
+	 * Pre-filtered list of forwarded (transitive) upstream sources. When
+	 * provided, the panel uses it directly and skips its own transitive
+	 * computation. This lets callers (AgentConfigPanel) share one
+	 * `computeTransitiveUpstream` result across the panel and any sibling
+	 * logic that also needs `hasAnyUpstream`, instead of running the graph
+	 * walk twice per render. Omit for isolated storybook/test mounts — the
+	 * panel falls back to computing from `pipeline` + `targetNodeId` below.
+	 */
+	forwardedSources?: TransitiveUpstream[];
+	/** Full pipeline graph for forwarded-source discovery when
+	 *  `forwardedSources` is not supplied. */
 	pipeline?: CuePipeline;
-	/** Target node id — the agent whose upstream is being configured. */
+	/** Target node id — the agent whose upstream is being configured.
+	 *  Required together with `pipeline` for the fallback computation. */
 	targetNodeId?: string;
 }
 
@@ -35,13 +46,20 @@ export function UpstreamSourcesPanel({
 	theme,
 	incomingAgentEdges,
 	onUpdateEdge,
+	forwardedSources: forwardedSourcesProp,
 	pipeline,
 	targetNodeId,
 }: UpstreamSourcesPanelProps) {
 	const editable = !!onUpdateEdge;
-	const transitive =
-		pipeline && targetNodeId ? computeTransitiveUpstream(pipeline, targetNodeId) : [];
-	const forwardedSources = transitive.filter((r) => !r.isDirect);
+	// Prefer the pre-computed list from the caller. Only recompute when
+	// neither the list nor a pipeline is available (shouldn't happen in
+	// production paths; kept for storybook/test scaffolding that passes
+	// just a pipeline).
+	const forwardedSources =
+		forwardedSourcesProp ??
+		(pipeline && targetNodeId
+			? computeTransitiveUpstream(pipeline, targetNodeId).filter((r) => !r.isDirect)
+			: []);
 
 	if (incomingAgentEdges.length === 0 && forwardedSources.length === 0) return null;
 

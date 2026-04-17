@@ -105,9 +105,8 @@ export function AgentConfigPanel({
 
 	// Single pass over `pipelines` derives both values we need downstream:
 	//   - `owningPipeline`: the pipeline containing THIS node by node.id.
-	//     UpstreamSourcesPanel treats its `pipeline` prop as identity-stable,
-	//     so we memoize to avoid defeating its downstream memoization with a
-	//     fresh object each render.
+	//     Used as the input to `computeTransitiveUpstream` below. Memoized
+	//     so the transitive-walk memo's input stays referentially stable.
 	//   - `agentPipelines`: every pipeline containing this AGENT (by
 	//     sessionId). The same agent can appear in multiple pipelines, so
 	//     this is a superset of `owningPipeline`.
@@ -396,13 +395,14 @@ export function AgentConfigPanel({
 
 			{/* Upstream Sources — per-source output controls. The panel self-gates
 			    when there are no direct OR forwarded sources, so an agent with
-			    only forwarded upstream still sees the box. */}
+			    only forwarded upstream still sees the box. We hand it the
+			    pre-computed `forwardedUpstream` list so the transitive graph
+			    walk runs once per render up here, not again inside the panel. */}
 			<UpstreamSourcesPanel
 				theme={theme}
 				incomingAgentEdges={incomingAgentEdges ?? []}
 				onUpdateEdge={onUpdateEdge}
-				pipeline={owningPipeline}
-				targetNodeId={node.id}
+				forwardedSources={forwardedUpstream}
 			/>
 
 			{/* Fan-in Settings — full width below prompts */}
