@@ -179,7 +179,8 @@ export const CORE_PROMPTS: PromptDefinition[] = [
 	{
 		id: '_interface-primitives',
 		filename: '_interface-primitives.md',
-		description: 'Read / Write / Peek / Poke access model across CLI + filesystem',
+		description:
+			'Read / Write / Peek / Poke access model plus an intent→action routing table (recurring tasks → Cue, theme/preference asks → Settings, recall → history, peer coordination → send) and offline fallback rules',
 		category: 'includes',
 	},
 	{

@@ -73,3 +73,121 @@ When a user asks you to add, modify, or debug a Cue subscription:
 2. Keep subscription `name` values unique within the file — the engine keys on them.
 3. For full schema, field reference, and worked examples, fetch the official Cue docs: https://docs.runmaestro.ai/maestro-cue-configuration, https://docs.runmaestro.ai/maestro-cue-events, https://docs.runmaestro.ai/maestro-cue-advanced, https://docs.runmaestro.ai/maestro-cue-examples. Don't guess field names.
 4. After writing, validate with `{{MAESTRO_CLI_PATH}} cue list` — the engine reloads automatically when the file changes.
+
+### Natural-Language → YAML Recipes
+
+Translate the user's phrasing into one of these starter templates, then adapt names/prompts/agent ids. Always set `agent_id` to the target agent (use `{{MAESTRO_CLI_PATH}} list agents` to find ids).
+
+**"Every morning at 9am, remind me to…" / "Every Friday afternoon…" → `time.scheduled`**
+
+```yaml
+subscriptions:
+  - name: morning-standup-prep
+    event: time.scheduled
+    enabled: true
+    schedule_times: ['09:00']
+    schedule_days: [mon, tue, wed, thu, fri]
+    agent_id: <target-agent-id>
+    prompt: |
+      Good morning. Pull together: (1) yesterday's commits on this repo,
+      (2) any open PRs assigned to me, (3) the top 3 unfinished tasks in
+      `{{AUTORUN_FOLDER}}`. Reply with a tight bulleted briefing.
+```
+
+**"Check on this every 30 minutes" → `time.heartbeat`**
+
+```yaml
+- name: ci-watch
+  event: time.heartbeat
+  enabled: true
+  interval_minutes: 30
+  agent_id: <target-agent-id>
+  prompt: |
+    Run `gh run list --branch main --limit 5 --json status,conclusion,name`
+    and call out any failed or stuck runs.
+```
+
+**"When this file changes, do X" → `file.changed`**
+
+```yaml
+- name: regenerate-types-on-schema-change
+  event: file.changed
+  enabled: true
+  watch: 'src/db/schema.prisma'
+  agent_id: <target-agent-id>
+  prompt: |
+    The schema at `{{CUE_FILE_PATH}}` was {{CUE_FILE_CHANGE_TYPE}}.
+    Run `npx prisma generate` and stage the resulting type changes.
+```
+
+**"After agent X finishes, have agent Y do Z" → `agent.completed` (chain)**
+
+```yaml
+- name: review-after-impl
+  event: agent.completed
+  enabled: true
+  source_session: implementer
+  agent_id: <reviewer-agent-id>
+  prompt: |
+    The implementer just finished:
+
+    {{CUE_SOURCE_OUTPUT}}
+
+    Status: {{CUE_SOURCE_STATUS}}. Review for correctness and style;
+    respond with a short approval or a numbered list of required changes.
+```
+
+**"When all of A, B, and C complete, summarize" → `agent.completed` (fan-in)**
+
+```yaml
+- name: sync-after-parallel-work
+  event: agent.completed
+  enabled: true
+  source_session: [agent-a, agent-b, agent-c]
+  fan_in_timeout_minutes: 60
+  fan_in_timeout_on_fail: continue
+  agent_id: <synthesizer-agent-id>
+  prompt: |
+    Three agents just finished:
+
+    A: {{CUE_OUTPUT_AGENT_A}}
+    B: {{CUE_OUTPUT_AGENT_B}}
+    C: {{CUE_OUTPUT_AGENT_C}}
+
+    Produce a unified summary suitable for a daily digest.
+```
+
+**"Watch for new PRs on this repo" → `github.pull_request`**
+
+```yaml
+- name: pr-triage
+  event: github.pull_request
+  enabled: true
+  repo: owner/name
+  gh_state: open
+  poll_minutes: 10
+  agent_id: <triage-agent-id>
+  prompt: |
+    New PR #{{CUE_GH_NUMBER}} from @{{CUE_GH_AUTHOR}}: "{{CUE_GH_TITLE}}".
+    {{CUE_GH_URL}}
+
+    Skim the diff, suggest reviewers, and propose labels.
+```
+
+**"When pending tasks pile up in /docs/tasks, work on them" → `task.pending`**
+
+```yaml
+- name: drain-task-backlog
+  event: task.pending
+  enabled: true
+  watch: 'docs/tasks/*.md'
+  agent_id: <worker-agent-id>
+  prompt: |
+    File `{{CUE_TASK_FILE_NAME}}` has {{CUE_TASK_COUNT}} unchecked items:
+
+    {{CUE_TASK_LIST}}
+
+    Pick up the highest-priority unchecked task and complete it.
+```
+
+After authoring, write the YAML to `<project-root>/maestro-cue.yaml`, then run `{{MAESTRO_CLI_PATH}} cue list` to confirm the engine sees it.

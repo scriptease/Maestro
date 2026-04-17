@@ -16,9 +16,15 @@ Read or change any Maestro setting or per-agent configuration. Changes take effe
 # Discover all available settings with descriptions
 {{MAESTRO_CLI_PATH}} settings list -v
 
-# Read / write / reset a specific setting
-{{MAESTRO_CLI_PATH}} settings get <key>
-{{MAESTRO_CLI_PATH}} settings set <key> <value>
+# Filter discovery by category (appearance, shell, editor, ...)
+{{MAESTRO_CLI_PATH}} settings list -v -c <category>
+
+# Show only key names for fast scanning
+{{MAESTRO_CLI_PATH}} settings list --keys-only
+
+# Read / write / reset a specific setting (supports dot-notation, e.g. encoreFeatures.directorNotes)
+{{MAESTRO_CLI_PATH}} settings get <key> [-v]
+{{MAESTRO_CLI_PATH}} settings set <key> <value> [--raw '<json>']
 {{MAESTRO_CLI_PATH}} settings reset <key>
 
 # Per-agent configuration (overrides global settings)
@@ -27,6 +33,16 @@ Read or change any Maestro setting or per-agent configuration. Changes take effe
 {{MAESTRO_CLI_PATH}} settings agent set <agent-id> <key> <value>
 {{MAESTRO_CLI_PATH}} settings agent reset <agent-id> <key>
 ```
+
+**Recommended workflow when a user asks about a preference, theme, behavior, or "can I configure…":**
+
+1. **Discover** — run `settings list -v` (or `-c <category>` to narrow). Identify candidate keys whose names or descriptions match the user's intent.
+2. **Inspect current value** — `settings get <key> -v` to show the current value and the type/default. Don't recommend changing something that's already set how the user wants.
+3. **Recommend** — present the 1–3 most relevant keys in a short list with current value, what it controls, and the value you propose. Keep the recommendation tight; don't dump the full settings catalogue on the user.
+4. **Apply** — once the user confirms (or if the request was already explicit), run `settings set <key> <value>`. Auto-detection handles bool/number/JSON/string; pass `--raw '<json>'` for explicit JSON values.
+5. **Confirm** — re-read with `settings get <key>` and report the result.
+
+For per-agent overrides (e.g., `nudge`, `model`, `effort`, `customArgs`), use `settings agent set <agent-id> <key> <value>` — those override the global value for that one agent only.
 
 ### Send Message to Agent
 
