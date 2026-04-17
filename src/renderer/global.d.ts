@@ -87,32 +87,7 @@ interface AgentConfigOption {
 	options?: string[];
 }
 
-interface AgentCapabilities {
-	supportsResume: boolean;
-	supportsReadOnlyMode: boolean;
-	supportsJsonOutput: boolean;
-	supportsSessionId: boolean;
-	supportsImageInput: boolean;
-	supportsImageInputOnResume: boolean;
-	supportsSlashCommands: boolean;
-	supportsSessionStorage: boolean;
-	supportsCostTracking: boolean;
-	supportsUsageStats: boolean;
-	supportsBatchMode: boolean;
-	requiresPromptToStart: boolean;
-	supportsStreaming: boolean;
-	supportsResultMessages: boolean;
-	supportsModelSelection: boolean;
-	supportsStreamJsonInput: boolean;
-	supportsThinkingDisplay: boolean;
-	supportsContextMerge: boolean;
-	supportsContextExport: boolean;
-	supportsWizard: boolean;
-	supportsGroupChatModeration: boolean;
-	usesJsonLineOutput: boolean;
-	usesCombinedContextWindow: boolean;
-	supportsAppendSystemPrompt: boolean;
-}
+type AgentCapabilities = import('../shared/types').AgentCapabilities;
 
 interface AgentConfig {
 	id: string;
@@ -128,32 +103,6 @@ interface AgentConfig {
 	yoloModeArgs?: string[];
 	readOnlyCliEnforced?: boolean;
 	capabilities?: AgentCapabilities;
-}
-
-interface AgentCapabilities {
-	supportsResume: boolean;
-	supportsReadOnlyMode: boolean;
-	supportsJsonOutput: boolean;
-	supportsSessionId: boolean;
-	supportsImageInput: boolean;
-	supportsImageInputOnResume: boolean;
-	supportsSlashCommands: boolean;
-	supportsSessionStorage: boolean;
-	supportsCostTracking: boolean;
-	supportsUsageStats: boolean;
-	supportsBatchMode: boolean;
-	requiresPromptToStart: boolean;
-	supportsStreaming: boolean;
-	supportsResultMessages: boolean;
-	supportsModelSelection: boolean;
-	supportsStreamJsonInput: boolean;
-	supportsContextMerge: boolean;
-	supportsContextExport: boolean;
-	supportsWizard: boolean;
-	supportsGroupChatModeration: boolean;
-	usesJsonLineOutput: boolean;
-	usesCombinedContextWindow: boolean;
-	supportsAppendSystemPrompt: boolean;
 }
 
 interface DirectoryEntry {
@@ -244,6 +193,7 @@ type GroupChatData = {
 };
 
 import type { CueGraphSession, CueRunResult, CueSessionStatus, CueSettings } from '../shared/cue';
+import type { MaestroCliStatus, MaestroCliInstallResult } from '../shared/maestro-cli';
 
 interface MaestroAPI {
 	// Context merging API (for session context transfer and grooming)
@@ -474,7 +424,8 @@ interface MaestroAPI {
 			callback: (
 				subscriptionName: string,
 				prompt: string | undefined,
-				responseChannel: string
+				responseChannel: string,
+				sourceAgentId: string | undefined
 			) => void
 		) => () => void;
 		sendRemoteTriggerCueSubscriptionResponse: (responseChannel: string, result: unknown) => void;
@@ -3067,7 +3018,11 @@ interface MaestroAPI {
 		disable: () => Promise<void>;
 		stopRun: (runId: string) => Promise<boolean>;
 		stopAll: () => Promise<void>;
-		triggerSubscription: (subscriptionName: string, prompt?: string) => Promise<boolean>;
+		triggerSubscription: (
+			subscriptionName: string,
+			prompt?: string,
+			sourceAgentId?: string
+		) => Promise<boolean>;
 		getQueueStatus: () => Promise<Record<string, number>>;
 		refreshSession: (sessionId: string, projectRoot: string) => Promise<void>;
 		removeSession: (sessionId: string) => Promise<void>;
@@ -3089,6 +3044,13 @@ interface MaestroAPI {
 		checkCli: () => Promise<{ available: boolean; version?: string }>;
 		validateApiKey: (key: string) => Promise<{ valid: boolean }>;
 	};
+
+	// Maestro CLI API (status check + install/update)
+	maestroCli: {
+		checkStatus: () => Promise<MaestroCliStatus>;
+		installOrUpdate: () => Promise<MaestroCliInstallResult>;
+	};
+
 	prompts: {
 		get: (id: string) => Promise<{ success: boolean; content?: string; error?: string }>;
 		getAll: () => Promise<{

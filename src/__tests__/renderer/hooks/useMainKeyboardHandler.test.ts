@@ -1348,7 +1348,8 @@ describe('useMainKeyboardHandler', () => {
 
 				expect(mockNavigateToUnifiedTabByIndex).toHaveBeenCalledWith(
 					mockSession,
-					0 // index 0 for Cmd+1
+					0, // index 0 for Cmd+1
+					false // showUnreadOnly
 				);
 			});
 
@@ -1397,21 +1398,36 @@ describe('useMainKeyboardHandler', () => {
 
 				expect(mockNavigateToUnifiedTabByIndex).toHaveBeenCalledWith(
 					mockSession,
-					1 // index 1 for Cmd+2
+					1, // index 1 for Cmd+2
+					false // showUnreadOnly
 				);
 			});
 
-			it('should not execute tab jump when showUnreadOnly is active', () => {
+			it('forwards showUnreadOnly so Cmd+1 jumps to the Nth visible tab when filter is on', () => {
 				const { result } = renderHook(() => useMainKeyboardHandler());
 
-				const mockNavigateToUnifiedTabByIndex = vi.fn();
-				const mockSetSessions = vi.fn();
+				const mockSession = {
+					id: 'session-1',
+					aiTabs: [{ id: 'ai-tab-1', name: 'AI Tab 1', logs: [] }],
+					activeTabId: 'ai-tab-1',
+					unifiedTabOrder: ['ai-tab-1'],
+					inputMode: 'ai',
+				};
+				const mockNavigateToUnifiedTabByIndex = vi.fn().mockReturnValue({
+					session: mockSession,
+				});
+				const mockSetSessions = vi.fn((updater: unknown) => {
+					if (typeof updater === 'function') {
+						(updater as (prev: unknown[]) => unknown[])([mockSession]);
+					}
+				});
 
 				result.current.keyboardHandlerRef.current = createUnifiedTabContext({
 					isTabShortcut: (_e: KeyboardEvent, actionId: string) => actionId === 'goToTab1',
 					navigateToUnifiedTabByIndex: mockNavigateToUnifiedTabByIndex,
 					setSessions: mockSetSessions,
-					showUnreadOnly: true, // Filter is active - disables Cmd+1-9
+					activeSession: mockSession,
+					showUnreadOnly: true,
 				});
 
 				act(() => {
@@ -1424,8 +1440,7 @@ describe('useMainKeyboardHandler', () => {
 					);
 				});
 
-				// Should NOT be called when showUnreadOnly is active
-				expect(mockNavigateToUnifiedTabByIndex).not.toHaveBeenCalled();
+				expect(mockNavigateToUnifiedTabByIndex).toHaveBeenCalledWith(mockSession, 0, true);
 			});
 		});
 
@@ -1984,7 +1999,7 @@ describe('useMainKeyboardHandler', () => {
 				const mockClearActiveTerminal = vi.fn();
 
 				result.current.keyboardHandlerRef.current = createTerminalTabContext({
-					isShortcut: () => false,
+					isShortcut: (_e: KeyboardEvent, actionId: string) => actionId === 'clearTerminal',
 					sessions: [{ id: 'session-1' }],
 					mainPanelRef: { current: { clearActiveTerminal: mockClearActiveTerminal } },
 					recordShortcutUsage: vi.fn().mockReturnValue({ newLevel: null }),

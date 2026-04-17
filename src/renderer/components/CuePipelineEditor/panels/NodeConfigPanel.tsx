@@ -13,6 +13,7 @@ import type {
 	PipelineEdge,
 	TriggerNodeData,
 	AgentNodeData,
+	CliOutputNodeData,
 	CuePipeline,
 	IncomingTriggerEdgeInfo,
 	IncomingAgentEdgeInfo,
@@ -20,6 +21,7 @@ import type {
 import { EVENT_ICONS, EVENT_LABELS } from '../cueEventConstants';
 import { TriggerConfig } from './triggers';
 import { AgentConfigPanel } from './AgentConfigPanel';
+import { CliOutputConfigPanel } from './CliOutputConfigPanel';
 
 export type { IncomingTriggerEdgeInfo } from '../../../../shared/cue-pipeline-types';
 
@@ -80,8 +82,10 @@ export function NodeConfigPanel({
 	if (!isVisible) return null;
 
 	const isTrigger = selectedNode.type === 'trigger';
+	const isCliOutput = selectedNode.type === 'cli_output';
 	const triggerData = isTrigger ? (selectedNode.data as TriggerNodeData) : null;
-	const agentData = !isTrigger ? (selectedNode.data as AgentNodeData) : null;
+	const agentData = !isTrigger && !isCliOutput ? (selectedNode.data as AgentNodeData) : null;
+	const cliOutputData = isCliOutput ? (selectedNode.data as CliOutputNodeData) : null;
 
 	const Icon = triggerData ? (EVENT_ICONS[triggerData.eventType] ?? Zap) : null;
 	const ExpandIcon = expanded ? ChevronsDown : ChevronsUp;
@@ -108,6 +112,7 @@ export function NodeConfigPanel({
 		// Collapsed mode stays compact — the content wrapper scrolls when
 		// upstream-sources / fan-in cards don't fit. Expanded mode (80%) is
 		// where the user gets full breathing room.
+		if (isCliOutput) return 200;
 		const base = hasUpstreamAgents ? 300 : 280;
 		const fanInBoost = hasFanIn ? 60 : 0;
 		const triggerBoost = hasMultipleTriggers ? Math.min(120, (triggerEdgeCount - 1) * 60) : 0;
@@ -173,7 +178,25 @@ export function NodeConfigPanel({
 							</span>
 						</>
 					)}
-					{!isTrigger && agentData && (
+					{isCliOutput && (
+						<>
+							<span style={{ color: theme.colors.textMain, fontSize: 13, fontWeight: 600 }}>
+								CLI Output
+							</span>
+							<span
+								style={{
+									fontSize: 10,
+									color: theme.colors.textDim,
+									backgroundColor: theme.colors.bgActivity,
+									padding: '1px 6px',
+									borderRadius: 4,
+								}}
+							>
+								{cliOutputData?.target || 'No target'}
+							</span>
+						</>
+					)}
+					{!isTrigger && !isCliOutput && agentData && (
 						<>
 							<span style={{ color: theme.colors.textMain, fontSize: 13, fontWeight: 600 }}>
 								{agentData.sessionName}
@@ -275,7 +298,18 @@ export function NodeConfigPanel({
 				{isTrigger && (
 					<TriggerConfig node={selectedNode} theme={theme} onUpdateNode={onUpdateNode} />
 				)}
-				{!isTrigger && (
+				{isCliOutput && (
+					<CliOutputConfigPanel
+						nodeId={selectedNode.id}
+						data={selectedNode.data as CliOutputNodeData}
+						theme={theme}
+						onUpdateNode={
+							onUpdateNode as unknown as (nodeId: string, data: Partial<CliOutputNodeData>) => void
+						}
+						expanded={expanded}
+					/>
+				)}
+				{!isTrigger && !isCliOutput && (
 					<AgentConfigPanel
 						node={selectedNode}
 						theme={theme}

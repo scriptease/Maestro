@@ -427,7 +427,7 @@ export function useFileTreeManagement(
 	 * Shows streaming progress updates during loading (useful for slow SSH connections).
 	 */
 	useEffect(() => {
-		const session = sessions.find((s) => s.id === activeSessionId);
+		const session = activeSession;
 		if (!session) return;
 
 		// Only load if file tree is empty, not already loading, and hasn't been loaded yet
@@ -634,7 +634,7 @@ export function useFileTreeManagement(
 					signalInitialFileTreeReady();
 				});
 		}
-	}, [activeSessionId, sessions, setSessions, sshContextOptions, localOptions, nextSeq, isStale]);
+	}, [activeSession, setSessions, sshContextOptions, localOptions, nextSeq, isStale]);
 
 	// Cleanup retry timers on unmount
 	useEffect(() => {
@@ -653,11 +653,11 @@ export function useFileTreeManagement(
 		prevLocalOptionsRef.current = localOptions;
 
 		if (!activeSessionId) return;
-		const session = sessions.find((s) => s.id === activeSessionId);
+		const session = activeSession;
 		if (!session || !session.fileTreeStats) return; // only re-scan already-loaded sessions
 
 		refreshFileTree(activeSessionId);
-	}, [activeSessionId, sessions, localOptions, refreshFileTree]);
+	}, [activeSessionId, activeSession, localOptions, refreshFileTree]);
 
 	/**
 	 * Migration: Fetch stats for sessions that have a file tree but no stats.
@@ -665,7 +665,7 @@ export function useFileTreeManagement(
 	 * Only fetches stats - doesn't re-fetch the file tree since it's already loaded.
 	 */
 	useEffect(() => {
-		const session = sessions.find((s) => s.id === activeSessionId);
+		const session = activeSession;
 		if (!session) return;
 
 		// Only migrate if: has file tree, no stats, no error, not loading
@@ -715,7 +715,7 @@ export function useFileTreeManagement(
 					sessionId,
 				});
 			});
-	}, [activeSessionId, sessions, setSessions]);
+	}, [activeSession, setSessions]);
 
 	/**
 	 * Filter file tree based on search query.

@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import type { Session, BatchRunConfig } from '../../types';
-import { useSessionStore } from '../../stores/sessionStore';
+import { useSessionStore, selectSessionById } from '../../stores/sessionStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { gitService } from '../../services/git';
 import { notifyToast } from '../../stores/notificationStore';
@@ -325,9 +325,9 @@ export function useAutoRunHandlers(
 			let targetSessionId = activeSession.id;
 			if (config.worktreeTarget?.mode === 'existing-open' && config.worktreeTarget.sessionId) {
 				// Verify the target session still exists (could have been removed while modal was open)
-				const targetSession = useSessionStore
-					.getState()
-					.sessions.find((s) => s.id === config.worktreeTarget!.sessionId);
+				const targetSession = selectSessionById(config.worktreeTarget!.sessionId)(
+					useSessionStore.getState()
+				);
 				if (!targetSession) {
 					window.maestro.logger.log(
 						'warn',

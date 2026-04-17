@@ -16,6 +16,8 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ThinkingStatusPill } from '../../../renderer/components/ThinkingStatusPill';
 import type { Session, Theme, BatchRunState, AITab, ThinkingItem } from '../../../renderer/types';
+import { createMockAITab as createBaseMockAITab } from '../../helpers/mockTab';
+import { createMockSession } from '../../helpers/mockSession';
 
 // Mock theme for tests
 const mockTheme: Theme = {
@@ -63,20 +65,13 @@ function createMockSession(overrides: Partial<Session> = {}): Session {
 	};
 }
 
+// Helper to create a mock AITab with component-specific defaults (non-null name).
 // Helper to create a mock AITab
 function createMockAITab(overrides: Partial<AITab> = {}): AITab {
-	return {
-		id: 'tab-1',
+	return createBaseMockAITab({
 		name: 'Tab 1',
-		state: 'idle',
-		agentSessionId: null,
-		starred: false,
-		logs: [],
-		inputValue: '',
-		stagedImages: [],
-		createdAt: Date.now(),
 		...overrides,
-	};
+	});
 }
 
 // Helper to create a busy/thinking session

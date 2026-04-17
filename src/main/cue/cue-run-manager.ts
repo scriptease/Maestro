@@ -15,7 +15,11 @@ import type { MainLogLevel } from '../../shared/logger-types';
 import type { CueEvent, CueRunResult, CueSettings, CueSubscription } from './cue-types';
 import { updateCueEventStatus, safeRecordCueEvent, safeUpdateCueEventStatus } from './cue-db';
 import { SOURCE_OUTPUT_MAX_CHARS } from './cue-fan-in-tracker';
+import { sliceHeadByChars } from './cue-text-utils';
 import { captureException } from '../utils/sentry';
+import { execFileNoThrow } from '../utils/execFile';
+import { substituteTemplateVariables, type TemplateContext } from '../../shared/templateVariables';
+import { buildCueTemplateContext } from './cue-template-context-builder';
 
 /** Phase of a run in the state machine: running → stopping | finished */
 export type RunPhase = 'running' | 'stopping' | 'finished';
@@ -38,6 +42,7 @@ export interface QueuedEvent {
 	subscriptionName: string;
 	queuedAt: number;
 	chainDepth?: number;
+	cliOutput?: { target: string };
 }
 
 export interface CueRunManagerDeps {
@@ -75,7 +80,8 @@ export interface CueRunManager {
 		event: CueEvent,
 		subscriptionName: string,
 		outputPrompt?: string,
-		chainDepth?: number
+		chainDepth?: number,
+		cliOutput?: { target: string }
 	): void;
 	stopRun(runId: string): boolean;
 	stopAll(): void;
@@ -128,9 +134,36 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 			// Check for stale events
 			if (ageMs > timeoutMs) {
 				const ageMinutes = Math.round(ageMs / 60000);
+				// Record the dropped event to the activity log so users can see
+				// *why* their queued run never fired — previously these events
+				// disappeared with only a log line, making it look like a bug.
+				const droppedRunId = crypto.randomUUID();
+				// We record the event directly in its final `timeout` state, so
+				// there's no separate running→timeout flip needed — the row is
+				// born finalized (unlike normal runs, which start as `running`).
+				safeRecordCueEvent({
+					id: droppedRunId,
+					type: entry.event.type,
+					triggerName: entry.event.triggerName,
+					sessionId,
+					subscriptionName: entry.subscriptionName,
+					status: 'timeout',
+					payload: JSON.stringify({
+						...entry.event.payload,
+						droppedFromQueue: true,
+						queuedForMs: ageMs,
+					}),
+				});
 				deps.onLog(
 					'cue',
-					`[CUE] Dropping stale queued event for "${sessionName}" (queued ${ageMinutes}m ago)`
+					`[CUE] Dropping stale queued event for "${sessionName}" (queued ${ageMinutes}m ago) — recorded as timeout in activity log`,
+					{
+						type: 'runFinished',
+						runId: droppedRunId,
+						sessionId,
+						subscriptionName: entry.subscriptionName,
+						status: 'timeout',
+					}
 				);
 				continue;
 			}
@@ -143,7 +176,8 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 				entry.event,
 				entry.subscriptionName,
 				entry.outputPrompt,
-				entry.chainDepth
+				entry.chainDepth,
+				entry.cliOutput
 			);
 		}
 
@@ -159,7 +193,8 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 		event: CueEvent,
 		subscriptionName: string,
 		outputPrompt?: string,
-		chainDepth?: number
+		chainDepth?: number,
+		cliOutput?: { target: string }
 	): Promise<void> {
 		const sessionName = getSessionName(sessionId);
 		const settings = deps.getSessionSettings(sessionId);
@@ -210,6 +245,26 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 				timeoutMs,
 			});
 			if (!activeRuns.has(runId)) {
+				// Engine was stopped (or run was cleared) while onCueRun was in
+				// flight. The finally block's cleanup is gated on activeRuns
+				// having this run, so without an explicit DB write the row
+				// would stay `running` forever in the activity log.
+				safeUpdateCueEventStatus(runId, runResult.status);
+				// Emit with the structured runFinished payload so live
+				// listeners (activity log, queue indicators) observe the
+				// transition identically to a normal completion — this is
+				// what renderer subscribers key off of.
+				deps.onLog(
+					'cue',
+					`[CUE] Run "${subscriptionName}" completed after engine stop — status recorded (${runResult.status}), result discarded`,
+					{
+						type: 'runFinished',
+						runId,
+						sessionId,
+						subscriptionName,
+						status: runResult.status,
+					}
+				);
 				return;
 			}
 			result.status = runResult.status;
@@ -224,13 +279,18 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 					`[CUE] "${subscriptionName}" executing output prompt for downstream handoff`
 				);
 
+				// Compute the sliced output ONCE — used for both the recorded
+				// payload's sourceOutput and the context prompt below. The prior
+				// code called sliceHeadByChars twice with identical arguments.
+				const slicedOutput = sliceHeadByChars(result.stdout, SOURCE_OUTPUT_MAX_CHARS);
+
 				const outputRunId = crypto.randomUUID();
 				const outputEvent: CueEvent = {
 					...event,
 					id: crypto.randomUUID(),
 					payload: {
 						...event.payload,
-						sourceOutput: result.stdout.substring(0, SOURCE_OUTPUT_MAX_CHARS),
+						sourceOutput: slicedOutput,
 						outputPromptPhase: true,
 					},
 				};
@@ -249,8 +309,13 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 				const run = activeRuns.get(runId);
 				if (run) run.processRunId = outputRunId;
 
-				const contextPrompt = `${outputPrompt}\n\n---\n\nContext from completed task:\n${result.stdout.substring(0, SOURCE_OUTPUT_MAX_CHARS)}`;
-				let outputResult: CueRunResult;
+				const contextPrompt = `${outputPrompt}\n\n---\n\nContext from completed task:\n${slicedOutput}`;
+				// Wrap the output-prompt phase in try/finally so the DB row is
+				// ALWAYS finalized — even if both the run and the status-update
+				// call fail. Without this, a double-failure leaves the row
+				// stuck at `running` and the activity log shows a phantom run.
+				let outputResult: CueRunResult | undefined;
+				let outputStatus: CueRunResult['status'] = 'failed';
 				try {
 					outputResult = await deps.onCueRun({
 						runId: outputRunId,
@@ -260,30 +325,123 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 						event: outputEvent,
 						timeoutMs,
 					});
-				} catch (outputErr) {
-					// onCueRun rejected — the outputRunId DB row is still 'running'
-					// because safeUpdateCueEventStatus below was skipped. Finalize it
-					// here so the activity log doesn't show a phantom never-ending
-					// run, then re-throw so the outer catch records the failure on
-					// the parent run.
-					safeUpdateCueEventStatus(outputRunId, 'failed');
-					throw outputErr;
+					outputStatus = outputResult.status;
+				} finally {
+					// Use the raw (throwing) updateCueEventStatus with our own
+					// try/catch so the Sentry `operation` tag is specific to
+					// this call site — distinguishing "output-phase finalize
+					// failed" from generic "status update failed" when
+					// triaging reports. The `safe*` wrappers tag everything
+					// as `safeUpdateCueEventStatus`, which is too coarse to
+					// tell this failure mode apart from a normal run update.
+					try {
+						updateCueEventStatus(outputRunId, outputStatus);
+					} catch (finalizeErr) {
+						captureException(finalizeErr, {
+							operation: 'cue:finalizeOutputRunStatus',
+							outputRunId,
+							outputStatus,
+						});
+					}
 				}
 
-				safeUpdateCueEventStatus(outputRunId, outputResult.status);
-
 				if (!activeRuns.has(runId)) {
+					// Engine reset between the main task finishing and the output
+					// prompt completing. The output-phase DB row was finalized in
+					// the inner finally above, but the PARENT runId is still
+					// `running` because the outer finally at the bottom of this
+					// function is gated on `activeRuns.has(runId)` — which is now
+					// false. Finalize it here so the activity log doesn't show a
+					// phantom never-ending run. Mirrors the earlier handling at
+					// line ~245 for the pre-output-prompt case.
+					safeUpdateCueEventStatus(runId, result.status);
+					deps.onLog(
+						'cue',
+						`[CUE] Run "${subscriptionName}" output phase completed after engine stop — parent status recorded (${result.status}), result discarded`,
+						{
+							type: 'runFinished',
+							runId,
+							sessionId,
+							subscriptionName,
+							status: result.status,
+						}
+					);
 					return;
 				}
 
-				if (outputResult.status === 'completed') {
+				if (outputResult && outputResult.status === 'completed') {
 					result.stdout = outputResult.stdout;
 				} else {
 					deps.onLog(
 						'cue',
-						`[CUE] "${subscriptionName}" output prompt failed (${outputResult.status}), using main task output`
+						`[CUE] "${subscriptionName}" output prompt failed (${outputStatus}), using main task output`
 					);
 				}
+			}
+
+			// Phase 3: CLI Output delivery — shell out to maestro-cli send --live
+			if (cliOutput && result.status === 'completed') {
+				deps.onLog(
+					'cue',
+					`[CUE] "${subscriptionName}" Phase 3: delivering CLI output to target="${cliOutput.target}" (stdout length=${result.stdout.length})`
+				);
+				try {
+					const cueContext = buildCueTemplateContext(
+						event,
+						{ name: subscriptionName, event: event.type, enabled: true, prompt: '' },
+						runId
+					);
+					const templateContext: TemplateContext = {
+						session: {
+							id: sessionId,
+							name: sessionName,
+							toolType: '',
+							cwd: '',
+						},
+						cue: cueContext,
+					};
+					const resolvedTarget = substituteTemplateVariables(cliOutput.target, templateContext);
+					if (!resolvedTarget || resolvedTarget.trim() === '') {
+						deps.onLog(
+							'warn',
+							`[CUE] "${subscriptionName}" CLI output target resolved to empty string (raw="${cliOutput.target}") — skipping delivery`
+						);
+					} else {
+						const truncatedOutput = sliceHeadByChars(result.stdout, 100_000);
+						const cliScriptPath = require('path').join(
+							process.resourcesPath ?? '',
+							'maestro-cli.js'
+						);
+						const cliResult = await execFileNoThrow(
+							process.execPath,
+							[cliScriptPath, 'send', resolvedTarget, truncatedOutput, '--live'],
+							undefined,
+							{ timeout: 30_000 }
+						);
+						if (cliResult.exitCode !== 0) {
+							throw new Error(`CLI exited with code ${cliResult.exitCode}: ${cliResult.stderr}`);
+						}
+						deps.onLog(
+							'cue',
+							`[CUE] "${subscriptionName}" CLI output delivered to ${resolvedTarget}`
+						);
+					}
+				} catch (cliError) {
+					captureException(cliError, {
+						operation: 'cue:cliOutputDelivery',
+						subscriptionName,
+						target: cliOutput.target,
+					});
+					deps.onLog(
+						'warn',
+						`[CUE] "${subscriptionName}" CLI output delivery failed: ${cliError instanceof Error ? cliError.message : String(cliError)}`
+					);
+				}
+			} else if (cliOutput && result.status !== 'completed') {
+				deps.onLog(
+					'cue',
+					`[CUE] "${subscriptionName}" Phase 3 skipped: run status="${result.status}" (not completed)`
+				);
 			}
 		} catch (error) {
 			if (!activeRuns.has(runId)) {
@@ -338,7 +496,8 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 			event: CueEvent,
 			subscriptionName: string,
 			outputPrompt?: string,
-			chainDepth?: number
+			chainDepth?: number,
+			cliOutput?: { target: string }
 		): void {
 			const settings = deps.getSessionSettings(sessionId);
 			const maxConcurrent = settings?.max_concurrent ?? 1;
@@ -367,6 +526,7 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 					subscriptionName,
 					queuedAt: Date.now(),
 					chainDepth,
+					cliOutput,
 				});
 
 				deps.onLog(
@@ -378,7 +538,15 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 
 			// Slot available — dispatch immediately
 			activeRunCount.set(sessionId, currentCount + 1);
-			doExecuteCueRun(sessionId, prompt, event, subscriptionName, outputPrompt, chainDepth);
+			doExecuteCueRun(
+				sessionId,
+				prompt,
+				event,
+				subscriptionName,
+				outputPrompt,
+				chainDepth,
+				cliOutput
+			);
 		},
 
 		stopRun(runId: string): boolean {

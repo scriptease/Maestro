@@ -13,10 +13,10 @@ import {
 	Download,
 	Upload,
 	LayoutGrid,
-	Loader2,
 } from 'lucide-react';
+import { Spinner } from './ui/Spinner';
 import type { Theme, BatchDocumentEntry, BatchRunConfig, WorktreeRunTarget } from '../types';
-import { useLayerStack } from '../contexts/LayerStackContext';
+import { useModalLayer } from '../hooks/ui/useModalLayer';
 import { MODAL_PRIORITIES } from '../constants/modalPriorities';
 import { TEMPLATE_VARIABLES } from '../utils/templateVariables';
 import { PlaybookDeleteConfirmModal } from './PlaybookDeleteConfirmModal';
@@ -24,7 +24,7 @@ import { PlaybookNameModal } from './PlaybookNameModal';
 import { AgentPromptComposerModal } from './AgentPromptComposerModal';
 import { DocumentsPanel } from './DocumentsPanel';
 import { WorktreeRunSection } from './WorktreeRunSection';
-import { useSessionStore } from '../stores/sessionStore';
+import { useSessionStore, selectSessionById } from '../stores/sessionStore';
 import { useUIStore } from '../stores/uiStore';
 import { getModalActions } from '../stores/modalStore';
 import {
@@ -108,7 +108,7 @@ export function BatchRunnerModal(props: BatchRunnerModalProps) {
 	// Worktree run target state
 	const [worktreeTarget, setWorktreeTarget] = useState<WorktreeRunTarget | null>(null);
 	const [isPreparingWorktree, setIsPreparingWorktree] = useState(false);
-	const activeSession = useSessionStore((state) => state.sessions.find((s) => s.id === sessionId));
+	const activeSession = useSessionStore(selectSessionById(sessionId));
 	const sessions = useSessionStore((state) => state.sessions);
 	const worktreeChildren = useMemo(
 		() => sessions.filter((s) => s.parentSessionId === sessionId),
@@ -248,9 +248,6 @@ export function BatchRunnerModal(props: BatchRunnerModalProps) {
 		onApplyPlaybook: handleApplyPlaybook,
 	});
 
-	const { registerLayer, unregisterLayer, updateLayerHandler } = useLayerStack();
-	const layerIdRef = useRef<string>();
-
 	// Use ref for getDocumentTaskCount to avoid dependency issues
 	const getDocumentTaskCountRef = useRef(getDocumentTaskCount);
 	getDocumentTaskCountRef.current = getDocumentTaskCount;
@@ -291,60 +288,15 @@ export function BatchRunnerModal(props: BatchRunnerModalProps) {
 	const hasValidPrompt = validateAgentPromptHasTaskReference(prompt);
 	const isPromptEmpty = !prompt || !prompt.trim();
 
-	// Register layer on mount
-	useEffect(() => {
-		const id = registerLayer({
-			type: 'modal',
-			priority: MODAL_PRIORITIES.BATCH_RUNNER,
-			blocksLowerLayers: true,
-			capturesFocus: true,
-			focusTrap: 'strict',
-			onEscape: () => {
-				if (showDeleteConfirmModal) {
-					handleCancelDeletePlaybook();
-				} else if (showSavePlaybookModal) {
-					setShowSavePlaybookModal(false);
-				} else {
-					handleCloseWithConfirmation();
-				}
-			},
-		});
-		layerIdRef.current = id;
-
-		return () => {
-			if (layerIdRef.current) {
-				unregisterLayer(layerIdRef.current);
-			}
-		};
-	}, [
-		registerLayer,
-		unregisterLayer,
-		showSavePlaybookModal,
-		showDeleteConfirmModal,
-		handleCancelDeletePlaybook,
-		handleCloseWithConfirmation,
-	]);
-
-	// Update handler when dependencies change
-	useEffect(() => {
-		if (layerIdRef.current) {
-			updateLayerHandler(layerIdRef.current, () => {
-				if (showDeleteConfirmModal) {
-					handleCancelDeletePlaybook();
-				} else if (showSavePlaybookModal) {
-					setShowSavePlaybookModal(false);
-				} else {
-					handleCloseWithConfirmation();
-				}
-			});
+	useModalLayer(MODAL_PRIORITIES.BATCH_RUNNER, undefined, () => {
+		if (showDeleteConfirmModal) {
+			handleCancelDeletePlaybook();
+		} else if (showSavePlaybookModal) {
+			setShowSavePlaybookModal(false);
+		} else {
+			handleCloseWithConfirmation();
 		}
-	}, [
-		handleCloseWithConfirmation,
-		updateLayerHandler,
-		showSavePlaybookModal,
-		showDeleteConfirmModal,
-		handleCancelDeletePlaybook,
-	]);
+	});
 
 	// Focus textarea on mount
 	useEffect(() => {
@@ -904,11 +856,7 @@ export function BatchRunnerModal(props: BatchRunnerModalProps) {
 														: 'Start auto-run'
 							}
 						>
-							{isPreparingWorktree ? (
-								<Loader2 className="w-4 h-4 animate-spin" />
-							) : (
-								<Play className="w-4 h-4" />
-							)}
+							{isPreparingWorktree ? <Spinner size={16} /> : <Play className="w-4 h-4" />}
 							{isPreparingWorktree ? 'Preparing Worktree...' : 'Go'}
 						</button>
 					</div>

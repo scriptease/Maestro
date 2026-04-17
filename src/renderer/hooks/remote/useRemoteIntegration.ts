@@ -886,16 +886,21 @@ export function useRemoteIntegration(deps: UseRemoteIntegrationDeps): UseRemoteI
 	// Handle remote trigger Cue subscription requests (from web/CLI clients)
 	useEffect(() => {
 		const unsubscribe = window.maestro.process.onRemoteTriggerCueSubscription(
-			async (subscriptionName: string, prompt: string | undefined, responseChannel: string) => {
+			async (
+				subscriptionName: string,
+				prompt: string | undefined,
+				responseChannel: string,
+				sourceAgentId?: string
+			) => {
 				try {
-					const result = await cueService.triggerSubscription(subscriptionName, prompt);
+					const result = await cueService.triggerSubscription(
+						subscriptionName,
+						prompt,
+						sourceAgentId
+					);
 					window.maestro.process.sendRemoteTriggerCueSubscriptionResponse(responseChannel, result);
 				} catch (error) {
 					console.error('[Remote Cue Trigger] Failed:', subscriptionName, error);
-					// Never send the raw prompt to telemetry — remote-triggered
-					// Cue prompts can carry user-authored content with PII or
-					// secrets. Send length/presence so we can correlate failures
-					// against payload size without leaking the body.
 					captureException(error, {
 						extra: {
 							context: 'remoteTriggerCueSubscription',

@@ -35,7 +35,7 @@ import {
 	normalizeBrowserTabUrl,
 } from '../../utils/browserTabPersistence';
 import { generateId } from '../../utils/ids';
-import { useSessionStore, selectActiveSession } from '../../stores/sessionStore';
+import { useSessionStore, selectActiveSession, updateAiTab } from '../../stores/sessionStore';
 import { useModalStore } from '../../stores/modalStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useTabStore } from '../../stores/tabStore';
@@ -476,8 +476,7 @@ export function useTabHandlers(): TabHandlersReturn {
 	 */
 	const handleCloseFileTab = useCallback(
 		(tabId: string) => {
-			const { sessions, activeSessionId } = useSessionStore.getState();
-			const currentSession = sessions.find((s) => s.id === activeSessionId);
+			const currentSession = selectActiveSession(useSessionStore.getState());
 			if (!currentSession) {
 				forceCloseFileTab(tabId);
 				return;
@@ -576,8 +575,7 @@ export function useTabHandlers(): TabHandlersReturn {
 	}, []);
 
 	const handleReloadFileTab = useCallback(async (tabId: string) => {
-		const { sessions, activeSessionId } = useSessionStore.getState();
-		const currentSession = sessions.find((s) => s.id === activeSessionId);
+		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession) return;
 
 		const fileTab = currentSession.filePreviewTabs.find((tab) => tab.id === tabId);
@@ -618,8 +616,8 @@ export function useTabHandlers(): TabHandlersReturn {
 	 * Select a file preview tab. If fileTabAutoRefreshEnabled, checks if file changed on disk.
 	 */
 	const handleSelectFileTab = useCallback(async (tabId: string) => {
-		const { sessions, activeSessionId, setSessions } = useSessionStore.getState();
-		const currentSession = sessions.find((s) => s.id === activeSessionId);
+		const { setSessions } = useSessionStore.getState();
+		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession) return;
 
 		const fileTab = currentSession.filePreviewTabs.find((tab) => tab.id === tabId);
@@ -629,7 +627,7 @@ export function useTabHandlers(): TabHandlersReturn {
 		// we're switching away from terminal mode (clicking a file tab while terminal is active).
 		setSessions((prev: Session[]) =>
 			prev.map((s) => {
-				if (s.id !== activeSessionId) return s;
+				if (s.id !== currentSession.id) return s;
 				return {
 					...s,
 					activeFileTabId: tabId,
@@ -891,8 +889,7 @@ export function useTabHandlers(): TabHandlersReturn {
 
 	const handleTabClose = useCallback(
 		(tabId: string) => {
-			const { sessions, activeSessionId } = useSessionStore.getState();
-			const session = sessions.find((s) => s.id === activeSessionId);
+			const session = selectActiveSession(useSessionStore.getState());
 			const tab = session?.aiTabs.find((t) => t.id === tabId);
 
 			if (tab && hasActiveWizard(tab)) {
@@ -950,8 +947,7 @@ export function useTabHandlers(): TabHandlersReturn {
 	}, []);
 
 	const handleCloseAllTabs = useCallback(() => {
-		const { sessions, activeSessionId } = useSessionStore.getState();
-		const session = sessions.find((s) => s.id === activeSessionId);
+		const session = selectActiveSession(useSessionStore.getState());
 		if (!session) return;
 
 		const hasAnyDraft = session.aiTabs.some((tab) => hasDraft(tab));
@@ -1023,8 +1019,7 @@ export function useTabHandlers(): TabHandlersReturn {
 	}, []);
 
 	const handleCloseOtherTabs = useCallback(() => {
-		const { sessions, activeSessionId } = useSessionStore.getState();
-		const session = sessions.find((s) => s.id === activeSessionId);
+		const session = selectActiveSession(useSessionStore.getState());
 		if (!session) return;
 
 		const activeTabId = session.activeFileTabId ?? session.activeTabId;
@@ -1101,8 +1096,7 @@ export function useTabHandlers(): TabHandlersReturn {
 	}, []);
 
 	const handleCloseTabsLeft = useCallback(() => {
-		const { sessions, activeSessionId } = useSessionStore.getState();
-		const session = sessions.find((s) => s.id === activeSessionId);
+		const session = selectActiveSession(useSessionStore.getState());
 		if (!session) return;
 
 		const activeRef = getActiveUnifiedRef(session);
@@ -1188,8 +1182,7 @@ export function useTabHandlers(): TabHandlersReturn {
 	}, []);
 
 	const handleCloseTabsRight = useCallback(() => {
-		const { sessions, activeSessionId } = useSessionStore.getState();
-		const session = sessions.find((s) => s.id === activeSessionId);
+		const session = selectActiveSession(useSessionStore.getState());
 		if (!session) return;
 
 		const activeRef = getActiveUnifiedRef(session);
@@ -1215,8 +1208,8 @@ export function useTabHandlers(): TabHandlersReturn {
 	}, [performCloseTabsRight]);
 
 	const handleCloseCurrentTab = useCallback((): CloseCurrentTabResult => {
-		const { sessions, activeSessionId, setSessions } = useSessionStore.getState();
-		const session = sessions.find((s) => s.id === activeSessionId);
+		const { setSessions } = useSessionStore.getState();
+		const session = selectActiveSession(useSessionStore.getState());
 		if (!session) return { type: 'none' };
 
 		// Terminal tab is active — close it (unless it's the only tab of any type)
@@ -1247,7 +1240,7 @@ export function useTabHandlers(): TabHandlersReturn {
 			const tabId = session.activeBrowserTabId;
 			setSessions((prev: Session[]) =>
 				prev.map((s) => {
-					if (s.id !== activeSessionId) return s;
+					if (s.id !== session.id) return s;
 					const result = closeBrowserTabHelper(s, tabId);
 					return result ? result.session : s;
 				})
@@ -1273,8 +1266,8 @@ export function useTabHandlers(): TabHandlersReturn {
 	// ========================================================================
 
 	const handleDeleteLog = useCallback((logId: string): number | null => {
-		const { sessions, activeSessionId, setSessions } = useSessionStore.getState();
-		const currentSession = sessions.find((s) => s.id === activeSessionId);
+		const { setSessions } = useSessionStore.getState();
+		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession) return null;
 
 		const isAIMode = currentSession.inputMode === 'ai';
@@ -1372,8 +1365,8 @@ export function useTabHandlers(): TabHandlersReturn {
 
 	const handleRequestTabRename = useCallback((tabId: string) => {
 		console.log('[DEBUG renameTab] handleRequestTabRename called', { tabId });
-		const { sessions, activeSessionId, setSessions } = useSessionStore.getState();
-		const session = sessions.find((s) => s.id === activeSessionId);
+		const { setSessions } = useSessionStore.getState();
+		const session = selectActiveSession(useSessionStore.getState());
 		if (!session) {
 			console.log('[DEBUG renameTab] no session found');
 			return;
@@ -1387,7 +1380,7 @@ export function useTabHandlers(): TabHandlersReturn {
 			if (tab.isGeneratingName) {
 				setSessions((prev: Session[]) =>
 					prev.map((s) => {
-						if (s.id !== activeSessionId) return s;
+						if (s.id !== session.id) return s;
 						return {
 							...s,
 							aiTabs: s.aiTabs.map((t) => (t.id === tabId ? { ...t, isGeneratingName: false } : t)),
@@ -1442,15 +1435,15 @@ export function useTabHandlers(): TabHandlersReturn {
 	);
 
 	const handleTabStar = useCallback((tabId: string, starred: boolean) => {
-		const { sessions, activeSessionId, setSessions } = useSessionStore.getState();
-		const session = sessions.find((s) => s.id === activeSessionId);
+		const { setSessions } = useSessionStore.getState();
+		const session = selectActiveSession(useSessionStore.getState());
 		if (!session) return;
 		const tabToStar = session.aiTabs.find((t) => t.id === tabId);
 		if (!tabToStar?.agentSessionId) return;
 
 		setSessions((prev: Session[]) =>
 			prev.map((s) => {
-				if (s.id !== activeSessionId) return s;
+				if (s.id !== session.id) return s;
 				const tab = s.aiTabs.find((t) => t.id === tabId);
 				if (tab?.agentSessionId) {
 					const agentId = s.toolType || 'claude-code';
@@ -1486,46 +1479,29 @@ export function useTabHandlers(): TabHandlersReturn {
 	}, []);
 
 	const handleToggleTabReadOnlyMode = useCallback(() => {
-		const { sessions, activeSessionId, setSessions } = useSessionStore.getState();
-		const session = sessions.find((s) => s.id === activeSessionId);
+		const session = selectActiveSession(useSessionStore.getState());
 		if (!session) return;
 		const currentActiveTab = getActiveTab(session);
 		if (!currentActiveTab) return;
-		setSessions((prev: Session[]) =>
-			prev.map((s) => {
-				if (s.id !== activeSessionId) return s;
-				return {
-					...s,
-					aiTabs: s.aiTabs.map((tab) =>
-						tab.id === currentActiveTab.id ? { ...tab, readOnlyMode: !tab.readOnlyMode } : tab
-					),
-				};
-			})
-		);
+		updateAiTab(session.id, currentActiveTab.id, (tab) => ({
+			...tab,
+			readOnlyMode: !tab.readOnlyMode,
+		}));
 	}, []);
 
 	const handleToggleTabSaveToHistory = useCallback(() => {
-		const { sessions, activeSessionId, setSessions } = useSessionStore.getState();
-		const session = sessions.find((s) => s.id === activeSessionId);
+		const session = selectActiveSession(useSessionStore.getState());
 		if (!session) return;
 		const currentActiveTab = getActiveTab(session);
 		if (!currentActiveTab) return;
-		setSessions((prev: Session[]) =>
-			prev.map((s) => {
-				if (s.id !== activeSessionId) return s;
-				return {
-					...s,
-					aiTabs: s.aiTabs.map((tab) =>
-						tab.id === currentActiveTab.id ? { ...tab, saveToHistory: !tab.saveToHistory } : tab
-					),
-				};
-			})
-		);
+		updateAiTab(session.id, currentActiveTab.id, (tab) => ({
+			...tab,
+			saveToHistory: !tab.saveToHistory,
+		}));
 	}, []);
 
 	const handleToggleTabShowThinking = useCallback(() => {
-		const { sessions, activeSessionId, setSessions } = useSessionStore.getState();
-		const session = sessions.find((s) => s.id === activeSessionId);
+		const session = selectActiveSession(useSessionStore.getState());
 		if (!session) return;
 		const currentActiveTab = getActiveTab(session);
 		if (!currentActiveTab) return;
@@ -1536,26 +1512,17 @@ export function useTabHandlers(): TabHandlersReturn {
 			return 'off';
 		};
 
-		setSessions((prev: Session[]) =>
-			prev.map((s) => {
-				if (s.id !== activeSessionId) return s;
+		updateAiTab(session.id, currentActiveTab.id, (tab) => {
+			const newMode = cycleThinkingMode(tab.showThinking);
+			if (newMode === 'off') {
 				return {
-					...s,
-					aiTabs: s.aiTabs.map((tab) => {
-						if (tab.id !== currentActiveTab.id) return tab;
-						const newMode = cycleThinkingMode(tab.showThinking);
-						if (newMode === 'off') {
-							return {
-								...tab,
-								showThinking: 'off',
-								logs: tab.logs.filter((l) => l.source !== 'thinking' && l.source !== 'tool'),
-							};
-						}
-						return { ...tab, showThinking: newMode };
-					}),
+					...tab,
+					showThinking: 'off',
+					logs: tab.logs.filter((l) => l.source !== 'thinking' && l.source !== 'tool'),
 				};
-			})
-		);
+			}
+			return { ...tab, showThinking: newMode };
+		});
 	}, []);
 
 	// ========================================================================
@@ -1563,54 +1530,28 @@ export function useTabHandlers(): TabHandlersReturn {
 	// ========================================================================
 
 	const handleScrollPositionChange = useCallback((scrollTop: number) => {
-		const { sessions, activeSessionId, setSessions } = useSessionStore.getState();
-		const session = sessions.find((s) => s.id === activeSessionId);
+		const session = selectActiveSession(useSessionStore.getState());
 		if (!session) return;
 		if (session.inputMode === 'ai') {
 			const currentActiveTab = getActiveTab(session);
 			if (!currentActiveTab) return;
-			setSessions((prev: Session[]) =>
-				prev.map((s) => {
-					if (s.id !== activeSessionId) return s;
-					return {
-						...s,
-						aiTabs: s.aiTabs.map((tab) =>
-							tab.id === currentActiveTab.id ? { ...tab, scrollTop } : tab
-						),
-					};
-				})
-			);
+			updateAiTab(session.id, currentActiveTab.id, (tab) => ({ ...tab, scrollTop }));
 		} else {
-			setSessions((prev: Session[]) =>
-				prev.map((s) => (s.id === activeSessionId ? { ...s, terminalScrollTop: scrollTop } : s))
-			);
+			useSessionStore.getState().updateSession(session.id, { terminalScrollTop: scrollTop });
 		}
 	}, []);
 
 	const handleAtBottomChange = useCallback((isAtBottom: boolean) => {
-		const { sessions, activeSessionId, setSessions } = useSessionStore.getState();
-		const session = sessions.find((s) => s.id === activeSessionId);
+		const session = selectActiveSession(useSessionStore.getState());
 		if (!session) return;
 		if (session.inputMode === 'ai') {
 			const currentActiveTab = getActiveTab(session);
 			if (!currentActiveTab) return;
-			setSessions((prev: Session[]) =>
-				prev.map((s) => {
-					if (s.id !== activeSessionId) return s;
-					return {
-						...s,
-						aiTabs: s.aiTabs.map((tab) =>
-							tab.id === currentActiveTab.id
-								? {
-										...tab,
-										isAtBottom,
-										hasUnread: isAtBottom ? false : tab.hasUnread,
-									}
-								: tab
-						),
-					};
-				})
-			);
+			updateAiTab(session.id, currentActiveTab.id, (tab) => ({
+				...tab,
+				isAtBottom,
+				hasUnread: isAtBottom ? false : tab.hasUnread,
+			}));
 		}
 	}, []);
 
@@ -1619,21 +1560,16 @@ export function useTabHandlers(): TabHandlersReturn {
 	// ========================================================================
 
 	const handleClearFilePreviewHistory = useCallback(() => {
-		const { sessions, activeSessionId, setSessions } = useSessionStore.getState();
-		const currentSession = sessions.find((s) => s.id === activeSessionId);
+		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession) return;
-		setSessions((prev: Session[]) =>
-			prev.map((s) =>
-				s.id === currentSession.id
-					? { ...s, filePreviewHistory: [], filePreviewHistoryIndex: -1 }
-					: s
-			)
-		);
+		useSessionStore
+			.getState()
+			.updateSession(currentSession.id, { filePreviewHistory: [], filePreviewHistoryIndex: -1 });
 	}, []);
 
 	const handleFileTabNavigateBack = useCallback(async () => {
-		const { sessions, activeSessionId, setSessions } = useSessionStore.getState();
-		const currentSession = sessions.find((s) => s.id === activeSessionId);
+		const { setSessions } = useSessionStore.getState();
+		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession?.activeFileTabId) return;
 
 		const currentTab = currentSession.filePreviewTabs.find(
@@ -1680,8 +1616,8 @@ export function useTabHandlers(): TabHandlersReturn {
 	}, []);
 
 	const handleFileTabNavigateForward = useCallback(async () => {
-		const { sessions, activeSessionId, setSessions } = useSessionStore.getState();
-		const currentSession = sessions.find((s) => s.id === activeSessionId);
+		const { setSessions } = useSessionStore.getState();
+		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession?.activeFileTabId) return;
 
 		const currentTab = currentSession.filePreviewTabs.find(
@@ -1728,8 +1664,8 @@ export function useTabHandlers(): TabHandlersReturn {
 	}, []);
 
 	const handleFileTabNavigateToIndex = useCallback(async (index: number) => {
-		const { sessions, activeSessionId, setSessions } = useSessionStore.getState();
-		const currentSession = sessions.find((s) => s.id === activeSessionId);
+		const { setSessions } = useSessionStore.getState();
+		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession?.activeFileTabId) return;
 
 		const currentTab = currentSession.filePreviewTabs.find(

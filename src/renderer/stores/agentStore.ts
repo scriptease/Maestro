@@ -29,7 +29,7 @@ import type {
 import { createTab, getActiveTab } from '../utils/tabHelpers';
 import { getStdinFlags, prepareMaestroSystemPrompt } from '../utils/spawnHelpers';
 import { generateId } from '../utils/ids';
-import { useSessionStore } from './sessionStore';
+import { useSessionStore, selectSessionById } from './sessionStore';
 import { DEFAULT_IMAGE_ONLY_PROMPT } from '../hooks/input/useInputProcessing';
 import { substituteTemplateVariables } from '../utils/templateVariables';
 import { gitService } from '../services/git';
@@ -131,7 +131,7 @@ export type AgentStore = AgentStoreState & AgentStoreActions;
  * Find a session by ID from sessionStore.
  */
 function getSession(sessionId: string): Session | undefined {
-	return useSessionStore.getState().sessions.find((s) => s.id === sessionId);
+	return selectSessionById(sessionId)(useSessionStore.getState());
 }
 
 /**

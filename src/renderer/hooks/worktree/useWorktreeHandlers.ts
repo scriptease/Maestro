@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Session } from '../../types';
 import { getModalActions, useModalStore } from '../../stores/modalStore';
-import { useSessionStore } from '../../stores/sessionStore';
+import { useSessionStore, updateSessionWith } from '../../stores/sessionStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { gitService } from '../../services/git';
 import { notifyToast } from '../../stores/notificationStore';
@@ -152,13 +152,10 @@ export function useWorktreeHandlers(): WorktreeHandlersReturn {
 	}, []);
 
 	const handleToggleWorktreeExpanded = useCallback((sessionId: string) => {
-		useSessionStore
-			.getState()
-			.setSessions((prev) =>
-				prev.map((s) =>
-					s.id === sessionId ? { ...s, worktreesExpanded: !(s.worktreesExpanded ?? true) } : s
-				)
-			);
+		updateSessionWith(sessionId, (s) => ({
+			...s,
+			worktreesExpanded: !(s.worktreesExpanded ?? true),
+		}));
 	}, []);
 
 	// ---------------------------------------------------------------------------
@@ -178,11 +175,7 @@ export function useWorktreeHandlers(): WorktreeHandlersReturn {
 				useSettingsStore.getState();
 
 			// Save the config first
-			useSessionStore
-				.getState()
-				.setSessions((prev) =>
-					prev.map((s) => (s.id === activeSession.id ? { ...s, worktreeConfig: config } : s))
-				);
+			useSessionStore.getState().updateSession(activeSession.id, { worktreeConfig: config });
 
 			// Scan for worktrees and create sub-agent sessions
 			const parentSshRemoteId = getSshRemoteId(activeSession);
@@ -232,11 +225,7 @@ export function useWorktreeHandlers(): WorktreeHandlersReturn {
 					if (newWorktreeSessions.length > 0) {
 						useSessionStore.getState().setSessions((prev) => [...prev, ...newWorktreeSessions]);
 						// Expand worktrees on parent
-						useSessionStore
-							.getState()
-							.setSessions((prev) =>
-								prev.map((s) => (s.id === activeSession.id ? { ...s, worktreesExpanded: true } : s))
-							);
+						useSessionStore.getState().updateSession(activeSession.id, { worktreesExpanded: true });
 						notifyToast({
 							type: 'success',
 							title: 'Worktrees Discovered',
@@ -698,11 +687,7 @@ export function useWorktreeHandlers(): WorktreeHandlersReturn {
 				return [...prev, worktreeSession];
 			});
 
-			useSessionStore
-				.getState()
-				.setSessions((prev) =>
-					prev.map((s) => (s.id === sessionId ? { ...s, worktreesExpanded: true } : s))
-				);
+			useSessionStore.getState().updateSession(sessionId, { worktreesExpanded: true });
 
 			notifyToast({
 				type: 'success',

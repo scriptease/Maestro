@@ -12,11 +12,14 @@ export interface UseFilePreviewSearchParams {
 	isImage: boolean;
 	isCsv: boolean;
 	isJsonl: boolean;
+	isJson: boolean;
 	isEditableText: boolean;
 	markdownEditMode: boolean;
 	editContent: string;
 	fileContent: string | undefined;
 	accentColor: string;
+	/** When in 'jq' mode, skip DOM-based highlighting (jq filtering is handled externally) */
+	searchMode: 'text' | 'jq';
 	/** Length of actually displayed content (may differ from fileContent when truncated) */
 	displayedContentLength?: number;
 	initialSearchQuery?: string;
@@ -46,11 +49,13 @@ export function useFilePreviewSearch({
 	isImage,
 	isCsv,
 	isJsonl,
+	isJson,
 	isEditableText,
 	markdownEditMode,
 	editContent,
 	fileContent,
 	accentColor,
+	searchMode,
 	displayedContentLength,
 	initialSearchQuery,
 	onSearchQueryChange,
@@ -88,6 +93,9 @@ export function useFilePreviewSearch({
 		}
 	}, [searchOpen, searchQuery]);
 
+	// In jq mode, text-based highlighting is disabled — jq filtering is handled by JsonlViewer
+	const isJqMode = searchMode === 'jq';
+
 	// Highlight search matches in syntax-highlighted code
 	useEffect(() => {
 		if (
@@ -96,7 +104,8 @@ export function useFilePreviewSearch({
 			isMarkdown ||
 			isImage ||
 			isCsv ||
-			isJsonl
+			isJsonl ||
+			(isJson && isJqMode)
 		) {
 			setTotalMatches(0);
 			setCurrentMatchIndex(-1);
@@ -189,6 +198,8 @@ export function useFilePreviewSearch({
 		isImage,
 		isCsv,
 		isJsonl,
+		isJson,
+		isJqMode,
 		accentColor,
 	]);
 

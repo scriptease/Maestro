@@ -16,13 +16,15 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { Search, ChevronRight, ChevronDown, GitMerge, Clipboard, Check, X } from 'lucide-react';
+import { GhostIconButton } from './ui/GhostIconButton';
 import type { Theme, Session } from '../types';
 import type { MergeResult } from '../types/contextMerge';
 import { fuzzyMatchWithScore } from '../utils/search';
-import { useLayerStack } from '../contexts/LayerStackContext';
+import { useModalLayer } from '../hooks/ui/useModalLayer';
 import { useListNavigation } from '../hooks';
 import { MODAL_PRIORITIES } from '../constants/modalPriorities';
 import { formatTokensCompact } from '../utils/formatters';
+import { estimateTokensFromLogs } from '../../shared/formatters';
 import { ScreenReaderAnnouncement, useAnnouncement } from './Wizard/ScreenReaderAnnouncement';
 import { getTabDisplayName } from '../utils/tabHelpers';
 
@@ -76,14 +78,7 @@ export interface MergeSessionModalProps {
 	) => Promise<MergeResult>;
 }
 
-/**
- * Estimate token count from log entries
- * Uses a simple heuristic: ~4 characters per token (average for English text)
- */
-function estimateTokens(logs: { text: string }[]): number {
-	const totalChars = logs.reduce((sum, log) => sum + (log.text?.length || 0), 0);
-	return Math.round(totalChars / 4);
-}
+const estimateTokens = estimateTokensFromLogs;
 
 /**
  * Animated token display component that highlights when value changes
@@ -182,7 +177,6 @@ export function MergeSessionModal({
 
 	// Refs
 	const inputRef = useRef<HTMLInputElement>(null);
-	const layerIdRef = useRef<string>();
 	const onCloseRef = useRef(onClose);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const selectedItemRef = useRef<HTMLButtonElement>(null);
@@ -192,35 +186,13 @@ export function MergeSessionModal({
 		onCloseRef.current = onClose;
 	});
 
-	const { registerLayer, unregisterLayer, updateLayerHandler } = useLayerStack();
-
 	// Register layer on mount
-	useEffect(() => {
-		if (!isOpen) return;
-
-		layerIdRef.current = registerLayer({
-			type: 'modal',
-			priority: MODAL_PRIORITIES.MERGE_SESSION,
-			blocksLowerLayers: true,
-			capturesFocus: true,
-			focusTrap: 'strict',
-			ariaLabel: 'Merge Session Contexts',
-			onEscape: () => onCloseRef.current(),
-		});
-
-		return () => {
-			if (layerIdRef.current) {
-				unregisterLayer(layerIdRef.current);
-			}
-		};
-	}, [isOpen, registerLayer, unregisterLayer]);
-
-	// Update handler when onClose changes
-	useEffect(() => {
-		if (layerIdRef.current) {
-			updateLayerHandler(layerIdRef.current, () => onCloseRef.current());
-		}
-	}, [updateLayerHandler]);
+	useModalLayer(
+		MODAL_PRIORITIES.MERGE_SESSION,
+		'Merge Session Contexts',
+		() => onCloseRef.current(),
+		{ enabled: isOpen }
+	);
 
 	// Focus input on mount
 	useEffect(() => {
@@ -607,15 +579,13 @@ export function MergeSessionModal({
 							Merge "{sourceTab ? getTabDisplayName(sourceTab) : 'Context'}" Into
 						</h2>
 					</div>
-					<button
-						type="button"
+					<GhostIconButton
 						onClick={onClose}
-						className="p-1 rounded hover:bg-white/10 transition-colors"
-						style={{ color: theme.colors.textDim }}
-						aria-label="Close merge dialog"
+						ariaLabel="Close merge dialog"
+						color={theme.colors.textDim}
 					>
 						<X className="w-4 h-4" aria-hidden="true" />
-					</button>
+					</GhostIconButton>
 				</div>
 
 				{/* Description for screen readers */}

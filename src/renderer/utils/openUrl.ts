@@ -12,7 +12,7 @@
 
 import type { BrowserTab } from '../types';
 import { useSettingsStore } from '../stores/settingsStore';
-import { useSessionStore } from '../stores/sessionStore';
+import { useSessionStore, selectActiveSession } from '../stores/sessionStore';
 import { generateId } from './ids';
 import { getBrowserTabPartition } from './browserTabPersistence';
 import { ensureInUnifiedTabOrder } from './tabHelpers';
@@ -64,8 +64,8 @@ export function openInSystemBrowser(url: string): void {
  * Open a URL in a Maestro browser tab within the current active agent.
  */
 export function openInMaestroBrowser(url: string): void {
-	const { sessions, activeSessionId, setSessions } = useSessionStore.getState();
-	const session = sessions.find((s) => s.id === activeSessionId);
+	const { setSessions } = useSessionStore.getState();
+	const session = selectActiveSession(useSessionStore.getState());
 	if (!session) {
 		// No active session — fall back to system browser
 		window.maestro.shell.openExternal(url);
@@ -86,7 +86,7 @@ export function openInMaestroBrowser(url: string): void {
 
 	setSessions((prev) =>
 		prev.map((s) => {
-			if (s.id !== activeSessionId) return s;
+			if (s.id !== session.id) return s;
 			return {
 				...s,
 				browserTabs: [...(s.browserTabs || []), newBrowserTab],

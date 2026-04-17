@@ -128,13 +128,15 @@ export interface TabStoreActions {
 
 	/**
 	 * Navigate to a tab by its position in the unified tab order.
+	 * @param showUnreadOnly - If true, index into the unread-filtered visible tabs (matches tab bar)
 	 */
-	navigateToIndex: (index: number) => NavigateToUnifiedTabResult | null;
+	navigateToIndex: (index: number, showUnreadOnly?: boolean) => NavigateToUnifiedTabResult | null;
 
 	/**
 	 * Navigate to the last tab in unified order.
+	 * @param showUnreadOnly - If true, go to the last tab in the unread-filtered visible list
 	 */
-	navigateToLast: () => NavigateToUnifiedTabResult | null;
+	navigateToLast: (showUnreadOnly?: boolean) => NavigateToUnifiedTabResult | null;
 
 	// === Tab metadata ===
 
@@ -400,19 +402,19 @@ export const useTabStore = create<TabStore>()((set) => ({
 		return result;
 	},
 
-	navigateToIndex: (index) => {
+	navigateToIndex: (index, showUnreadOnly) => {
 		const session = getActiveSession();
 		if (!session) return null;
-		const result = navigateToIndexHelper(session, index);
+		const result = navigateToIndexHelper(session, index, showUnreadOnly);
 		if (!result) return null;
 		updateActiveSession(result.session);
 		return result;
 	},
 
-	navigateToLast: () => {
+	navigateToLast: (showUnreadOnly) => {
 		const session = getActiveSession();
 		if (!session) return null;
-		const result = navigateToLastHelper(session);
+		const result = navigateToLastHelper(session, showUnreadOnly);
 		if (!result) return null;
 		updateActiveSession(result.session);
 		return result;

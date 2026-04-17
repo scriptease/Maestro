@@ -24,12 +24,29 @@ vi.mock('../../../main/utils/sentry', () => ({
 	captureException: (...args: unknown[]) => mockCaptureException(...args),
 }));
 
+// Mock execFileNoThrow for Phase 3 CLI output delivery
+const mockExecFileNoThrow =
+	vi.fn<
+		(
+			cmd: string,
+			args?: string[],
+			cwd?: string,
+			options?: Record<string, unknown>
+		) => Promise<{ stdout: string; stderr: string; exitCode: number | string }>
+	>();
+mockExecFileNoThrow.mockResolvedValue({ stdout: '{}', stderr: '', exitCode: 0 });
+
+vi.mock('../../../main/utils/execFile', () => ({
+	execFileNoThrow: (...args: unknown[]) =>
+		mockExecFileNoThrow(...(args as Parameters<typeof mockExecFileNoThrow>)),
+}));
+
 let uuidCounter = 0;
 vi.mock('crypto', () => ({
 	randomUUID: vi.fn(() => `run-${++uuidCounter}`),
 }));
 
-import { updateCueEventStatus } from '../../../main/cue/cue-db';
+import { updateCueEventStatus, safeUpdateCueEventStatus } from '../../../main/cue/cue-db';
 import {
 	createCueRunManager,
 	type CueRunManagerDeps,
@@ -446,6 +463,64 @@ describe('createCueRunManager', () => {
 			expect(deps.onRunCompleted).not.toHaveBeenCalled();
 		});
 
+		it('reset during active run: finalizes DB status when onCueRun resolves after stop', async () => {
+			// Regression test for the activity-log-loss bug: without the fix,
+			// a run completing after engine.stop()/reset() would leave its DB
+			// row stuck at `running` because both onRunCompleted AND
+			// updateCueEventStatus were skipped.
+			let resolveRun: ((val: CueRunResult) => void) | undefined;
+			const deps = createDeps({
+				onCueRun: vi.fn(
+					() =>
+						new Promise<CueRunResult>((resolve) => {
+							resolveRun = resolve;
+						})
+				),
+			});
+			const manager = createCueRunManager(deps);
+
+			manager.execute('session-1', 'prompt', createEvent(), 'test-sub');
+			manager.reset();
+
+			resolveRun!(makeResult({ status: 'completed', stdout: 'hi' }));
+			await vi.advanceTimersByTimeAsync(0);
+
+			// DB status MUST be updated to the final result state so the
+			// activity log doesn't show a phantom never-ending run.
+			expect(safeUpdateCueEventStatus).toHaveBeenCalledWith(expect.any(String), 'completed');
+			// And a log should explain the run was recorded post-stop AND
+			// include the structured runFinished payload so the renderer
+			// observes the transition identically to a normal completion.
+			expect(deps.onLog).toHaveBeenCalledWith(
+				'cue',
+				expect.stringContaining('completed after engine stop'),
+				expect.objectContaining({ type: 'runFinished', status: 'completed' })
+			);
+		});
+
+		it('reset during active run: preserves failed status when onCueRun resolves with failure after stop', async () => {
+			// Variant of the above covering the failure path — make sure the
+			// final status propagates to the DB regardless of outcome.
+			let resolveRun: ((val: CueRunResult) => void) | undefined;
+			const deps = createDeps({
+				onCueRun: vi.fn(
+					() =>
+						new Promise<CueRunResult>((resolve) => {
+							resolveRun = resolve;
+						})
+				),
+			});
+			const manager = createCueRunManager(deps);
+
+			manager.execute('session-1', 'prompt', createEvent(), 'test-sub');
+			manager.reset();
+
+			resolveRun!(makeResult({ status: 'failed', stderr: 'boom' }));
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(safeUpdateCueEventStatus).toHaveBeenCalledWith(expect.any(String), 'failed');
+		});
+
 		it('stopAll followed by reset: no spurious onRunCompleted', async () => {
 			let resolveRun: ((val: CueRunResult) => void) | undefined;
 			const deps = createDeps({
@@ -508,6 +583,60 @@ describe('createCueRunManager', () => {
 			await vi.advanceTimersByTimeAsync(0);
 
 			// onRunCompleted should NOT be called
+			expect(deps.onRunCompleted).not.toHaveBeenCalled();
+		});
+
+		it('reset during output-prompt phase: finalizes parent run status', async () => {
+			// Regression gate for the output-prompt analog of the
+			// engine-stopped-mid-run bug: if reset() fires AFTER the main
+			// task completed and DURING the output-prompt call, the outer
+			// finally's cleanup is bypassed (activeRuns no longer has the
+			// runId), so without the explicit finalize the PARENT runId DB
+			// row stays at `running` forever. Mirrors the earlier guard for
+			// the pre-output-prompt case.
+			let onCueRunCallCount = 0;
+			let resolveOutputRun: ((val: CueRunResult) => void) | undefined;
+			const deps = createDeps({
+				onCueRun: vi.fn(() => {
+					onCueRunCallCount++;
+					if (onCueRunCallCount === 1) {
+						return Promise.resolve(makeResult({ status: 'completed' }));
+					}
+					return new Promise<CueRunResult>((resolve) => {
+						resolveOutputRun = resolve;
+					});
+				}),
+			});
+			const manager = createCueRunManager(deps);
+
+			manager.execute('session-1', 'prompt', createEvent(), 'test-sub', 'output prompt');
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Main task finished, output prompt is pending. Reset the engine
+			// — this clears activeRuns before the output prompt resolves.
+			manager.reset();
+
+			// Output prompt now completes after reset. The inner finally
+			// writes the output-prompt row; the new guard must also write
+			// the PARENT row so the activity log doesn't strand it.
+			vi.mocked(safeUpdateCueEventStatus).mockClear();
+			resolveOutputRun!(makeResult({ status: 'completed' }));
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Expect TWO finalization calls: one for the output run (in the
+			// inner finally — technically via updateCueEventStatus, not the
+			// safe variant, so it won't show here) and one for the PARENT
+			// via safeUpdateCueEventStatus with the main task's status.
+			// Only the parent-side safe call is asserted because that's the
+			// regression we're guarding.
+			expect(safeUpdateCueEventStatus).toHaveBeenCalledWith(expect.any(String), 'completed');
+			// And the post-stop log MUST include the structured runFinished
+			// payload so renderer listeners observe the transition.
+			expect(deps.onLog).toHaveBeenCalledWith(
+				'cue',
+				expect.stringContaining('output phase completed after engine stop'),
+				expect.objectContaining({ type: 'runFinished', status: 'completed' })
+			);
 			expect(deps.onRunCompleted).not.toHaveBeenCalled();
 		});
 	});
@@ -807,6 +936,173 @@ describe('createCueRunManager', () => {
 			manager.stopRun(runId);
 
 			expect(manager.getActiveRunCount('session-1')).toBe(1);
+		});
+	});
+
+	describe('Phase 3: CLI Output delivery', () => {
+		beforeEach(() => {
+			mockExecFileNoThrow.mockResolvedValue({ stdout: '{}', stderr: '', exitCode: 0 });
+		});
+
+		it('triggers execFile with correct arguments when run succeeds', async () => {
+			const deps = createDeps();
+			const manager = createCueRunManager(deps);
+
+			manager.execute(
+				'session-1',
+				'prompt',
+				createEvent(),
+				'test-sub',
+				undefined, // outputPrompt
+				undefined, // chainDepth
+				{ target: 'agent-42' }
+			);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(mockExecFileNoThrow).toHaveBeenCalledTimes(1);
+			expect(mockExecFileNoThrow).toHaveBeenCalledWith(
+				process.execPath,
+				expect.arrayContaining(['send', 'agent-42', 'output', '--live']),
+				undefined,
+				{ timeout: 30_000 }
+			);
+		});
+
+		it('skips delivery when target resolves to empty string', async () => {
+			const deps = createDeps();
+			const manager = createCueRunManager(deps);
+			const event = createEvent({ payload: {} });
+
+			manager.execute('session-1', 'prompt', event, 'test-sub', undefined, undefined, {
+				target: '{{CUE_SOURCE_AGENT_ID}}',
+			});
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(mockExecFileNoThrow).not.toHaveBeenCalled();
+			expect(deps.onLog).toHaveBeenCalledWith(
+				'warn',
+				expect.stringContaining('target resolved to empty string')
+			);
+		});
+
+		it('is skipped when run fails', async () => {
+			const deps = createDeps({
+				onCueRun: vi.fn(async () => makeResult({ status: 'failed', exitCode: 1 })),
+			});
+			const manager = createCueRunManager(deps);
+
+			manager.execute('session-1', 'prompt', createEvent(), 'test-sub', undefined, undefined, {
+				target: 'agent-42',
+			});
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(mockExecFileNoThrow).not.toHaveBeenCalled();
+		});
+
+		it('delivery failure does not change run status', async () => {
+			mockExecFileNoThrow.mockResolvedValue({
+				stdout: '',
+				stderr: 'Connection refused',
+				exitCode: 1,
+			});
+			const deps = createDeps();
+			const manager = createCueRunManager(deps);
+
+			manager.execute('session-1', 'prompt', createEvent(), 'test-sub', undefined, undefined, {
+				target: 'agent-42',
+			});
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(deps.onRunCompleted).toHaveBeenCalledWith(
+				'session-1',
+				expect.objectContaining({ status: 'completed' }),
+				'test-sub',
+				undefined
+			);
+			expect(deps.onLog).toHaveBeenCalledWith(
+				'warn',
+				expect.stringContaining('CLI output delivery failed')
+			);
+		});
+
+		it('substitutes template variables in target before execution', async () => {
+			const deps = createDeps();
+			const manager = createCueRunManager(deps);
+			const event = createEvent({
+				type: 'cli.trigger',
+				payload: { sourceAgentId: 'resolved-agent-99' },
+			});
+
+			manager.execute('session-1', 'prompt', event, 'test-sub', undefined, undefined, {
+				target: '{{CUE_SOURCE_AGENT_ID}}',
+			});
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(mockExecFileNoThrow).toHaveBeenCalledTimes(1);
+			expect(mockExecFileNoThrow).toHaveBeenCalledWith(
+				process.execPath,
+				expect.arrayContaining(['send', 'resolved-agent-99', 'output', '--live']),
+				undefined,
+				{ timeout: 30_000 }
+			);
+		});
+
+		it('is not called when cliOutput is not provided', async () => {
+			const deps = createDeps();
+			const manager = createCueRunManager(deps);
+
+			manager.execute('session-1', 'prompt', createEvent(), 'test-sub');
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(mockExecFileNoThrow).not.toHaveBeenCalled();
+		});
+
+		it('truncates stdout to 100,000 characters', async () => {
+			const longOutput = 'x'.repeat(150_000);
+			const deps = createDeps({
+				onCueRun: vi.fn(async () => makeResult({ stdout: longOutput })),
+			});
+			const manager = createCueRunManager(deps);
+
+			manager.execute('session-1', 'prompt', createEvent(), 'test-sub', undefined, undefined, {
+				target: 'agent-42',
+			});
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(mockExecFileNoThrow).toHaveBeenCalledTimes(1);
+			const passedArgs = mockExecFileNoThrow.mock.calls[0][1] as string[];
+			// Args: [cli.js, 'send', target, truncated output, '--live']
+			const outputArg = passedArgs.find((a) => a.length > 1000);
+			expect(outputArg?.length).toBe(100_000);
+		});
+
+		it('logs success message on delivery', async () => {
+			const deps = createDeps();
+			const manager = createCueRunManager(deps);
+
+			manager.execute('session-1', 'prompt', createEvent(), 'test-sub', undefined, undefined, {
+				target: 'agent-42',
+			});
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(deps.onLog).toHaveBeenCalledWith(
+				'cue',
+				expect.stringContaining('CLI output delivered to agent-42')
+			);
+		});
+
+		it('logs Phase 3 skipped when run status is not completed', async () => {
+			const deps = createDeps({
+				onCueRun: vi.fn(async () => makeResult({ status: 'failed', exitCode: 1 })),
+			});
+			const manager = createCueRunManager(deps);
+
+			manager.execute('session-1', 'prompt', createEvent(), 'test-sub', undefined, undefined, {
+				target: 'agent-42',
+			});
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(deps.onLog).toHaveBeenCalledWith('cue', expect.stringContaining('Phase 3 skipped'));
 		});
 	});
 });

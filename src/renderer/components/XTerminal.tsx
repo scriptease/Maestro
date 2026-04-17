@@ -331,6 +331,21 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 			fontFamily,
 			fontSize,
 			theme: mapThemeToXterm(theme),
+			// Route OSC 8 hyperlinks (escape-code terminal links) through openUrl so they
+			// respect the useSystemBrowser setting. Without this, xterm's default activate
+			// shows a confirm() dialog and then calls window.open(), which Electron's
+			// setWindowOpenHandler blocks — clicks silently fail.
+			linkHandler: {
+				activate(event, text) {
+					openUrl(text, { ctrlKey: event.ctrlKey });
+				},
+				hover(_event, text) {
+					hoveredLinkRef.current = text;
+				},
+				leave() {
+					hoveredLinkRef.current = null;
+				},
+			},
 		});
 
 		const fitAddon = new FitAddon();

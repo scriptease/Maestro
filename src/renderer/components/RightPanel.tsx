@@ -10,13 +10,13 @@ import React, {
 import {
 	PanelRightClose,
 	PanelRightOpen,
-	Loader2,
 	GitBranch,
 	Skull,
 	AlertTriangle,
 	Play,
 	XCircle,
 } from 'lucide-react';
+import { Spinner } from './ui/Spinner';
 import type { Session, Theme, RightPanelTab, BatchRunState } from '../types';
 import type { FileTreeChanges } from '../utils/fileExplorer';
 import { FileExplorerPanel } from './FileExplorerPanel';
@@ -31,7 +31,7 @@ import { useUIStore } from '../stores/uiStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useFileExplorerStore } from '../stores/fileExplorerStore';
 import { useBatchStore } from '../stores/batchStore';
-import { useSessionStore } from '../stores/sessionStore';
+import { useSessionStore, selectActiveSession } from '../stores/sessionStore';
 import type { FileNode } from '../types/fileTree';
 
 export interface RightPanelHandle {
@@ -116,9 +116,7 @@ interface RightPanelProps {
 export const RightPanel = memo(
 	forwardRef<RightPanelHandle, RightPanelProps>(function RightPanel(props, ref) {
 		// === State from stores (direct subscriptions — no prop drilling) ===
-		const session = useSessionStore(
-			(s) => s.sessions.find((x) => x.id === s.activeSessionId) ?? null
-		);
+		const session = useSessionStore(selectActiveSession);
 		const setSessions = useSessionStore((s) => s.setSessions);
 
 		const rightPanelOpen = useUIStore((s) => s.rightPanelOpen);
@@ -572,10 +570,7 @@ export const RightPanel = memo(
 								{errorPaused ? (
 									<AlertTriangle className="w-4 h-4" style={{ color: theme.colors.error }} />
 								) : (
-									<Loader2
-										className="w-4 h-4 animate-spin"
-										style={{ color: theme.colors.warning }}
-									/>
+									<Spinner size={16} color={theme.colors.warning} />
 								)}
 								{errorPaused ? (
 									<button

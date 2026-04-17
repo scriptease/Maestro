@@ -314,7 +314,8 @@ function MaestroConsoleInner() {
 		setDirectorNotesOpen,
 		// Maestro Cue Modal — cueModalOpen now self-sourced in AppStandaloneModals
 		setCueModalOpen,
-		// Maestro Cue YAML Editor — open state, sessionId, projectRoot, closeCueYamlEditor now self-sourced in AppStandaloneModals
+		// Maestro Cue YAML Editor — open state, sessionId, projectRoot self-sourced in AppStandaloneModals
+		closeCueYamlEditor,
 	} = useModalActions();
 
 	// --- MOBILE LANDSCAPE MODE (reading-only view) ---
@@ -439,6 +440,13 @@ function MaestroConsoleInner() {
 		if (!encoreFeatures.usageStats) setUsageDashboardOpen(false);
 	}, [encoreFeatures.usageStats, setUsageDashboardOpen]);
 
+	useEffect(() => {
+		if (!encoreFeatures.maestroCue) {
+			setCueModalOpen(false);
+			closeCueYamlEditor();
+		}
+	}, [encoreFeatures.maestroCue, setCueModalOpen, closeCueYamlEditor]);
+
 	// --- KEYBOARD SHORTCUT HELPERS ---
 	const { isShortcut, isTabShortcut } = useKeyboardShortcutHelpers({
 		shortcuts,
@@ -527,6 +535,7 @@ function MaestroConsoleInner() {
 	const bookmarksCollapsed = useUIStore((s) => s.bookmarksCollapsed);
 	// groupChatsExpanded moved to useCycleSession hook
 	const showUnreadOnly = useUIStore((s) => s.showUnreadOnly);
+	const showUnreadAgentsOnly = useUIStore((s) => s.showUnreadAgentsOnly);
 	const fileTreeFilter = useFileExplorerStore((s) => s.fileTreeFilter);
 	const fileTreeFilterOpen = useFileExplorerStore((s) => s.fileTreeFilterOpen);
 	const editingGroupId = useUIStore((s) => s.editingGroupId);
@@ -1556,6 +1565,8 @@ function MaestroConsoleInner() {
 			sessions,
 			groups,
 			bookmarksCollapsed,
+			showUnreadAgentsOnly,
+			activeSessionId,
 		});
 
 	// --- KEYBOARD NAVIGATION ---
@@ -1895,6 +1906,7 @@ function MaestroConsoleInner() {
 		handleQuickActionsToggleMarkdownEditMode,
 		handleQuickActionsSummarizeAndContinue,
 		handleQuickActionsAutoRunResetTasks,
+		handleQuickActionsClearActiveTerminal,
 		handleQuickActionsCloseCurrentTab,
 		handleQuickActionsMoveTabToFirst,
 		handleQuickActionsMoveTabToLast,
@@ -2722,6 +2734,7 @@ function MaestroConsoleInner() {
 					autoRunSelectedDocument={activeSession?.autoRunSelectedFile ?? null}
 					autoRunCompletedTaskCount={rightPanelRef.current?.getAutoRunCompletedTaskCount() ?? 0}
 					onAutoRunResetTasks={handleQuickActionsAutoRunResetTasks}
+					onClearActiveTerminal={handleQuickActionsClearActiveTerminal}
 					onCloseCurrentTab={handleQuickActionsCloseCurrentTab}
 					onMoveTabToFirst={handleQuickActionsMoveTabToFirst}
 					onMoveTabToLast={handleQuickActionsMoveTabToLast}

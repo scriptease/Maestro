@@ -26,6 +26,7 @@ vi.mock('../../../main/cue/cue-yaml-loader', () => ({
 			: { ok: false as const, reason: 'missing' as const };
 	},
 	watchCueYaml: (...args: unknown[]) => mockWatchCueYaml(args[0] as string, args[1] as () => void),
+	findAncestorCueConfigRoot: () => null,
 }));
 
 // Mock the file watcher
@@ -364,7 +365,8 @@ describe('CueEngine Concurrency Control', () => {
 
 			expect(deps.onLog).toHaveBeenCalledWith(
 				'cue',
-				expect.stringContaining('Dropping stale queued event')
+				expect.stringContaining('Dropping stale queued event'),
+				expect.objectContaining({ type: 'runFinished', status: 'timeout' })
 			);
 
 			engine.stopAll();
@@ -860,7 +862,8 @@ describe('CueEngine Concurrency Control', () => {
 			// All stale events should have been dropped
 			expect(deps.onLog).toHaveBeenCalledWith(
 				'cue',
-				expect.stringContaining('Dropping stale queued event')
+				expect.stringContaining('Dropping stale queued event'),
+				expect.objectContaining({ type: 'runFinished', status: 'timeout' })
 			);
 
 			engine.stopAll();

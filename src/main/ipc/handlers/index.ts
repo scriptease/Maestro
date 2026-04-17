@@ -56,6 +56,7 @@ import { registerDirectorNotesHandlers, DirectorNotesHandlerDependencies } from 
 import { registerCueHandlers, CueHandlerDependencies } from './cue';
 import { registerWakatimeHandlers } from './wakatime';
 import { registerFeedbackHandlers } from './feedback';
+import { registerMaestroCliHandlers } from './maestro-cli';
 import { registerPromptsHandlers } from './prompts';
 import { AgentDetector } from '../../agents';
 import { ProcessManager } from '../../process-manager';
@@ -108,6 +109,7 @@ export { registerCueHandlers };
 export type { CueHandlerDependencies };
 export { registerWakatimeHandlers };
 export { registerFeedbackHandlers };
+export { registerMaestroCliHandlers };
 export { registerPromptsHandlers };
 export type { AgentsHandlerDependencies };
 export type { ProcessHandlerDependencies };

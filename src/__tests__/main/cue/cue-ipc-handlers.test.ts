@@ -44,6 +44,7 @@ vi.mock('../../../main/utils/ipcHandler', () => ({
 
 vi.mock('../../../main/cue/cue-yaml-loader', () => ({
 	validateCueConfig: vi.fn(),
+	findAncestorCueConfigRoot: () => null,
 }));
 
 vi.mock('../../../main/cue/config/cue-config-repository', () => ({
@@ -329,6 +330,128 @@ describe('Cue IPC Handlers', () => {
 				'prompt body 2'
 			);
 		});
+
+		// Security-hardening tests: reject malformed prompt-file keys that
+		// could write outside the .maestro/prompts/ directory. The handler
+		// validates and throws synchronously from inside the async callback —
+		// vi.mock's `withIpcErrorLogging` preserves the rejection.
+		//
+		// Every negative case must also assert that writeCueConfigFile was
+		// NOT called — rejecting the promptFile loop must abort the whole
+		// save, otherwise the YAML would land on disk while referencing a
+		// prompt file that was never written.
+		describe('prompt-file path hardening', () => {
+			it('rejects empty string keys', async () => {
+				const handler = registerAndGetHandler('cue:writeYaml');
+				await expect(
+					handler(null, {
+						projectRoot: '/projects/test',
+						content: 'subscriptions: []',
+						promptFiles: { '': 'x' },
+					})
+				).rejects.toThrow(/must be a non-empty string/);
+				expect(writeCuePromptFile).not.toHaveBeenCalled();
+				expect(writeCueConfigFile).not.toHaveBeenCalled();
+			});
+
+			it('rejects absolute paths', async () => {
+				const handler = registerAndGetHandler('cue:writeYaml');
+				await expect(
+					handler(null, {
+						projectRoot: '/projects/test',
+						content: 'subscriptions: []',
+						promptFiles: { '/etc/passwd.md': 'x' },
+					})
+				).rejects.toThrow(/must be a relative path/);
+				expect(writeCuePromptFile).not.toHaveBeenCalled();
+				expect(writeCueConfigFile).not.toHaveBeenCalled();
+			});
+
+			it('rejects paths with parent-directory segments', async () => {
+				const handler = registerAndGetHandler('cue:writeYaml');
+				await expect(
+					handler(null, {
+						projectRoot: '/projects/test',
+						content: 'subscriptions: []',
+						promptFiles: { '../../escape.md': 'x' },
+					})
+				).rejects.toThrow(/"\." or "\.\." segment/);
+				expect(writeCuePromptFile).not.toHaveBeenCalled();
+				expect(writeCueConfigFile).not.toHaveBeenCalled();
+			});
+
+			it('rejects paths with single-dot segments', async () => {
+				const handler = registerAndGetHandler('cue:writeYaml');
+				await expect(
+					handler(null, {
+						projectRoot: '/projects/test',
+						content: 'subscriptions: []',
+						promptFiles: { '.maestro/prompts/./sub.md': 'x' },
+					})
+				).rejects.toThrow(/"\." or "\.\." segment/);
+				expect(writeCuePromptFile).not.toHaveBeenCalled();
+				expect(writeCueConfigFile).not.toHaveBeenCalled();
+			});
+
+			it('rejects paths that resolve outside .maestro/prompts/', async () => {
+				const handler = registerAndGetHandler('cue:writeYaml');
+				await expect(
+					handler(null, {
+						projectRoot: '/projects/test',
+						content: 'subscriptions: []',
+						promptFiles: { 'not-prompts/file.md': 'x' },
+					})
+				).rejects.toThrow(/resolves outside the .maestro\/prompts directory/);
+				expect(writeCuePromptFile).not.toHaveBeenCalled();
+				expect(writeCueConfigFile).not.toHaveBeenCalled();
+			});
+
+			it('rejects paths with mixed-in parent segments that pre-normalize to a valid location', async () => {
+				// 'prompts/../../escape.md' — .split('/') catches the '..'
+				// segment before path.resolve normalizes it away.
+				const handler = registerAndGetHandler('cue:writeYaml');
+				await expect(
+					handler(null, {
+						projectRoot: '/projects/test',
+						content: 'subscriptions: []',
+						promptFiles: { '.maestro/prompts/../../escape.md': 'x' },
+					})
+				).rejects.toThrow(/"\." or "\.\." segment/);
+				expect(writeCuePromptFile).not.toHaveBeenCalled();
+				expect(writeCueConfigFile).not.toHaveBeenCalled();
+			});
+
+			it('rejects non-.md extensions', async () => {
+				const handler = registerAndGetHandler('cue:writeYaml');
+				await expect(
+					handler(null, {
+						projectRoot: '/projects/test',
+						content: 'subscriptions: []',
+						promptFiles: { '.maestro/prompts/payload.sh': 'x' },
+					})
+				).rejects.toThrow(/must end with .md/);
+				expect(writeCuePromptFile).not.toHaveBeenCalled();
+				expect(writeCueConfigFile).not.toHaveBeenCalled();
+			});
+
+			it('normalizes Windows backslash paths to forward-slash before writing', async () => {
+				// Only meaningful on non-Windows, where path.sep is '/'. Windows
+				// already accepts both separators via path.resolve.
+				if (process.platform === 'win32') return;
+				const handler = registerAndGetHandler('cue:writeYaml');
+				await handler(null, {
+					projectRoot: '/projects/test',
+					content: 'subscriptions: []',
+					promptFiles: { '.maestro\\prompts\\sub.md': 'body' },
+				});
+				// Normalized separator is stored as the written-file key.
+				expect(writeCuePromptFile).toHaveBeenCalledWith(
+					'/projects/test',
+					'.maestro/prompts/sub.md',
+					'body'
+				);
+			});
+		});
 	});
 
 	describe('cue:deleteYaml', () => {
@@ -464,6 +587,58 @@ describe('Cue IPC Handlers', () => {
 			const handler = registerAndGetHandler('cue:savePipelineLayout');
 			await handler(null, { layout });
 			expect(savePipelineLayout).toHaveBeenCalledWith(layout);
+		});
+	});
+
+	describe('cue:triggerSubscription', () => {
+		it('should pass subscriptionName to engine.triggerSubscription()', async () => {
+			const handler = registerAndGetHandler('cue:triggerSubscription');
+			await handler(null, { subscriptionName: 'my-sub' });
+			expect(mockEngine.triggerSubscription).toHaveBeenCalledWith('my-sub', undefined, undefined);
+		});
+
+		it('should pass prompt to engine.triggerSubscription()', async () => {
+			const handler = registerAndGetHandler('cue:triggerSubscription');
+			await handler(null, { subscriptionName: 'my-sub', prompt: 'custom prompt' });
+			expect(mockEngine.triggerSubscription).toHaveBeenCalledWith(
+				'my-sub',
+				'custom prompt',
+				undefined
+			);
+		});
+
+		it('should pass sourceAgentId to engine.triggerSubscription()', async () => {
+			const handler = registerAndGetHandler('cue:triggerSubscription');
+			await handler(null, {
+				subscriptionName: 'my-sub',
+				sourceAgentId: 'agent-xyz-123',
+			});
+			expect(mockEngine.triggerSubscription).toHaveBeenCalledWith(
+				'my-sub',
+				undefined,
+				'agent-xyz-123'
+			);
+		});
+
+		it('should pass both prompt and sourceAgentId to engine.triggerSubscription()', async () => {
+			const handler = registerAndGetHandler('cue:triggerSubscription');
+			await handler(null, {
+				subscriptionName: 'my-sub',
+				prompt: 'override prompt',
+				sourceAgentId: 'agent-abc',
+			});
+			expect(mockEngine.triggerSubscription).toHaveBeenCalledWith(
+				'my-sub',
+				'override prompt',
+				'agent-abc'
+			);
+		});
+
+		it('should return the boolean result from engine', async () => {
+			mockEngine.triggerSubscription.mockReturnValue(false);
+			const handler = registerAndGetHandler('cue:triggerSubscription');
+			const result = await handler(null, { subscriptionName: 'nonexistent' });
+			expect(result).toBe(false);
 		});
 	});
 

@@ -21,9 +21,9 @@ import {
 	Edit2,
 	Trash2,
 	AlertTriangle,
-	Loader2,
 	Search,
 } from 'lucide-react';
+import { Spinner } from './ui/Spinner';
 import type { Session, Theme, FocusArea } from '../types';
 import type { FileNode } from '../types/fileTree';
 import type { FileTreeChanges } from '../utils/fileExplorer';
@@ -114,7 +114,7 @@ function FileTreeLoadingProgress({
 	return (
 		<div className="flex flex-col items-center justify-center gap-3 py-8">
 			{/* Animated spinner */}
-			<Loader2 className="w-6 h-6 animate-spin" style={{ color: theme.colors.accent }} />
+			<Spinner size={24} color={theme.colors.accent} />
 
 			{/* Status text */}
 			<div className="text-center">
@@ -398,7 +398,7 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 
 	const shortcuts = useSettingsStore((s) => s.shortcuts);
 	const rightPanelWidth = useSettingsStore((s) => s.rightPanelWidth);
-	const showToolbarLabels = rightPanelWidth >= 340;
+	const compact = rightPanelWidth < 320;
 
 	const { registerLayer, unregisterLayer, updateLayerHandler } = useLayerStack();
 	const layerIdRef = useRef<string>();
@@ -1121,8 +1121,8 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 						}}
 						title={`Find Files (${formatShortcutKeys(shortcuts.filterFiles?.keys ?? ['Meta', 'f'])})`}
 					>
-						<Search className="w-3 h-3" />
-						{showToolbarLabels && 'Find'}
+						{!compact && <Search className="w-3 h-3" />}
+						Find
 					</button>
 					{/* Open in file manager */}
 					{!session.sshRemote && (
@@ -1138,8 +1138,8 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 							}}
 							title={getOpenInLabel(window.maestro?.platform || 'darwin')}
 						>
-							<FolderOpen className="w-3 h-3" />
-							{showToolbarLabels && 'Open'}
+							{!compact && <FolderOpen className="w-3 h-3" />}
+							Open
 						</button>
 					)}
 					{/* Show/hide dotfiles */}
@@ -1155,8 +1155,9 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 						}}
 						title={showHiddenFiles ? 'Hide dotfiles' : 'Show dotfiles'}
 					>
-						{showHiddenFiles ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-						{showToolbarLabels && (showHiddenFiles ? 'Hide' : 'Show')}
+						{!compact &&
+							(showHiddenFiles ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />)}
+						{showHiddenFiles ? 'Hide' : 'Show'}
 					</button>
 					{/* Refresh */}
 					<button
@@ -1177,8 +1178,8 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 								: 'Refresh file tree'
 						}
 					>
-						<RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
-						{showToolbarLabels && 'Refresh'}
+						{!compact && <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />}
+						Refresh
 					</button>
 					{/* Expand all */}
 					<button

@@ -16,7 +16,7 @@
 
 import { useCallback, useState } from 'react';
 import type { ToolType, Session, AITab } from '../../types';
-import { useSessionStore } from '../../stores/sessionStore';
+import { useSessionStore, selectSessionById } from '../../stores/sessionStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useUIStore } from '../../stores/uiStore';
 import { getModalActions, useModalStore } from '../../stores/modalStore';
@@ -25,7 +25,7 @@ import { generateId } from '../../utils/ids';
 import { validateNewSession } from '../../utils/sessionValidation';
 import { getTerminalSessionId } from '../../utils/terminalTabHelpers';
 import { gitService } from '../../services/git';
-import { AUTO_RUN_FOLDER_NAME } from '../../components/Wizard';
+import { PLAYBOOKS_DIR } from '../../../shared/maestro-paths';
 
 // ============================================================================
 // Dependencies interface
@@ -265,7 +265,7 @@ export function useSessionCrud(deps: UseSessionCrudDeps): UseSessionCrudReturn {
 					customContextWindow,
 					customProviderPath,
 					sessionSshRemoteConfig,
-					autoRunFolderPath: `${workingDir}/${AUTO_RUN_FOLDER_NAME}`,
+					autoRunFolderPath: `${workingDir}/${PLAYBOOKS_DIR}`,
 				};
 
 				setSessions((prev) => [...prev, newSession]);
@@ -292,7 +292,7 @@ export function useSessionCrud(deps: UseSessionCrudDeps): UseSessionCrudReturn {
 	// ========================================================================
 	const deleteSession = useCallback(
 		(id: string) => {
-			const session = useSessionStore.getState().sessions.find((s) => s.id === id);
+			const session = selectSessionById(id)(useSessionStore.getState());
 			if (!session) return;
 			setDeleteAgentSession(session);
 		},

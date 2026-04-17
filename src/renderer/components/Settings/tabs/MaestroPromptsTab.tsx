@@ -14,6 +14,8 @@ import {
 	Minimize2,
 	HelpCircle,
 	X,
+	Eye,
+	EyeOff,
 } from 'lucide-react';
 import type { Theme } from '../../../constants/themes';
 import { refreshRendererPrompts } from '../../../services/promptInit';
@@ -23,7 +25,10 @@ import { openUrl } from '../../../utils/openUrl';
 import { buildMaestroUrl } from '../../../utils/buildMaestroUrl';
 import { useTemplateAutocomplete } from '../../../hooks/input/useTemplateAutocomplete';
 import { TemplateAutocompleteDropdown } from '../../TemplateAutocompleteDropdown';
-import { TEMPLATE_VARIABLES } from '../../../utils/templateVariables';
+import { TEMPLATE_VARIABLES, substituteTemplateVariables } from '../../../utils/templateVariables';
+import { useActiveSession } from '../../../hooks/session/useActiveSession';
+import { useSettingsStore } from '../../../stores/settingsStore';
+import { gitService } from '../../../services/git';
 import './MaestroPromptsTab.css';
 
 interface CorePrompt {
@@ -47,6 +52,7 @@ const CATEGORY_INFO: Record<string, { label: string }> = {
 	commands: { label: 'Commands' },
 	context: { label: 'Context' },
 	'group-chat': { label: 'Group Chat' },
+	includes: { label: 'Includes' },
 	'inline-wizard': { label: 'Inline Wizard' },
 	system: { label: 'System' },
 	wizard: { label: 'Wizard' },
@@ -66,6 +72,8 @@ const CATEGORY_HELP: Record<string, string> = {
 		'Prompts for context management — grooming (trimming context), transferring context between sessions, and summarization.',
 	commands:
 		'Prompts for built-in commands — image-only message handling and git commit message generation.',
+	includes:
+		'Reusable blocks referenced from other prompts. Two directives consume them: {{INCLUDE:name}} fully inlines the content at assembly time (use for foundational rules every agent must have); {{REF:name}} expands to a one-line pointer that tells the agent to fetch it on demand via `maestro-cli prompts get <name>` (use for heavy reference material only some sessions need). Keeps shared content (history format, Auto Run spec, CLI reference, Cue model, file-access rules) in one place so every agent that needs it gets the same wording.',
 	system:
 		"System-level prompts — the Maestro system context injected into agents, tab naming, Director's Notes, and feedback.",
 };
@@ -144,18 +152,44 @@ function PromptsHelpPanel({ theme, onClose }: { theme: Theme; onClose?: () => vo
 
 			<div className="prompts-help-section">
 				<h3 className="prompts-help-heading" style={{ color: theme.colors.accent }}>
-					Include Directive
+					Include Directives
 				</h3>
 				<p className="prompts-help-text" style={{ color: theme.colors.textDim }}>
-					Use{' '}
 					<code
 						className="prompts-help-code"
 						style={{ backgroundColor: theme.colors.bgMain, color: theme.colors.accent }}
 					>
 						{'{{INCLUDE:name}}'}
 					</code>{' '}
-					to embed the contents of another prompt file. This keeps prompts modular and avoids
-					duplication. Nesting up to 3 levels deep is supported.
+					fully inlines another prompt file at assembly time. Nesting up to 3 levels deep is
+					supported and cycles are detected. Use this for foundational rules every recipient must
+					see.
+				</p>
+				<p className="prompts-help-text" style={{ color: theme.colors.textDim }}>
+					<code
+						className="prompts-help-code"
+						style={{ backgroundColor: theme.colors.bgMain, color: theme.colors.accent }}
+					>
+						{'{{REF:name}}'}
+					</code>{' '}
+					expands to the absolute on-disk path of the bundled{' '}
+					<code
+						className="prompts-help-code"
+						style={{ backgroundColor: theme.colors.bgMain, color: theme.colors.accent }}
+					>
+						.md
+					</code>{' '}
+					(native separators for the host OS) — nothing else, no description or formatting. Wrap the
+					directive with whatever prose, list markers, or context you want; the agent reads the file
+					directly. Use this for heavy reference material only some sessions need. The path resolves
+					to bundled content; to honor your customizations on this tab, agents should fetch via{' '}
+					<code
+						className="prompts-help-code"
+						style={{ backgroundColor: theme.colors.bgMain, color: theme.colors.accent }}
+					>
+						maestro-cli prompts get &lt;name&gt;
+					</code>{' '}
+					instead.
 				</p>
 			</div>
 
@@ -241,7 +275,12 @@ export function MaestroPromptsTab({
 	const [promptsPath, setPromptsPath] = useState<string | null>(null);
 	const [isEditorExpanded, setIsEditorExpanded] = useState(false);
 	const [showHelp, setShowHelp] = useState(false);
+	const [isPreviewMode, setIsPreviewMode] = useState(false);
+	const [previewContent, setPreviewContent] = useState('');
+	const [isBuildingPreview, setIsBuildingPreview] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const activeSession = useActiveSession();
+	const conductorProfile = useSettingsStore((s) => s.conductorProfile);
 
 	const autocomplete = useTemplateAutocomplete({
 		textareaRef: textareaRef as React.RefObject<HTMLTextAreaElement>,
@@ -252,10 +291,14 @@ export function MaestroPromptsTab({
 		},
 	});
 
-	// Layered escape: help → expanded editor → list view → (modal closes)
+	// Layered escape: help → preview → expanded editor → list view → (modal closes)
 	const handleEscape = useCallback(() => {
 		if (showHelp) {
 			setShowHelp(false);
+			return true;
+		}
+		if (isPreviewMode) {
+			setIsPreviewMode(false);
 			return true;
 		}
 		if (isEditorExpanded) {
@@ -263,17 +306,71 @@ export function MaestroPromptsTab({
 			return true;
 		}
 		return false;
-	}, [showHelp, isEditorExpanded]);
+	}, [showHelp, isPreviewMode, isEditorExpanded]);
 
-	// Register escape handler with parent so escape navigates: help → expanded → list → close modal
+	// Register escape handler with parent so escape navigates: help → preview → expanded → list → close modal
 	useEffect(() => {
-		if (showHelp || isEditorExpanded) {
+		if (showHelp || isPreviewMode || isEditorExpanded) {
 			onEscapeHandled?.(handleEscape);
 		} else {
 			onEscapeHandled?.(null);
 		}
 		return () => onEscapeHandled?.(null);
-	}, [showHelp, isEditorExpanded, onEscapeHandled, handleEscape]);
+	}, [showHelp, isPreviewMode, isEditorExpanded, onEscapeHandled, handleEscape]);
+
+	// Exit preview mode when switching prompts or editing
+	useEffect(() => {
+		setIsPreviewMode(false);
+	}, [selectedPrompt?.id]);
+
+	const handleTogglePreview = useCallback(async () => {
+		if (isPreviewMode) {
+			setIsPreviewMode(false);
+			return;
+		}
+		if (!activeSession) {
+			setPreviewContent(
+				'Preview unavailable: no active agent session to resolve template variables against.'
+			);
+			setIsPreviewMode(true);
+			return;
+		}
+		setIsBuildingPreview(true);
+		try {
+			let gitBranch: string | undefined;
+			if (activeSession.isGitRepo) {
+				try {
+					const status = await gitService.getStatus(activeSession.cwd);
+					gitBranch = status.branch;
+				} catch {
+					// ignore
+				}
+			}
+			let historyFilePath: string | undefined;
+			try {
+				historyFilePath = (await window.maestro.history.getFilePath(activeSession.id)) || undefined;
+			} catch {
+				// ignore
+			}
+			const interpolated = substituteTemplateVariables(editedContent, {
+				session: activeSession as any,
+				gitBranch,
+				groupId: (activeSession as any).groupId,
+				historyFilePath,
+				conductorProfile,
+			});
+			setPreviewContent(interpolated);
+			setIsPreviewMode(true);
+		} catch (err) {
+			captureException(err instanceof Error ? err : new Error(String(err)), {
+				extra: { context: 'MaestroPromptsTab.togglePreview' },
+			});
+			setPreviewContent(`Preview failed: ${String(err)}`);
+			setIsPreviewMode(true);
+		} finally {
+			setIsBuildingPreview(false);
+		}
+	}, [isPreviewMode, activeSession, editedContent, conductorProfile]);
 
 	// Auto-dismiss success message after 3 seconds
 	useEffect(() => {
@@ -563,6 +660,26 @@ export function MaestroPromptsTab({
 											)}
 											<button
 												className="expand-toggle-button"
+												onClick={handleTogglePreview}
+												disabled={isBuildingPreview}
+												title={
+													isPreviewMode
+														? 'Exit preview (show editable source)'
+														: 'Preview with template variables resolved'
+												}
+												style={{
+													color: isPreviewMode ? theme.colors.accent : theme.colors.textDim,
+													borderColor: isPreviewMode ? theme.colors.accent : theme.colors.border,
+												}}
+											>
+												{isPreviewMode ? (
+													<EyeOff className="w-3.5 h-3.5" />
+												) : (
+													<Eye className="w-3.5 h-3.5" />
+												)}
+											</button>
+											<button
+												className="expand-toggle-button"
 												onClick={() => setIsEditorExpanded((prev) => !prev)}
 												title={isEditorExpanded ? 'Collapse editor' : 'Expand editor'}
 												style={{
@@ -613,27 +730,43 @@ export function MaestroPromptsTab({
 								)}
 
 								<div className="prompt-textarea-wrapper">
-									<textarea
-										ref={textareaRef}
-										className="prompt-textarea"
-										value={editedContent}
-										onChange={autocomplete.handleChange}
-										onKeyDown={(e) => {
-											autocomplete.handleKeyDown(e);
-										}}
-										spellCheck={false}
-										style={{
-											borderColor: theme.colors.border,
-											backgroundColor: theme.colors.bgMain,
-											color: theme.colors.textMain,
-										}}
-									/>
-									<TemplateAutocompleteDropdown
-										ref={autocomplete.autocompleteRef}
-										theme={theme}
-										state={autocomplete.autocompleteState}
-										onSelect={autocomplete.selectVariable}
-									/>
+									{isPreviewMode ? (
+										<textarea
+											className="prompt-textarea prompt-textarea-preview"
+											value={previewContent}
+											readOnly
+											spellCheck={false}
+											style={{
+												borderColor: theme.colors.accent,
+												backgroundColor: theme.colors.bgMain,
+												color: theme.colors.textMain,
+											}}
+										/>
+									) : (
+										<>
+											<textarea
+												ref={textareaRef}
+												className="prompt-textarea"
+												value={editedContent}
+												onChange={autocomplete.handleChange}
+												onKeyDown={(e) => {
+													autocomplete.handleKeyDown(e);
+												}}
+												spellCheck={false}
+												style={{
+													borderColor: theme.colors.border,
+													backgroundColor: theme.colors.bgMain,
+													color: theme.colors.textMain,
+												}}
+											/>
+											<TemplateAutocompleteDropdown
+												ref={autocomplete.autocompleteRef}
+												theme={theme}
+												state={autocomplete.autocompleteState}
+												onSelect={autocomplete.selectVariable}
+											/>
+										</>
+									)}
 								</div>
 
 								<div className="editor-actions">

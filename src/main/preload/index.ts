@@ -52,6 +52,7 @@ import { createTabNamingApi } from './tabNaming';
 import { createDirectorNotesApi } from './directorNotes';
 import { createCueApi } from './cue';
 import { createWakatimeApi } from './wakatime';
+import { createMaestroCliApi } from './maestroCli';
 import { createPromptsApi } from './prompts';
 
 // Expose protected methods that allow the renderer process to use
@@ -202,6 +203,8 @@ contextBridge.exposeInMainWorld('maestro', {
 	// WakaTime API (CLI check, API key validation)
 	wakatime: createWakatimeApi(),
 
+	// Maestro CLI API (status + install/update)
+	maestroCli: createMaestroCliApi(),
 	// Core Prompts API (view, edit, reset system prompts)
 	prompts: createPromptsApi(),
 });
@@ -282,6 +285,8 @@ export {
 	createCueApi,
 	// WakaTime
 	createWakatimeApi,
+	// Maestro CLI
+	createMaestroCliApi,
 	// Core Prompts
 	createPromptsApi,
 };
@@ -508,6 +513,10 @@ export type {
 	// From wakatime
 	WakatimeApi,
 } from './wakatime';
+export type {
+	// From maestroCli
+	MaestroCliApi,
+} from './maestroCli';
 export type {
 	// From prompts
 	PromptsApi,

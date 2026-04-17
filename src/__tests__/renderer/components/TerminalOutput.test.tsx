@@ -143,8 +143,10 @@ const createDefaultProps = (
 	activeFocus: 'main',
 	outputSearchOpen: false,
 	outputSearchQuery: '',
+	outputSearchRegex: false,
 	setOutputSearchOpen: vi.fn(),
 	setOutputSearchQuery: vi.fn(),
+	setOutputSearchRegex: vi.fn(),
 	setActiveFocus: vi.fn(),
 	setLightboxImage: vi.fn(),
 	inputRef: { current: null } as React.RefObject<HTMLTextAreaElement>,
@@ -265,7 +267,9 @@ describe('TerminalOutput', () => {
 			const props = createDefaultProps({ outputSearchOpen: true });
 			render(<TerminalOutput {...props} />);
 
-			expect(screen.getByPlaceholderText('Filter output... (Esc to close)')).toBeInTheDocument();
+			expect(
+				screen.getByPlaceholderText('Search output... (Enter: next, Shift+Enter: prev)')
+			).toBeInTheDocument();
 		});
 
 		it('calls setOutputSearchQuery when typing in search', async () => {
@@ -276,16 +280,20 @@ describe('TerminalOutput', () => {
 			});
 			render(<TerminalOutput {...props} />);
 
-			const searchInput = screen.getByPlaceholderText('Filter output... (Esc to close)');
+			const searchInput = screen.getByPlaceholderText(
+				'Search output... (Enter: next, Shift+Enter: prev)'
+			);
 			fireEvent.change(searchInput, { target: { value: 'test query' } });
 
 			expect(setOutputSearchQuery).toHaveBeenCalledWith('test query');
 		});
 
-		it('filters logs based on search query', () => {
+		it('keeps all logs visible when searching (highlight-only, no filter)', () => {
+			// NOTE: use a source that isn't collapsed into response groups (stdout/stderr
+			// are merged by `collapsedLogs`), so each log produces its own DOM item.
 			const logs: LogEntry[] = [
-				createLogEntry({ text: 'This contains hello world', source: 'stdout' }),
-				createLogEntry({ text: 'This does not match', source: 'stdout' }),
+				createLogEntry({ text: 'This contains hello world', source: 'tool' }),
+				createLogEntry({ text: 'This does not match', source: 'tool' }),
 			];
 
 			const session = createDefaultSession({
@@ -300,9 +308,9 @@ describe('TerminalOutput', () => {
 
 			const { container } = render(<TerminalOutput {...props} />);
 
-			// Only one log should match the filter
+			// All logs should remain visible; search highlights rather than filters.
 			const logItems = container.querySelectorAll('[data-log-index]');
-			expect(logItems.length).toBe(1);
+			expect(logItems.length).toBe(2);
 		});
 
 		it('opens search when Cmd+F is pressed', () => {
@@ -332,7 +340,7 @@ describe('TerminalOutput', () => {
 			render(<TerminalOutput {...props} />);
 
 			expect(
-				screen.queryByPlaceholderText('Filter output... (Esc to close)')
+				screen.queryByPlaceholderText('Search output... (Enter: next, Shift+Enter: prev)')
 			).not.toBeInTheDocument();
 		});
 
@@ -345,7 +353,9 @@ describe('TerminalOutput', () => {
 			});
 			render(<TerminalOutput {...props} />);
 
-			const searchInput = screen.getByPlaceholderText('Filter output... (Esc to close)');
+			const searchInput = screen.getByPlaceholderText(
+				'Search output... (Enter: next, Shift+Enter: prev)'
+			);
 
 			// The input should show the current query value
 			expect(searchInput).toHaveValue('initial');
@@ -389,6 +399,22 @@ describe('TerminalOutput', () => {
 			unmount();
 
 			expect(mockUnregisterLayer).toHaveBeenCalled();
+		});
+
+		it('shows "Plain Text" label on regex toggle when in plain mode', () => {
+			const props = createDefaultProps({ outputSearchOpen: true, outputSearchRegex: false });
+			render(<TerminalOutput {...props} />);
+
+			expect(screen.getByText('Plain Text')).toBeInTheDocument();
+			expect(screen.queryByText('Regex')).not.toBeInTheDocument();
+		});
+
+		it('shows "Regex" label on regex toggle when in regex mode', () => {
+			const props = createDefaultProps({ outputSearchOpen: true, outputSearchRegex: true });
+			render(<TerminalOutput {...props} />);
+
+			expect(screen.getByText('Regex')).toBeInTheDocument();
+			expect(screen.queryByText('Plain Text')).not.toBeInTheDocument();
 		});
 	});
 

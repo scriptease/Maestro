@@ -144,8 +144,16 @@ export function registerCueHandlers(deps: CueHandlerDependencies): void {
 		'cue:triggerSubscription',
 		withIpcErrorLogging(
 			handlerOpts('triggerSubscription'),
-			async (options: { subscriptionName: string; prompt?: string }): Promise<boolean> => {
-				return requireEngine().triggerSubscription(options.subscriptionName, options.prompt);
+			async (options: {
+				subscriptionName: string;
+				prompt?: string;
+				sourceAgentId?: string;
+			}): Promise<boolean> => {
+				return requireEngine().triggerSubscription(
+					options.subscriptionName,
+					options.prompt,
+					options.sourceAgentId
+				);
 			}
 		)
 	);
@@ -223,12 +231,37 @@ export function registerCueHandlers(deps: CueHandlerDependencies): void {
 				if (options.promptFiles) {
 					const promptsBase = path.resolve(options.projectRoot, '.maestro/prompts');
 					for (const [relativePath, content] of Object.entries(options.promptFiles)) {
+						// Reject obviously malformed keys before path.resolve — empty
+						// strings would resolve to the project root itself, and
+						// pre-normalized `..` segments make the containment check
+						// harder to reason about even though resolve normalizes them.
+						if (typeof relativePath !== 'string' || relativePath.length === 0) {
+							throw new Error('cue:writeYaml: promptFiles key must be a non-empty string');
+						}
 						if (path.isAbsolute(relativePath)) {
 							throw new Error(
 								`cue:writeYaml: promptFiles key must be a relative path, got "${relativePath}"`
 							);
 						}
-						const target = path.resolve(options.projectRoot, relativePath);
+						// Normalize backslashes to forward-slashes BEFORE path.resolve on
+						// non-Windows. A Windows-authored YAML shipping with a key like
+						// `prompts\sub.md` would otherwise create a literal file called
+						// `prompts\sub.md` on macOS/Linux, silently orphaning the real
+						// prompts/ directory next save.
+						const normalizedKey =
+							path.sep === '/' ? relativePath.replace(/\\/g, '/') : relativePath;
+						// Reject both '..' (escapes the prompts dir) and '.' (harmless
+						// but ambiguous — `foo/.` and `foo` refer to the same file,
+						// so accepting both breaks the keep-set invariant that
+						// distinct keys map to distinct files on disk).
+						if (
+							normalizedKey.split(/[/\\]/).some((segment) => segment === '..' || segment === '.')
+						) {
+							throw new Error(
+								`cue:writeYaml: promptFiles key "${relativePath}" contains "." or ".." segment`
+							);
+						}
+						const target = path.resolve(options.projectRoot, normalizedKey);
 						// Must resolve strictly INSIDE .maestro/prompts/. The earlier
 						// check allowed `target === promptsBase` which would attempt
 						// to write to the directory path itself.
@@ -244,8 +277,8 @@ export function registerCueHandlers(deps: CueHandlerDependencies): void {
 						if (path.extname(target).toLowerCase() !== '.md') {
 							throw new Error(`cue:writeYaml: promptFiles key "${relativePath}" must end with .md`);
 						}
-						writeCuePromptFile(options.projectRoot, relativePath, content);
-						keepPaths.add(relativePath);
+						writeCuePromptFile(options.projectRoot, normalizedKey, content);
+						keepPaths.add(normalizedKey);
 					}
 				}
 

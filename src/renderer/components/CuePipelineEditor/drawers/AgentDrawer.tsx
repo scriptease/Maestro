@@ -1,5 +1,5 @@
 import { memo, useState, useMemo, useRef, useEffect } from 'react';
-import { Bot, Search, X } from 'lucide-react';
+import { Bot, Search, Terminal, X } from 'lucide-react';
 import type { Theme } from '../../../types';
 
 export interface AgentSessionInfo {
@@ -283,6 +283,74 @@ export const AgentDrawer = memo(function AgentDrawer({
 					>
 						{search ? 'No agents match' : 'No agents available'}
 					</div>
+				)}
+
+				{/* CLI Output node */}
+				{!search.trim() && (
+					<>
+						<div
+							style={{
+								height: 1,
+								backgroundColor: theme.colors.border,
+								margin: '8px 4px',
+							}}
+						/>
+						<div
+							style={{
+								color: theme.colors.textDim,
+								fontSize: 10,
+								fontWeight: 600,
+								textTransform: 'uppercase',
+								letterSpacing: '0.05em',
+								padding: '4px 4px 4px',
+							}}
+						>
+							Output
+						</div>
+						<div
+							draggable
+							onDragStart={(e) => {
+								e.dataTransfer.setData(
+									'application/cue-pipeline',
+									JSON.stringify({ type: 'cli_output' })
+								);
+								e.dataTransfer.effectAllowed = 'move';
+							}}
+							style={{
+								display: 'flex',
+								alignItems: 'center',
+								gap: 8,
+								padding: '8px 10px',
+								marginBottom: 4,
+								borderRadius: 6,
+								backgroundColor: theme.colors.bgActivity,
+								cursor: 'grab',
+								transition: 'filter 0.15s',
+							}}
+							onMouseEnter={(e) => {
+								(e.currentTarget as HTMLElement).style.filter = 'brightness(1.2)';
+							}}
+							onMouseLeave={(e) => {
+								(e.currentTarget as HTMLElement).style.filter = 'brightness(1)';
+							}}
+						>
+							<Terminal size={14} style={{ color: theme.colors.textDim, flexShrink: 0 }} />
+							<div style={{ flex: 1, minWidth: 0 }}>
+								<div
+									style={{
+										color: theme.colors.textMain,
+										fontSize: 12,
+										fontWeight: 500,
+									}}
+								>
+									CLI Output
+								</div>
+								<div style={{ color: theme.colors.textDim, fontSize: 10 }}>
+									Route agent output to a session via CLI
+								</div>
+							</div>
+						</div>
+					</>
 				)}
 			</div>
 		</div>

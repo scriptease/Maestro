@@ -139,14 +139,23 @@ export class CueEngine {
 		});
 		this.dispatchService = createCueDispatchService({
 			getSessions: deps.getSessions,
-			executeRun: (sessionId, prompt, event, subscriptionName, outputPrompt, chainDepth) => {
+			executeRun: (
+				sessionId,
+				prompt,
+				event,
+				subscriptionName,
+				outputPrompt,
+				chainDepth,
+				cliOutput
+			) => {
 				this.runManager.execute(
 					sessionId,
 					prompt,
 					event,
 					subscriptionName,
 					outputPrompt,
-					chainDepth
+					chainDepth,
+					cliOutput
 				);
 			},
 			onLog: deps.onLog,
@@ -267,7 +276,9 @@ export class CueEngine {
 		}
 
 		this.enabled = true;
-		this.deps.onLog('cue', '[CUE] Engine started');
+		// Data payload triggers a renderer refresh via cue:activityUpdate,
+		// clearing any stale queue counters left over from a prior stop.
+		this.deps.onLog('cue', '[CUE] Engine started', { type: 'engineStarted' });
 
 		const sessions = this.deps.getSessions();
 		for (const session of sessions) {
@@ -299,7 +310,10 @@ export class CueEngine {
 		this.heartbeat.stop();
 		this.recoveryService.shutdown();
 
-		this.deps.onLog('cue', '[CUE] Engine stopped');
+		// Data payload triggers a renderer refresh via cue:activityUpdate so
+		// the queue counters, active runs list, and indicators reflect the
+		// cleared engine state instead of waiting for the next 10s poll.
+		this.deps.onLog('cue', '[CUE] Engine stopped', { type: 'engineStopped' });
 	}
 
 	/** Re-read the YAML for a specific session, tearing down old subscriptions */
@@ -375,7 +389,11 @@ export class CueEngine {
 	 * Creates a synthetic event and dispatches through the normal execution path.
 	 * Returns true if the subscription was found and triggered.
 	 */
-	triggerSubscription(subscriptionName: string, promptOverride?: string): boolean {
+	triggerSubscription(
+		subscriptionName: string,
+		promptOverride?: string,
+		sourceAgentId?: string
+	): boolean {
 		for (const [sessionId, state] of this.registry.snapshot()) {
 			for (const sub of state.config.subscriptions) {
 				if (sub.name !== subscriptionName) continue;
@@ -383,6 +401,7 @@ export class CueEngine {
 
 				const event = createCueEvent(sub.event, sub.name, {
 					manual: true,
+					...(sourceAgentId ? { sourceAgentId } : {}),
 					...(promptOverride ? { cliPrompt: promptOverride } : {}),
 				});
 

@@ -45,10 +45,16 @@ class TunnelManager {
 				'TunnelManager'
 			);
 
-			this.process = spawn(cloudflaredBinary, ['tunnel', '--url', `http://localhost:${port}`]);
+			this.process = spawn(cloudflaredBinary, [
+				'tunnel',
+				'--url',
+				`http://localhost:${port}`,
+				'--protocol',
+				'http2',
+			]);
 
 			let resolved = false;
-			let stderrBuffer = '';
+			let outputBuffer = '';
 
 			// Timeout after 30 seconds
 			const timeout = setTimeout(() => {
@@ -60,23 +66,27 @@ class TunnelManager {
 				}
 			}, 30000);
 
-			// Cloudflare outputs the URL to stderr
-			// Accumulate buffer in case URL is split across chunks
-			this.process.stderr?.on('data', (data: Buffer) => {
+			const handleOutput = (data: Buffer) => {
 				const output = data.toString();
-				stderrBuffer += output;
+				outputBuffer += output;
 				logger.info(`cloudflared output: ${output}`, 'TunnelManager');
 
 				// Look for the trycloudflare.com URL in accumulated buffer
-				const urlMatch = stderrBuffer.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
+				const urlMatch = outputBuffer.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
 				if (urlMatch && !resolved) {
 					this.url = urlMatch[0];
 					clearTimeout(timeout);
 					resolved = true;
+					this.process?.stderr?.off('data', handleOutput);
+					this.process?.stdout?.off('data', handleOutput);
 					logger.info(`Tunnel established: ${this.url}`, 'TunnelManager');
 					resolve({ success: true, url: this.url });
 				}
-			});
+			};
+
+			// cloudflared outputs the URL to stderr, but also listen on stdout as a fallback
+			this.process.stderr?.on('data', handleOutput);
+			this.process.stdout?.on('data', handleOutput);
 
 			this.process.on('error', (err) => {
 				clearTimeout(timeout);

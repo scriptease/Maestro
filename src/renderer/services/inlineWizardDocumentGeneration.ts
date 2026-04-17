@@ -56,14 +56,6 @@ function getWizardInlineIterateGenerationPrompt(): string {
 }
 import { deriveSshRemoteId } from '../components/Wizard/services/phaseGenerator';
 
-import { PLAYBOOKS_DIR } from '../../shared/maestro-paths';
-
-/**
- * Auto Run folder name constant.
- * @deprecated Import PLAYBOOKS_DIR from shared/maestro-paths instead.
- */
-export const AUTO_RUN_FOLDER_NAME = PLAYBOOKS_DIR;
-
 /**
  * Generation timeout in milliseconds (20 minutes).
  */

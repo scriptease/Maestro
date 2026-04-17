@@ -88,6 +88,9 @@ export interface CueSubscription {
 	 *  agents later in the chain can access it via per-source template variables
 	 *  like {{CUE_OUTPUT_<NAME>}}. */
 	forward_output_from?: string[];
+	cli_output?: {
+		target: string;
+	};
 }
 
 /** Global Cue settings */

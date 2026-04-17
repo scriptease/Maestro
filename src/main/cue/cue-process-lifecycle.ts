@@ -70,8 +70,10 @@ const activeProcesses = new Map<string, CueActiveProcess>();
 /**
  * Extract clean human-readable text from agent stdout.
  * For agents that output JSON/NDJSON (like OpenCode --format json), parses each
- * line and collects text from 'result' events. Falls back to raw stdout when no
- * parser is available or no result-text events are found (e.g. plain-text agents).
+ * line and collects text from 'result' events. When 'result' events have empty
+ * text (e.g. Claude Code sometimes returns result:""), falls back to collecting
+ * text from 'assistant' (partial) events. Falls back to raw stdout when no
+ * parser is available or no text events are found (e.g. plain-text agents).
  */
 function extractCleanStdout(rawStdout: string, toolType: string): string {
 	if (!rawStdout.trim()) {
@@ -83,16 +85,32 @@ function extractCleanStdout(rawStdout: string, toolType: string): string {
 		return rawStdout;
 	}
 
-	const textParts: string[] = [];
+	const resultParts: string[] = [];
+	const assistantTextByMessage = new Map<string, string>();
+	const assistantTextWithoutId: string[] = [];
 	for (const line of rawStdout.split('\n')) {
 		if (!line.trim()) continue;
 		const event = parser.parseJsonLine(line);
 		if (event?.type === 'result' && event.text) {
-			textParts.push(event.text);
+			resultParts.push(event.text);
+		} else if (event?.type === 'text' && event.isPartial && event.text) {
+			const raw = event.raw as { message?: { id?: string } } | undefined;
+			const msgId = raw?.message?.id;
+			if (msgId) {
+				const existing = assistantTextByMessage.get(msgId) ?? '';
+				if (event.text.length > existing.length) {
+					assistantTextByMessage.set(msgId, event.text);
+				}
+			} else {
+				assistantTextWithoutId.push(event.text);
+			}
 		}
 	}
 
-	return textParts.length > 0 ? textParts.join('\n') : rawStdout;
+	if (resultParts.length > 0) return resultParts.join('\n');
+	const deduped = [...assistantTextByMessage.values(), ...assistantTextWithoutId];
+	if (deduped.length > 0) return deduped.join('\n');
+	return rawStdout;
 }
 
 /**

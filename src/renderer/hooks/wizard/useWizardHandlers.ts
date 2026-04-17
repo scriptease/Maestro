@@ -26,7 +26,7 @@ import type {
 	WizardMode,
 	SessionWizardState,
 } from '../../types';
-import { useSessionStore, selectActiveSession } from '../../stores/sessionStore';
+import { useSessionStore, selectActiveSession, selectSessionById } from '../../stores/sessionStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useUIStore } from '../../stores/uiStore';
 import { getModalActions, useModalStore } from '../../stores/modalStore';
@@ -59,7 +59,7 @@ function getAutorunSynopsisPrompt(): string {
 }
 import { formatRelativeTime } from '../../../shared/formatters';
 import { gitService } from '../../services/git';
-import { AUTO_RUN_FOLDER_NAME } from '../../components/Wizard';
+import { PLAYBOOKS_DIR } from '../../../shared/maestro-paths';
 import { DEFAULT_BATCH_PROMPT } from '../../components/BatchRunnerModal';
 import type { PreviousUIState, UseInlineWizardReturn } from '../batch/useInlineWizard';
 import type { WizardState } from '../../components/Wizard/WizardContext';
@@ -196,9 +196,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 	// Slash command discovery effect
 	// ========================================================================
 	useEffect(() => {
-		const currentSession = useSessionStore
-			.getState()
-			.sessions.find((s) => s.id === activeSession?.id);
+		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession) return;
 		if (currentSession.toolType !== 'claude-code' && currentSession.toolType !== 'opencode') return;
 		if (currentSession.agentCommands && currentSession.agentCommands.length > 0) return;
@@ -405,9 +403,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 	// ========================================================================
 	const sendWizardMessageWithThinking = useCallback(
 		async (content: string, images?: string[]) => {
-			const currentSession = useSessionStore
-				.getState()
-				.sessions.find((s) => s.id === activeSession?.id);
+			const currentSession = selectActiveSession(useSessionStore.getState());
 			if (!currentSession) return;
 
 			const activeTab = getActiveTab(currentSession);
@@ -513,9 +509,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 	// handleHistoryCommand — /history slash command
 	// ========================================================================
 	const handleHistoryCommand = useCallback(async () => {
-		const currentSession = useSessionStore
-			.getState()
-			.sessions.find((s) => s.id === activeSession?.id);
+		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession) {
 			console.warn('[handleHistoryCommand] No active session');
 			return;
@@ -601,9 +595,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 				const effectiveGroupId =
 					currentSession.groupId ||
 					(currentSession.parentSessionId
-						? useSessionStore
-								.getState()
-								.sessions.find((s) => s.id === currentSession.parentSessionId)?.groupId
+						? selectSessionById(currentSession.parentSessionId)(useSessionStore.getState())?.groupId
 						: undefined);
 				const group = effectiveGroupId
 					? currentGroups.find((g) => g.id === effectiveGroupId)
@@ -707,9 +699,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 	// handleSkillsCommand — /skills slash command
 	// ========================================================================
 	const handleSkillsCommand = useCallback(async () => {
-		const currentSession = useSessionStore
-			.getState()
-			.sessions.find((s) => s.id === activeSession?.id);
+		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession) {
 			console.warn('[handleSkillsCommand] No active session');
 			return;
@@ -813,9 +803,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 	// ========================================================================
 	const handleWizardCommand = useCallback(
 		(args: string) => {
-			const currentSession = useSessionStore
-				.getState()
-				.sessions.find((s) => s.id === activeSession?.id);
+			const currentSession = selectActiveSession(useSessionStore.getState());
 			if (!currentSession) {
 				console.warn('[handleWizardCommand] No active session');
 				return;
@@ -883,9 +871,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 	// handleLaunchWizardTab — launches wizard in a new tab
 	// ========================================================================
 	const handleLaunchWizardTab = useCallback(() => {
-		const currentSession = useSessionStore
-			.getState()
-			.sessions.find((s) => s.id === activeSession?.id);
+		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession) {
 			console.warn('[handleLaunchWizardTab] No active session');
 			return;
@@ -965,9 +951,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 	// handleWizardComplete — converts wizard tab to normal session
 	// ========================================================================
 	const handleWizardComplete = useCallback(() => {
-		const currentSession = useSessionStore
-			.getState()
-			.sessions.find((s) => s.id === activeSession?.id);
+		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession) return;
 		const activeTabLocal = getActiveTab(currentSession);
 		const wizState = activeTabLocal?.wizardState;
@@ -1035,9 +1019,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 	// handleWizardLetsGo — generates documents for active tab
 	// ========================================================================
 	const handleWizardLetsGo = useCallback(() => {
-		const currentSession = useSessionStore
-			.getState()
-			.sessions.find((s) => s.id === activeSession?.id);
+		const currentSession = selectActiveSession(useSessionStore.getState());
 		const activeTabLocal = currentSession ? getActiveTab(currentSession) : null;
 		if (activeTabLocal) {
 			generateInlineWizardDocuments(undefined, activeTabLocal.id);
@@ -1048,9 +1030,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 	// handleToggleWizardShowThinking
 	// ========================================================================
 	const handleToggleWizardShowThinking = useCallback(() => {
-		const currentSession = useSessionStore
-			.getState()
-			.sessions.find((s) => s.id === activeSession?.id);
+		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession) return;
 		const activeTabLocal = getActiveTab(currentSession);
 		if (!activeTabLocal?.wizardState) return;
@@ -1156,7 +1136,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 				showThinking: currentDefaults.defaultShowThinking,
 			};
 
-			const autoRunFolderPath = `${directoryPath}/${AUTO_RUN_FOLDER_NAME}`;
+			const autoRunFolderPath = `${directoryPath}/${PLAYBOOKS_DIR}`;
 			const firstDoc = generatedDocuments[0];
 			const autoRunSelectedFile = firstDoc ? firstDoc.filename.replace(/\.md$/, '') : undefined;
 

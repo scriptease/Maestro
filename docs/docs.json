@@ -78,8 +78,9 @@
 					"usage-dashboard",
 					"symphony",
 					{
-						"page": "maestro-cue",
+						"group": "Maestro Cue",
 						"pages": [
+							"maestro-cue",
 							"maestro-cue-configuration",
 							"maestro-cue-events",
 							"maestro-cue-advanced",

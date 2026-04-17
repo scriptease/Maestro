@@ -18,80 +18,8 @@ import { logger } from '../../main/utils/logger';
 import { parseSynopsis } from '../../shared/synopsis';
 import { generateUUID } from '../../shared/uuid';
 import { formatElapsedTime } from '../../shared/formatters';
-import { getPromptFilename, PROMPT_IDS } from '../../shared/promptDefinitions';
-import { getConfigDirectory } from './storage';
-import fs from 'fs/promises';
-import path from 'path';
-
-// CLI prompt cache (loaded once on first use)
-const cliPromptCache = new Map<string, string>();
-
-/**
- * Try to load a user-customized prompt from core-prompts-customizations.json.
- * Returns the customized content if found and marked as modified, else null.
- */
-async function getCustomizedPrompt(id: string): Promise<string | null> {
-	try {
-		const customizationsPath = path.join(getConfigDirectory(), 'core-prompts-customizations.json');
-		const raw = await fs.readFile(customizationsPath, 'utf-8');
-		const data = JSON.parse(raw);
-		const entry = data?.prompts?.[id];
-		if (entry?.isModified && typeof entry?.content === 'string') {
-			return entry.content;
-		}
-	} catch {
-		// No customizations file or parse error — fall through to bundled
-	}
-	return null;
-}
-
-async function getCliPrompt(id: string): Promise<string> {
-	if (cliPromptCache.has(id)) {
-		return cliPromptCache.get(id)!;
-	}
-
-	// Check user customizations first (same precedence as Electron prompt-manager)
-	const customized = await getCustomizedPrompt(id);
-	if (customized !== null) {
-		cliPromptCache.set(id, customized);
-		return customized;
-	}
-
-	// Resolve filename from shared definitions (single source of truth)
-	const filename = getPromptFilename(id);
-
-	// Try multiple resolution strategies since the CLI runs in different contexts:
-	// 1. Dev mode: __dirname is dist/cli/services/ → project root's src/prompts/
-	// 2. Packaged Electron app: process.resourcesPath/prompts/core/
-	// 3. Standalone CLI (maestro-cli.js bundled at Resources/): resolve relative to script
-	const projectRoot = path.resolve(__dirname, '..', '..', '..');
-	const candidates = [path.join(projectRoot, 'src', 'prompts', filename)];
-
-	// process.resourcesPath is Electron-only; guard against standalone Node.js
-	if (typeof process !== 'undefined' && (process as any).resourcesPath) {
-		candidates.push(path.join((process as any).resourcesPath, 'prompts', 'core', filename));
-	}
-
-	// Standalone CLI bundled alongside Resources/prompts/core/
-	candidates.push(
-		path.join(path.dirname(process.argv[1] || __dirname), 'prompts', 'core', filename)
-	);
-	candidates.push(path.join(__dirname, '..', 'prompts', 'core', filename));
-
-	for (const candidate of candidates) {
-		try {
-			const content = await fs.readFile(candidate, 'utf-8');
-			cliPromptCache.set(id, content);
-			return content;
-		} catch {
-			// Try next candidate
-		}
-	}
-
-	throw new Error(
-		`Failed to load prompt "${id}" (${filename}). Searched: ${candidates.join(', ')}`
-	);
-}
+import { PROMPT_IDS } from '../../shared/promptDefinitions';
+import { getCliPrompt } from './prompt-loader';
 
 /**
  * Get the current git branch for a directory
