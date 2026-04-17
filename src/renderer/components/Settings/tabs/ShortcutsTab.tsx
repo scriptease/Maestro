@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
+import { Search } from 'lucide-react';
 import { useSettings } from '../../../hooks';
 import { formatShortcutKeys } from '../../../utils/shortcutFormatter';
 import type { Theme, Shortcut } from '../../../types';
@@ -22,12 +23,15 @@ export function ShortcutsTab({ theme, hasNoAgents, onRecordingChange }: Shortcut
 
 	const [recordingId, setRecordingId] = useState<string | null>(null);
 	const [shortcutsFilter, setShortcutsFilter] = useState('');
+	const [recordingFilterShortcut, setRecordingFilterShortcut] = useState(false);
+	const [filterShortcutKeys, setFilterShortcutKeys] = useState<string[]>([]);
 	const shortcutsFilterRef = useRef<HTMLInputElement>(null);
+	const filterShortcutButtonRef = useRef<HTMLButtonElement>(null);
 
 	// Notify parent of recording state changes (for escape handler coordination)
 	useEffect(() => {
-		onRecordingChange?.(!!recordingId);
-	}, [recordingId, onRecordingChange]);
+		onRecordingChange?.(!!recordingId || recordingFilterShortcut);
+	}, [recordingId, recordingFilterShortcut, onRecordingChange]);
 
 	// Auto-focus filter input on mount
 	useEffect(() => {
@@ -86,14 +90,52 @@ export function ShortcutsTab({ theme, hasNoAgents, onRecordingChange }: Shortcut
 		setRecordingId(null);
 	};
 
+	const handleFilterRecord = (e: React.KeyboardEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+
+		if (e.key === 'Escape') {
+			setRecordingFilterShortcut(false);
+			setFilterShortcutKeys([]);
+			return;
+		}
+
+		const keys = [];
+		if (e.metaKey) keys.push('Meta');
+		if (e.ctrlKey) keys.push('Ctrl');
+		if (e.altKey) keys.push('Alt');
+		if (e.shiftKey) keys.push('Shift');
+		if (['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) return;
+
+		let mainKey = e.key;
+		if (e.altKey && e.code) {
+			if (e.code.startsWith('Key')) {
+				mainKey = e.code.replace('Key', '').toLowerCase();
+			} else if (e.code.startsWith('Digit')) {
+				mainKey = e.code.replace('Digit', '');
+			} else {
+				mainKey = e.key;
+			}
+		}
+		keys.push(mainKey);
+
+		setFilterShortcutKeys(keys);
+		setRecordingFilterShortcut(false);
+	};
+
 	const allShortcuts = [
 		...Object.values(shortcuts).map((sc) => ({ ...sc, isTabShortcut: false })),
 		...Object.values(tabShortcuts).map((sc) => ({ ...sc, isTabShortcut: true })),
 	];
 	const totalShortcuts = allShortcuts.length;
-	const filteredShortcuts = allShortcuts.filter((sc) =>
-		sc.label.toLowerCase().includes(shortcutsFilter.toLowerCase())
-	);
+	const filteredShortcuts = allShortcuts.filter((sc) => {
+		if (filterShortcutKeys.length > 0) {
+			const sortedFilter = [...filterShortcutKeys].sort().join('+');
+			const sortedKeys = [...sc.keys].sort().join('+');
+			return sortedKeys === sortedFilter;
+		}
+		return sc.label.toLowerCase().includes(shortcutsFilter.toLowerCase());
+	});
 	const filteredCount = filteredShortcuts.length;
 
 	// Group shortcuts by category
@@ -150,24 +192,75 @@ export function ShortcutsTab({ theme, hasNoAgents, onRecordingChange }: Shortcut
 					Note: Most functionality is unavailable until you've created your first agent.
 				</p>
 			)}
-			<div className="flex items-center gap-2 mb-3">
+			<div className="flex items-stretch gap-2 mb-3">
 				<input
 					ref={shortcutsFilterRef}
 					type="text"
 					value={shortcutsFilter}
-					onChange={(e) => setShortcutsFilter(e.target.value)}
+					onChange={(e) => {
+						setShortcutsFilter(e.target.value);
+						setFilterShortcutKeys([]);
+					}}
 					placeholder="Filter shortcuts..."
 					className="flex-1 px-3 py-2 rounded border bg-transparent outline-none text-sm"
 					style={{ borderColor: theme.colors.border, color: theme.colors.textMain }}
 				/>
+				<button
+					ref={filterShortcutButtonRef}
+					onClick={() => {
+						if (filterShortcutKeys.length > 0) {
+							setFilterShortcutKeys([]);
+							setRecordingFilterShortcut(false);
+						} else {
+							setRecordingFilterShortcut(true);
+							filterShortcutButtonRef.current?.focus();
+						}
+					}}
+					onKeyDownCapture={(e) => {
+						if (recordingFilterShortcut) {
+							handleFilterRecord(e);
+						}
+					}}
+					className={`px-3 py-2 rounded border text-xs font-mono whitespace-nowrap text-center transition-colors ${recordingFilterShortcut ? 'ring-2' : ''}`}
+					style={
+						{
+							borderColor:
+								recordingFilterShortcut || filterShortcutKeys.length > 0
+									? theme.colors.accent
+									: theme.colors.border,
+							backgroundColor:
+								recordingFilterShortcut || filterShortcutKeys.length > 0
+									? theme.colors.accentDim
+									: theme.colors.bgActivity,
+							color:
+								recordingFilterShortcut || filterShortcutKeys.length > 0
+									? theme.colors.accent
+									: theme.colors.textDim,
+							'--tw-ring-color': theme.colors.accent,
+						} as React.CSSProperties
+					}
+				>
+					{recordingFilterShortcut ? (
+						'Press keys...'
+					) : filterShortcutKeys.length > 0 ? (
+						formatShortcutKeys(filterShortcutKeys)
+					) : (
+						<span className="flex items-center gap-1">
+							<Search className="w-3 h-3" />
+							By Key
+						</span>
+					)}
+				</button>
 				<span
-					className="text-xs px-2 py-1.5 rounded font-medium"
+					className="text-xs px-2 rounded font-medium flex items-center"
 					style={{
 						backgroundColor: theme.colors.bgActivity,
 						color: theme.colors.textDim,
 					}}
 				>
-					{shortcutsFilter ? `${filteredCount} / ${totalShortcuts}` : totalShortcuts}
+					{shortcutsFilter || filterShortcutKeys.length > 0
+						? `${filteredCount} / ${totalShortcuts}`
+						: totalShortcuts}
 				</span>
 			</div>
 			<p className="text-xs opacity-50 mb-3" style={{ color: theme.colors.textDim }}>
