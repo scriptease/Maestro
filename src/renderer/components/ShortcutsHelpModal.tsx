@@ -262,11 +262,11 @@ export function ShortcutsHelpModal({
 			footer={footer}
 			initialFocusRef={searchInputRef}
 		>
-			<div className="space-y-2 max-h-[400px] overflow-y-auto scrollbar-thin -my-2">
+			<div className="space-y-2 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-track-transparent -mr-6 pr-6 -my-2">
 				{filteredShortcuts.map((sc, i) => {
 					const isUsed = usedShortcutIds.has(sc.id);
 					return (
-						<div key={i} className="flex justify-between items-center text-sm gap-2">
+						<div key={i} className="flex justify-between items-center text-sm gap-4">
 							<div className="flex items-center gap-1.5 min-w-0 flex-1">
 								{keyboardMasteryStats && (
 									<span className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
