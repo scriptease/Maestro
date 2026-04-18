@@ -34,6 +34,7 @@ import type { CueSettings } from '../../../shared/cue';
 import { TriggerNode, type TriggerNodeDataProps } from './nodes/TriggerNode';
 import { AgentNode, type AgentNodeDataProps } from './nodes/AgentNode';
 import { CommandNode, type CommandNodeDataProps } from './nodes/CommandNode';
+import { ErrorNode } from './nodes/ErrorNode';
 import { edgeTypes } from './edges/PipelineEdge';
 import { TriggerDrawer } from './drawers/TriggerDrawer';
 import { AgentDrawer } from './drawers/AgentDrawer';
@@ -46,6 +47,7 @@ const nodeTypes = {
 	trigger: TriggerNode,
 	agent: AgentNode,
 	command: CommandNode,
+	error: ErrorNode,
 };
 
 export interface PipelineCanvasProps {
@@ -303,6 +305,11 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 						if (node.type === 'command') {
 							const data = node.data as CommandNodeDataProps;
 							return data.pipelineColor ?? theme.colors.accent;
+						}
+						// Error nodes (unresolved agent/source) stand out in the
+						// minimap so the user spots them when zoomed out.
+						if (node.type === 'error') {
+							return theme.colors.error ?? '#ef4444';
 						}
 						return theme.colors.accent;
 					}}
