@@ -830,17 +830,19 @@ const LogItemComponent = memo(
 								<Save className="w-3.5 h-3.5" />
 							</button>
 						)}
-						{/* Fork conversation from this message - AI and user messages only */}
-						{(log.source === 'ai' || log.source === 'user') && isAIMode && onForkConversation && (
-							<button
-								onClick={() => onForkConversation(log.id)}
-								className="p-1.5 rounded opacity-0 group-hover:opacity-50 hover:!opacity-100"
-								style={{ color: theme.colors.textDim }}
-								title="Fork conversation from here"
-							>
-								<GitFork className="w-3.5 h-3.5" />
-							</button>
-						)}
+						{/* Fork conversation — user messages and AI responses (source='stdout' in AI mode, or 'ai' if ever set) */}
+						{(log.source === 'user' || log.source === 'ai' || log.source === 'stdout') &&
+							isAIMode &&
+							onForkConversation && (
+								<button
+									onClick={() => onForkConversation(log.id)}
+									className="p-1.5 rounded opacity-0 group-hover:opacity-50 hover:!opacity-100"
+									style={{ color: theme.colors.textDim }}
+									title="Fork conversation from here"
+								>
+									<GitFork className="w-3.5 h-3.5" />
+								</button>
+							)}
 						{/* Publish to GitHub Gist - only for AI responses when gh CLI available */}
 						{log.source !== 'user' && isAIMode && ghCliAvailable && onPublishGist && (
 							<button

@@ -28,7 +28,10 @@ export function useForkConversation(
 			const slicedLogs = sourceTab.logs.slice(0, rawLogIndex + 1);
 			if (slicedLogs.length === 0) return;
 
-			// 2. Format sliced logs as context (user, ai, stdout, and tool sources)
+			// 2. Format sliced logs as context (user, ai, stdout, and tool sources).
+			//    In AI mode, AI response text is stored with source='stdout'
+			//    (see useBatchedSessionUpdates), so stdout maps to 'Assistant' here.
+			//    Only source='tool' represents actual tool output.
 			const formattedContext = slicedLogs
 				.filter(
 					(log) =>
@@ -41,11 +44,7 @@ export function useForkConversation(
 				)
 				.map((log) => {
 					const role =
-						log.source === 'user'
-							? 'User'
-							: log.source === 'stdout' || log.source === 'tool'
-								? 'Tool Output'
-								: 'Assistant';
+						log.source === 'user' ? 'User' : log.source === 'tool' ? 'Tool Output' : 'Assistant';
 					return `${role}: ${log.text}`;
 				})
 				.join('\n\n');
