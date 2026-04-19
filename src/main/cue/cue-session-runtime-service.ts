@@ -137,8 +137,7 @@ export function createCueSessionRuntimeService(
 		// local cue.yaml. The fallback also logs whenever it overrides an
 		// existing-but-empty local file so the override is observable.
 		const localFileExistsButEmpty = loadResult.ok && loadResult.config.subscriptions.length === 0;
-		const localOptsOutOfAncestor =
-			loadResult.ok && loadResult.config.no_ancestor_fallback === true;
+		const localOptsOutOfAncestor = loadResult.ok && loadResult.config.no_ancestor_fallback === true;
 		const localHasNoPipelines =
 			((!loadResult.ok && loadResult.reason === 'missing') || localFileExistsButEmpty) &&
 			!localOptsOutOfAncestor;

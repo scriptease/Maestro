@@ -106,6 +106,16 @@ function killCliProcess(child: ChildProcess, sync = false): void {
 		return;
 	}
 	child.kill('SIGTERM');
+	if (sync) {
+		// Shutdown path: the event loop may drain before a deferred timer
+		// fires, leaving any child that ignores SIGTERM alive. Escalate
+		// immediately so the child is guaranteed to be reaped. Mirrors
+		// the same fix in cue-shell-executor.ts.
+		if (child.exitCode === null && child.signalCode === null) {
+			child.kill('SIGKILL');
+		}
+		return;
+	}
 	setTimeout(() => {
 		if (child.exitCode === null && child.signalCode === null) {
 			child.kill('SIGKILL');
