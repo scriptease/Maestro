@@ -168,9 +168,22 @@ export async function runMaestroCliSend(
 				},
 			});
 		} catch (err) {
+			// Synchronous spawn throw is an unexpected process-launch failure
+			// (permissions, bad ELECTRON_RUN_AS_NODE interaction, etc.). Report
+			// to Sentry so it isn't lost — the caller still gets a `failed`
+			// result so the run flow stays intact. ENOENT (bundle not found)
+			// is already surfaced by the resolver and isn't captured.
+			const errCode = (err as NodeJS.ErrnoException)?.code;
+			if (errCode !== 'ENOENT') {
+				captureException(err, {
+					operation: 'cue:cli:spawn',
+					cliScriptPath,
+					target,
+				});
+			}
 			resolve({
 				ok: false,
-				exitCode: (err as NodeJS.ErrnoException)?.code ?? 'spawnError',
+				exitCode: errCode ?? 'spawnError',
 				stdout: '',
 				stderr: err instanceof Error ? err.message : String(err),
 				resolvedTarget: target,
@@ -217,7 +230,20 @@ export async function runMaestroCliSend(
 			finish(code ?? 'null', null);
 		});
 		child.on('error', (error) => {
-			finish((error as NodeJS.ErrnoException).code ?? 'spawnError', error);
+			// Async child-process error (e.g. spawn succeeded but the child
+			// failed before emitting any output). Treat like the sync throw
+			// above — report to Sentry unless it's the expected ENOENT from
+			// a missing CLI bundle, then funnel into the normal failed path.
+			const errCode = (error as NodeJS.ErrnoException).code;
+			if (errCode !== 'ENOENT') {
+				captureException(error, {
+					operation: 'cue:cli:childProcess:error',
+					cliScriptPath,
+					pid: child.pid,
+					target,
+				});
+			}
+			finish(errCode ?? 'spawnError', error);
 		});
 
 		if (effectiveTimeout > 0) {

@@ -241,9 +241,29 @@ describe('cue-cli-executor', () => {
 
 		expect(result.status).toBe('failed');
 		expect(result.exitCode).toBeNull();
+		// ENOENT is an expected failure mode (missing CLI bundle) — must NOT
+		// be captured to Sentry, otherwise dev-only misconfig spams prod error
+		// tracking.
+		expect(mockCaptureException).not.toHaveBeenCalled();
 	});
 
-	it('reports failed status when spawn throws synchronously', async () => {
+	it('reports unexpected child error to Sentry (non-ENOENT)', async () => {
+		const config = createConfig({
+			cli: { command: 'send' as const, target: 'x' },
+		});
+		const promise = executeCueCli(config as any);
+		await Promise.resolve();
+		const err = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+		mockChild.emit('error', err);
+		await promise;
+
+		expect(mockCaptureException).toHaveBeenCalledWith(
+			err,
+			expect.objectContaining({ operation: 'cue:cli:childProcess:error' })
+		);
+	});
+
+	it('reports failed status and captures exception when spawn throws synchronously', async () => {
 		mockSpawn.mockImplementationOnce(() => {
 			throw new Error('boom');
 		});
@@ -254,6 +274,11 @@ describe('cue-cli-executor', () => {
 
 		expect(result.status).toBe('failed');
 		expect(result.stderr).toContain('boom');
+		// Unexpected sync spawn failure must reach Sentry so it isn't lost.
+		expect(mockCaptureException).toHaveBeenCalledWith(
+			expect.any(Error),
+			expect.objectContaining({ operation: 'cue:cli:spawn' })
+		);
 	});
 
 	it('stopCueCliRun signals an active CLI process and returns true', async () => {
