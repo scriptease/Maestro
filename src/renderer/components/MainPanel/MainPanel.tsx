@@ -19,6 +19,7 @@ import { useUIStore } from '../../stores/uiStore';
 import { useSessionStore } from '../../stores/sessionStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useTerminalMounting } from '../../hooks/terminal/useTerminalMounting';
+import { getTerminalTabDisplayName } from '../../utils/terminalTabHelpers';
 import { useSshRemoteName } from '../../hooks/mainPanel/useSshRemoteName';
 import { useContextWindow } from '../../hooks/mainPanel/useContextWindow';
 import { useFilePreviewHandlers } from '../../hooks/mainPanel/useFilePreviewHandlers';
@@ -384,6 +385,52 @@ export const MainPanel = React.memo(
 			[refreshGitStatus, activeSession?.id]
 		);
 
+		// Terminal buffer action wrappers — resolve the terminal tab's scrollback to text,
+		// then delegate to the App-level text handlers (copy / gist / send to agent).
+		const resolveBuffer = useCallback(
+			(tabId: string): { content: string; displayName: string } | null => {
+				if (!activeSession) return null;
+				const terminalTab = activeSession.terminalTabs?.find((t) => t.id === tabId);
+				if (!terminalTab) return null;
+				const handle = terminalViewRefs.current.get(activeSession.id);
+				const content = handle?.getTerminalBuffer(tabId) ?? '';
+				const terminalIndex = (activeSession.terminalTabs ?? []).findIndex((t) => t.id === tabId);
+				const displayName = getTerminalTabDisplayName(
+					terminalTab,
+					terminalIndex >= 0 ? terminalIndex : 0
+				);
+				return { content, displayName };
+			},
+			[activeSession, terminalViewRefs]
+		);
+
+		const handleCopyTerminalBuffer = useCallback(
+			(tabId: string) => {
+				const resolved = resolveBuffer(tabId);
+				if (!resolved) return;
+				props.onCopyText?.(resolved.content, 'Terminal Buffer');
+			},
+			[resolveBuffer, props.onCopyText]
+		);
+
+		const handlePublishTerminalBufferGist = useCallback(
+			(tabId: string) => {
+				const resolved = resolveBuffer(tabId);
+				if (!resolved) return;
+				props.onPublishTextAsGist?.(resolved.content, resolved.displayName);
+			},
+			[resolveBuffer, props.onPublishTextAsGist]
+		);
+
+		const handleSendTerminalBufferToAgent = useCallback(
+			(tabId: string) => {
+				const resolved = resolveBuffer(tabId);
+				if (!resolved) return;
+				props.onSendTextToAgent?.(resolved.content, resolved.displayName);
+			},
+			[resolveBuffer, props.onSendTextToAgent]
+		);
+
 		// Handler for input focus - select session in sidebar
 		// Memoized to avoid recreating on every render
 		const handleInputFocus = useCallback(() => {
@@ -601,6 +648,13 @@ export const MainPanel = React.memo(
 									onTerminalTabSelect={onTerminalTabSelect}
 									onTerminalTabClose={onTerminalTabClose}
 									onTerminalTabRename={onTerminalTabRename}
+									onCopyTerminalBuffer={props.onCopyText ? handleCopyTerminalBuffer : undefined}
+									onPublishTerminalBufferGist={
+										props.onPublishTextAsGist ? handlePublishTerminalBufferGist : undefined
+									}
+									onSendTerminalBufferToAgent={
+										props.onSendTextToAgent ? handleSendTerminalBufferToAgent : undefined
+									}
 									// Accessibility
 									colorBlindMode={colorBlindMode}
 								/>

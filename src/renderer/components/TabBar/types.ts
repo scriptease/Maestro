@@ -74,6 +74,12 @@ export interface TabBarProps {
 	onTerminalTabClose?: (tabId: string) => void;
 	/** Handler to rename a terminal tab */
 	onTerminalTabRename?: (tabId: string) => void;
+	/** Handler to copy a terminal tab's full buffer to clipboard */
+	onCopyTerminalBuffer?: (tabId: string) => void;
+	/** Handler to publish a terminal tab's buffer as a GitHub Gist */
+	onPublishTerminalBufferGist?: (tabId: string) => void;
+	/** Handler to send a terminal tab's buffer to another agent */
+	onSendTerminalBufferToAgent?: (tabId: string) => void;
 
 	// === Accessibility ===
 	/** Whether colorblind-friendly colors should be used for extension badges */

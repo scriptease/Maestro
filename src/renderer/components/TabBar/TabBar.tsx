@@ -63,6 +63,9 @@ function TabBarInner({
 	onTerminalTabSelect,
 	onTerminalTabClose,
 	onTerminalTabRename,
+	onCopyTerminalBuffer,
+	onPublishTerminalBufferGist,
+	onSendTerminalBufferToAgent,
 	colorBlindMode,
 }: TabBarProps) {
 	// Dev-time warnings for missing handlers when unified tabs are provided
@@ -535,6 +538,9 @@ function TabBarInner({
 										onCloseOtherTabs={onCloseOtherTabs ? handleTabCloseOther : undefined}
 										onCloseTabsLeft={onCloseTabsLeft ? handleTabCloseLeft : undefined}
 										onCloseTabsRight={onCloseTabsRight ? handleTabCloseRight : undefined}
+										onCopyBuffer={onCopyTerminalBuffer}
+										onPublishBufferGist={ghCliAvailable ? onPublishTerminalBufferGist : undefined}
+										onSendBufferToAgent={onSendTerminalBufferToAgent}
 										totalTabs={allTabs.length}
 										tabIndex={originalIndex}
 										shortcutHint={shortcutHint}
