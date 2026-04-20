@@ -2753,6 +2753,7 @@ function MaestroConsoleInner() {
 					setUsageDashboardOpen={encoreFeatures.usageStats ? setUsageDashboardOpen : undefined}
 					setActiveRightTab={setActiveRightTab}
 					setAgentSessionsOpen={setAgentSessionsOpen}
+					setMemoryViewerOpen={setMemoryViewerOpen}
 					setActiveAgentSessionId={setActiveAgentSessionId}
 					setGitDiffPreview={setGitDiffPreview}
 					setGitLogOpen={setGitLogOpen}
