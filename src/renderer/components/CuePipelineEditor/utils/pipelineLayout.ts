@@ -6,7 +6,7 @@
 
 import type {
 	AgentNodeData,
-	CliOutputNodeData,
+	CommandNodeData,
 	CuePipeline,
 	CuePipelineState,
 	ErrorNodeData,
@@ -23,8 +23,8 @@ import type {
  * node.id alone, first-save positions — keyed by the UI timestamp id —
  * would miss every lookup on the next open and every node would snap back to
  * the auto-layout default. Keying by content (event type + trigger index
- * within the pipeline, sessionId, cli_output target, error identity) instead
- * survives the id regeneration.
+ * within the pipeline, sessionId, command subscription name, error identity)
+ * instead survives the id regeneration.
  *
  * The `triggerIndex` for trigger nodes comes from the node's position among
  * other triggers in `allNodes` — both UI-created pipelines and reloaded
@@ -56,9 +56,12 @@ function semanticNodeKey(node: PipelineNode, allNodes: PipelineNode[]): string |
 			const idx = sameSession.findIndex((n) => n.id === node.id);
 			return `agent:${sessionKey}:${idx}`;
 		}
-		case 'cli_output': {
-			const data = node.data as CliOutputNodeData;
-			return data.target ? `cli_output:${data.target}` : null;
+		case 'command': {
+			const data = node.data as CommandNodeData;
+			// Subscription name is unique within the owning project's cue.yaml,
+			// which makes it a stable content-derived key that survives id
+			// regeneration across save/reload.
+			return data.name ? `command:${data.name}` : null;
 		}
 		case 'error': {
 			const data = node.data as ErrorNodeData;

@@ -2,6 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import {
+	type CueAction,
+	type CueCommand,
 	type CueConfig,
 	type CueGitHubState,
 	type CueScheduleDay,
@@ -25,6 +27,7 @@ export interface CueSubscriptionDocument extends CueSubscription {
 export interface CueConfigDocument {
 	subscriptions: CueSubscriptionDocument[];
 	settings: CueSettings;
+	no_ancestor_fallback?: boolean;
 }
 
 function readPromptFile(projectRoot: string, promptFile: string): string | undefined {
@@ -57,6 +60,39 @@ function normalizeFilter(
 	return filterObj;
 }
 
+/**
+ * Read a `command` field from a raw YAML subscription. Returns the parsed
+ * CueCommand or undefined if the field is missing or shaped incorrectly (the
+ * validator will flag invalid shapes; we just don't surface garbage).
+ */
+function normalizeCommand(rawCommand: unknown): CueCommand | undefined {
+	if (!rawCommand || typeof rawCommand !== 'object' || Array.isArray(rawCommand)) {
+		return undefined;
+	}
+	const cmd = rawCommand as Record<string, unknown>;
+	if (cmd.mode === 'shell' && typeof cmd.shell === 'string' && cmd.shell.trim().length > 0) {
+		// Reject empty/whitespace-only shell strings here to match the
+		// validator. Without this, a normalized `{ mode: 'shell', shell: '' }`
+		// could reach the executor and fail with a generic "no shell command"
+		// error after validation has already passed.
+		return { mode: 'shell', shell: cmd.shell };
+	}
+	if (cmd.mode === 'cli' && cmd.cli && typeof cmd.cli === 'object' && !Array.isArray(cmd.cli)) {
+		const cli = cmd.cli as Record<string, unknown>;
+		if (cli.command === 'send' && typeof cli.target === 'string') {
+			return {
+				mode: 'cli',
+				cli: {
+					command: 'send',
+					target: cli.target,
+					message: typeof cli.message === 'string' ? cli.message : undefined,
+				},
+			};
+		}
+	}
+	return undefined;
+}
+
 function normalizeSubscription(
 	sub: Record<string, unknown>,
 	projectRoot: string
@@ -74,9 +110,22 @@ function normalizeSubscription(
 				}
 			: undefined;
 
-	const prompt =
+	const action: CueAction | undefined =
+		sub.action === 'command' || sub.action === 'prompt' ? (sub.action as CueAction) : undefined;
+	const command = normalizeCommand(sub.command);
+
+	const resolvedPrompt =
 		promptSpec.inline ??
 		(promptSpec.file ? (readPromptFile(projectRoot, promptSpec.file) ?? '') : '');
+	// For command actions, the dispatcher uses `prompt` only as a sentinel that
+	// the subscription has work to do. Back-fill from the command spec so the
+	// subscription isn't silently dropped by the "no prompt → skip" gate.
+	const commandSentinel = command
+		? command.mode === 'shell'
+			? command.shell
+			: command.cli.target
+		: '';
+	const prompt = action === 'command' && !resolvedPrompt ? commandSentinel : resolvedPrompt;
 	const outputPrompt =
 		outputPromptSpec?.inline ??
 		(outputPromptSpec?.file ? readPromptFile(projectRoot, outputPromptSpec.file) : undefined);
@@ -117,6 +166,8 @@ function normalizeSubscription(
 		outputPromptSpec,
 		prompt,
 		output_prompt: outputPrompt,
+		action,
+		command,
 		interval_minutes: typeof sub.interval_minutes === 'number' ? sub.interval_minutes : undefined,
 		schedule_times:
 			Array.isArray(sub.schedule_times) &&
@@ -141,6 +192,12 @@ function normalizeSubscription(
 			(Array.isArray(sub.source_session_ids) &&
 				sub.source_session_ids.every((value: unknown) => typeof value === 'string'))
 				? (sub.source_session_ids as string | string[])
+				: undefined,
+		source_sub:
+			typeof sub.source_sub === 'string' ||
+			(Array.isArray(sub.source_sub) &&
+				sub.source_sub.every((value: unknown) => typeof value === 'string'))
+				? (sub.source_sub as string | string[])
 				: undefined,
 		fan_out:
 			Array.isArray(sub.fan_out) && sub.fan_out.every((value: unknown) => typeof value === 'string')
@@ -238,6 +295,8 @@ export function parseCueConfigDocument(raw: string, projectRoot: string): CueCon
 	return {
 		subscriptions,
 		settings: normalizeSettings(parsed.settings as Record<string, unknown> | undefined),
+		no_ancestor_fallback:
+			typeof parsed.no_ancestor_fallback === 'boolean' ? parsed.no_ancestor_fallback : undefined,
 	};
 }
 
@@ -275,6 +334,9 @@ export function materializeCueConfig(document: CueConfigDocument): MaterializedC
 		config: {
 			subscriptions,
 			settings: document.settings,
+			...(document.no_ancestor_fallback !== undefined
+				? { no_ancestor_fallback: document.no_ancestor_fallback }
+				: {}),
 		},
 		warnings,
 	};

@@ -49,8 +49,36 @@ export type CueGitHubState = 'open' | 'closed' | 'merged' | 'all';
 /** All valid GitHub state values */
 export const CUE_GITHUB_STATES: CueGitHubState[] = ['open', 'closed', 'merged', 'all'];
 
+/** What a subscription does when it fires. */
+export type CueAction = 'prompt' | 'command';
+
+/** Sub-mode of a `command` action. */
+export type CueCommandMode = 'shell' | 'cli';
+
 /**
- * A Cue subscription defines a trigger-prompt pairing.
+ * A maestro-cli sub-command. Currently only `send` is supported, but the
+ * shape leaves room for future sub-commands.
+ */
+export interface CueCommandCliCall {
+	command: 'send';
+	/** Session ID (or template variable) to send the message to. */
+	target: string;
+	/** Message body. Defaults to `{{CUE_SOURCE_OUTPUT}}` when omitted. */
+	message?: string;
+}
+
+/**
+ * A `command` action — either an arbitrary shell command (PATH-aware, runs in
+ * the owning session's project root) or a structured maestro-cli call.
+ */
+export type CueCommand = { mode: 'shell'; shell: string } | { mode: 'cli'; cli: CueCommandCliCall };
+
+/**
+ * A Cue subscription defines a trigger-action pairing.
+ *
+ * `action` defaults to `'prompt'` (run an AI agent with the substituted
+ * `prompt`). When `action` is `'command'`, the subscription instead spawns a
+ * shell command or invokes maestro-cli — see {@link CueCommand}.
  *
  * Note: prompt content is always materialized at config-load time. The raw YAML
  * `prompt_file` / `output_prompt_file` fields are resolved by the normalizer and
@@ -63,6 +91,10 @@ export interface CueSubscription {
 	enabled: boolean;
 	prompt: string;
 	output_prompt?: string;
+	/** Action type — defaults to `'prompt'` when omitted. */
+	action?: CueAction;
+	/** Required when `action === 'command'`. */
+	command?: CueCommand;
 	interval_minutes?: number;
 	schedule_times?: string[];
 	schedule_days?: CueScheduleDay[];
@@ -74,6 +106,22 @@ export interface CueSubscription {
 	 *  when IDs are absent OR reference a deleted session. Using stable IDs
 	 *  protects chain edges from breaking when an upstream agent is renamed. */
 	source_session_ids?: string | string[];
+	/** Subscription name(s) whose completion should fire this chain. Narrows
+	 *  `source_session` matching by `event.payload.triggeredBy` so a chain sub
+	 *  fires ONLY on completions produced by the listed upstream subs.
+	 *
+	 *  Why: `source_session` alone matches any run in that session. When a
+	 *  command node shares a session with its downstream agent (`Schedule →
+	 *  Cmd1(owner S1) → Agent1(S1)`), both Cmd1's and Agent1's completions
+	 *  emit `agent.completed` for S1 — without this filter the chain
+	 *  self-triggers on Agent1's own completion, and downstream fan-in subs
+	 *  cross-fire on Cmd1's completion before Agent1 has run.
+	 *
+	 *  When omitted, falls back to session-only matching (legacy behavior).
+	 *  The pipeline-editor serializer sets this on every chain sub so the
+	 *  runtime can distinguish "this agent's upstream completed" from
+	 *  "something else in the same session completed." */
+	source_sub?: string | string[];
 	fan_out?: string[];
 	/** Per-target prompts for a fan-out subscription, one string per entry in
 	 *  `fan_out`. Legacy inline shape — kept for round-tripping YAML written
@@ -108,6 +156,12 @@ export interface CueSubscription {
 	 *  agents later in the chain can access it via per-source template variables
 	 *  like {{CUE_OUTPUT_<NAME>}}. */
 	forward_output_from?: string[];
+	/**
+	 * @deprecated Replaced by a downstream `action: command` subscription with
+	 * `command: { mode: 'cli', cli: { command: 'send', target } }`. The
+	 * normalizer migrates legacy YAML automatically; new code should not write
+	 * this field.
+	 */
 	cli_output?: {
 		target: string;
 	};
@@ -149,6 +203,13 @@ export const DEFAULT_CUE_SETTINGS: CueSettings = {
 export interface CueConfig {
 	subscriptions: CueSubscription[];
 	settings: CueSettings;
+	/**
+	 * When true, a local cue.yaml with `subscriptions: []` will NOT walk to
+	 * an ancestor cue.yaml looking for shared pipelines. Lets a sub-project
+	 * deliberately opt out of inherited pipelines without having to delete
+	 * the file. Defaults to false (legacy fallback behaviour).
+	 */
+	no_ancestor_fallback?: boolean;
 }
 
 /** An event instance produced by a trigger */

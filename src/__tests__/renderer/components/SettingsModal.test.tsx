@@ -20,6 +20,7 @@ import { logger } from '../../../renderer/utils/logger';
 import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react';
 import { SettingsModal } from '../../../renderer/components/Settings/SettingsModal';
 import { formatEnterToSend } from '../../../renderer/utils/shortcutFormatter';
+import { mockTheme } from '../../helpers/mockTheme';
 import type {
 	Theme,
 	Shortcut,
@@ -279,26 +280,6 @@ vi.mock('../../../renderer/hooks/settings/useSettings', () => ({
 }));
 
 // Sample theme for testing
-const mockTheme: Theme = {
-	id: 'dracula',
-	name: 'Dracula',
-	mode: 'dark',
-	colors: {
-		bgMain: '#282a36',
-		bgSidebar: '#21222c',
-		bgActivity: '#343746',
-		border: '#44475a',
-		textMain: '#f8f8f2',
-		textDim: '#6272a4',
-		accent: '#bd93f9',
-		accentDim: '#bd93f920',
-		accentText: '#ff79c6',
-		accentForeground: '#ffffff',
-		success: '#50fa7b',
-		warning: '#ffb86c',
-		error: '#ff5555',
-	},
-};
 
 const mockLightTheme: Theme = {
 	id: 'github-light',

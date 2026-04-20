@@ -33,6 +33,7 @@ import type {
 	PipelineNode,
 	TriggerNodeData,
 	AgentNodeData,
+	CommandNodeData,
 	CueEventType,
 } from '../../../shared/cue-pipeline-types';
 import { getNextPipelineColor } from '../../components/CuePipelineEditor/pipelineColors';
@@ -281,6 +282,8 @@ export function usePipelineCanvasCallbacks({
 				sessionId?: string;
 				sessionName?: string;
 				toolType?: string;
+				owningSessionId?: string;
+				owningSessionName?: string;
 			};
 			try {
 				dropData = JSON.parse(raw);
@@ -350,6 +353,26 @@ export function usePipelineCanvasCallbacks({
 						type: 'agent',
 						position,
 						data: agentData,
+					};
+				} else if (dropData.type === 'command') {
+					// Two drop sources:
+					//   1) standalone "Command" pill — no owningSessionId; the user picks
+					//      the owning agent in CommandConfigPanel after dropping.
+					//   2) legacy per-session terminal pill (no longer rendered) — pre-binds.
+					const suffix = Date.now().toString(36).slice(-5);
+					const ownerId = dropData.owningSessionId ?? '';
+					const commandData: CommandNodeData = {
+						name: `${targetPipeline.name}-cmd-${suffix}`,
+						mode: 'shell',
+						shell: '',
+						owningSessionId: ownerId,
+						owningSessionName: dropData.owningSessionName ?? '',
+					};
+					newNode = {
+						id: `command-${ownerId || 'unbound'}-${Date.now()}`,
+						type: 'command',
+						position,
+						data: commandData,
 					};
 				} else {
 					return prev;

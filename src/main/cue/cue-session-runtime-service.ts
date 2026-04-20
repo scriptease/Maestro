@@ -53,7 +53,7 @@ export interface CueSessionRuntimeServiceDeps {
 		event: CueEvent,
 		sourceSessionName: string,
 		chainDepth?: number
-	) => void;
+	) => number;
 	clearQueue: (sessionId: string, preserveStartup?: boolean) => void;
 	clearFanInState: (sessionId: string) => void;
 }
@@ -117,10 +117,31 @@ export function createCueSessionRuntimeService(
 		let loadResult = loadCueConfigDetailed(session.projectRoot);
 		let ancestorRoot: string | undefined;
 
-		// When the session's own directory has no cue.yaml, check ancestor
-		// directories. This enables sub-agents (e.g. project/Digest) to
-		// participate in pipelines defined at a parent root (e.g. project/).
-		if (!loadResult.ok && loadResult.reason === 'missing') {
+		// Walk to an ancestor cue.yaml when the session's own directory has
+		// no pipelines to contribute. This enables sub-agents (e.g.
+		// project/Digest) to participate in pipelines defined at a parent
+		// root (e.g. project/).
+		//
+		// Both shapes of "no local pipelines" must trigger the walk:
+		//   1. Local cue.yaml is missing entirely (fresh sub-agent dir).
+		//   2. Local cue.yaml exists but `subscriptions: []`. This is the
+		//      shape `handleSave` writes when it clears a project whose
+		//      pipelines have moved elsewhere (usually consolidated onto a
+		//      common-ancestor root). Without this branch, the empty-but-
+		//      parseable file short-circuits the fallback — the sub-agent
+		//      sees zero subscriptions even though the ancestor has subs
+		//      explicitly targeting it, and manual triggers dispatch 0.
+		//
+		// A user who deliberately wants an empty-subs file to opt OUT of
+		// ancestor pipelines can set `no_ancestor_fallback: true` on the
+		// local cue.yaml. The fallback also logs whenever it overrides an
+		// existing-but-empty local file so the override is observable.
+		const localFileExistsButEmpty = loadResult.ok && loadResult.config.subscriptions.length === 0;
+		const localOptsOutOfAncestor = loadResult.ok && loadResult.config.no_ancestor_fallback === true;
+		const localHasNoPipelines =
+			((!loadResult.ok && loadResult.reason === 'missing') || localFileExistsButEmpty) &&
+			!localOptsOutOfAncestor;
+		if (localHasNoPipelines) {
 			const ancestor = findAncestorCueConfigRoot(session.projectRoot);
 			if (ancestor) {
 				const ancestorResult = loadCueConfigDetailed(ancestor);
@@ -143,7 +164,9 @@ export function createCueSessionRuntimeService(
 						ancestorRoot = ancestor;
 						deps.onLog(
 							'cue',
-							`[CUE] "${session.name}" using ancestor config from "${ancestor}" (${targeted.length} targeted subscription(s))`
+							localFileExistsButEmpty
+								? `[CUE] "${session.name}" local cue.yaml is empty — overriding with ancestor "${ancestor}" (${targeted.length} targeted subscription(s)). Set no_ancestor_fallback: true on the local file to opt out.`
+								: `[CUE] "${session.name}" using ancestor config from "${ancestor}" (${targeted.length} targeted subscription(s))`
 						);
 					}
 				}

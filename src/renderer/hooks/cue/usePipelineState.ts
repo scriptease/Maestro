@@ -24,6 +24,7 @@ import type {
 	PipelineEdge as PipelineEdgeType,
 	TriggerNodeData,
 	AgentNodeData,
+	CommandNodeData,
 } from '../../../shared/cue-pipeline-types';
 import type { CueSettings } from '../../../shared/cue';
 import { usePipelineLayout } from './usePipelineLayout';
@@ -113,7 +114,10 @@ export interface UsePipelineStateReturn {
 	renamePipeline: (id: string, name: string) => void;
 	selectPipeline: (id: string | null) => void;
 	changePipelineColor: (id: string, color: string) => void;
-	onUpdateNode: (nodeId: string, data: Partial<TriggerNodeData | AgentNodeData>) => void;
+	onUpdateNode: (
+		nodeId: string,
+		data: Partial<TriggerNodeData | AgentNodeData | CommandNodeData>
+	) => void;
 	onUpdateEdgePrompt: (edgeId: string, prompt: string) => void;
 	onDeleteNode: (nodeId: string) => void;
 	onUpdateEdge: (edgeId: string, updates: Partial<PipelineEdgeType>) => void;
@@ -140,6 +144,13 @@ export function usePipelineState({
 		pipelines: [],
 		selectedPipelineId: null,
 	});
+	// Mirror of pipelineState.pipelines updated during render so handleSave can
+	// read the latest value after flushing debounced edits — React's setState
+	// from a flush callback is batched and NOT visible in handleSave's closure,
+	// so reading through this ref after yielding to the microtask queue is the
+	// only way to observe the freshly-flushed prompt writes in the save path.
+	const pipelinesRef = useRef(pipelineState.pipelines);
+	pipelinesRef.current = pipelineState.pipelines;
 	const [isDirty, setIsDirty] = useState(false);
 	const savedStateRef = useRef<string>('');
 	// Project roots that the most recent successful save (or initial load)
@@ -183,7 +194,7 @@ export function usePipelineState({
 	});
 
 	const persistence = usePipelinePersistence({
-		state: { pipelineState, savedStateRef, lastWrittenRootsRef },
+		state: { pipelineState, pipelinesRef, savedStateRef, lastWrittenRootsRef },
 		deps: { sessions, cueSettings, settingsLoaded },
 		actions: { setPipelineState, setIsDirty, persistLayout, onSaveSuccess },
 	});
