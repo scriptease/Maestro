@@ -132,9 +132,16 @@ export const TerminalView = memo(
 			ref,
 			(): TerminalViewHandle => ({
 				clearActiveTerminal() {
-					if (activeTab) {
-						terminalRefs.current.get(activeTab.id)?.clear();
-					}
+					if (!activeTab) return;
+					// xterm.clear() removes scrollback but keeps the current prompt line
+					// exactly where it is — which looks like nothing happened when the user
+					// has just the prompt visible. Also send Ctrl+L to the PTY so the shell
+					// redraws the current line at the top of a fresh screen.
+					terminalRefs.current.get(activeTab.id)?.clear();
+					const terminalSessionId = getTerminalSessionId(session.id, activeTab.id);
+					window.maestro.process.write(terminalSessionId, '\x0c').catch(() => {
+						// Write failures are surfaced by the process exit handler
+					});
 				},
 				focusActiveTerminal() {
 					if (activeTab) {
