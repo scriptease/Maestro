@@ -12,6 +12,7 @@ import { NewTabPopover } from './NewTabPopover';
 import { SearchPopover } from './SearchPopover';
 import { isUnifiedTabActive, getShortcutHint } from './tabBarUtils';
 import type { TabBarProps } from './types';
+import { logger } from '../../utils/logger';
 
 /** Approximate width of the sticky right "+" button area (px) */
 const STICKY_RIGHT_WIDTH = 48;
@@ -73,10 +74,10 @@ function TabBarInner({
 	// Dev-time warnings for missing handlers when unified tabs are provided
 	if (process.env.NODE_ENV !== 'production' && unifiedTabs) {
 		if (!onFileTabSelect || !onFileTabClose) {
-			console.warn('[TabBar] unifiedTabs provided but onFileTabSelect/onFileTabClose missing');
+			logger.warn('[TabBar] unifiedTabs provided but onFileTabSelect/onFileTabClose missing');
 		}
 		if (!onTerminalTabSelect || !onTerminalTabClose) {
-			console.warn(
+			logger.warn(
 				'[TabBar] unifiedTabs provided but onTerminalTabSelect/onTerminalTabClose missing'
 			);
 		}

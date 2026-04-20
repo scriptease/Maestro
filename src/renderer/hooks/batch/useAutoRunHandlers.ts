@@ -10,6 +10,7 @@ import {
 	clearRecentlyCreatedWorktreePath,
 } from '../../utils/worktreeDedup';
 import { captureException } from '../../utils/sentry';
+import { logger } from '../../utils/logger';
 
 /**
  * Tree node structure for Auto Run document tree
@@ -639,7 +640,7 @@ export function useAutoRunHandlers(
 				}
 				return false;
 			} catch (error) {
-				console.error('Failed to create document:', error);
+				logger.error('Failed to create document:', undefined, error);
 				return false;
 			}
 		},

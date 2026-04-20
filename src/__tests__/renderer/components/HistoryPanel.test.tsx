@@ -19,6 +19,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { logger } from '../../../renderer/utils/logger';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { HistoryPanel, HistoryPanelHandle } from '../../../renderer/components/HistoryPanel';
 import type { Session, HistoryEntry, HistoryEntryType } from '../../../renderer/types';
@@ -191,7 +192,7 @@ describe('HistoryPanel', () => {
 			},
 		};
 
-		consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		consoleErrorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
 	});
 
 	afterEach(() => {
@@ -437,7 +438,11 @@ describe('HistoryPanel', () => {
 			render(<HistoryPanel session={createMockSession()} theme={mockTheme} />);
 
 			await waitFor(() => {
-				expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to load history:', expect.any(Error));
+				expect(consoleErrorSpy).toHaveBeenCalledWith(
+					'Failed to load history:',
+					undefined,
+					expect.any(Error)
+				);
 				expect(screen.getByText(/No history yet/)).toBeInTheDocument();
 			});
 		});
@@ -1033,6 +1038,7 @@ describe('HistoryPanel', () => {
 			await waitFor(() => {
 				expect(consoleErrorSpy).toHaveBeenCalledWith(
 					'Failed to delete history entry:',
+					undefined,
 					expect.any(Error)
 				);
 			});

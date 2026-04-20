@@ -11,6 +11,7 @@ import type { ITheme } from '@xterm/xterm';
 import { LinkContextMenu, type LinkContextMenuState } from './LinkContextMenu';
 import { openUrl } from '../utils/openUrl';
 import { safeClipboardWrite } from '../utils/clipboard';
+import { logger } from '../utils/logger';
 
 // ============================================================================
 // Custom key event handler logic
@@ -428,7 +429,7 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 			try {
 				const addon = new WebglAddon();
 				addon.onContextLoss(() => {
-					console.warn('[XTerminal] WebGL context lost — falling back to canvas renderer');
+					logger.warn('[XTerminal] WebGL context lost — falling back to canvas renderer');
 					addon.dispose();
 					webglAddonRef.current = null;
 					// Force a full repaint so the fallback canvas renderer draws from the internal buffer.
@@ -438,7 +439,11 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 				webglAddonRef.current = addon;
 				webglCtorRef.current = WebglAddon;
 			} catch (err) {
-				console.warn('[XTerminal] WebGL addon failed to load, using canvas renderer:', err);
+				logger.warn(
+					'[XTerminal] WebGL addon failed to load, using canvas renderer:',
+					undefined,
+					err
+				);
 			}
 		};
 
@@ -515,7 +520,11 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 				tryLoadWebgl(WebglAddon);
 			})
 			.catch((err) => {
-				console.warn('[XTerminal] WebGL addon import failed, using canvas renderer:', err);
+				logger.warn(
+					'[XTerminal] WebGL addon import failed, using canvas renderer:',
+					undefined,
+					err
+				);
 			});
 
 		if (onTitleChange) {
@@ -613,7 +622,7 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 					try {
 						const addon = new webglCtorRef.current();
 						addon.onContextLoss(() => {
-							console.warn('[XTerminal] WebGL context lost — falling back to canvas renderer');
+							logger.warn('[XTerminal] WebGL context lost — falling back to canvas renderer');
 							addon.dispose();
 							webglAddonRef.current = null;
 							term.refresh(0, term.rows - 1);

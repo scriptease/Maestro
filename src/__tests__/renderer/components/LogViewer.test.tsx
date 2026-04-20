@@ -14,6 +14,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { logger } from '../../../renderer/utils/logger';
 import { LogViewer } from '../../../renderer/components/LogViewer';
 import { formatShortcutKeys } from '../../../renderer/utils/shortcutFormatter';
 
@@ -1366,20 +1367,24 @@ describe('LogViewer', () => {
 
 	describe('Error handling', () => {
 		it('should handle getLogs failure gracefully', async () => {
-			const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleError = vi.spyOn(logger, 'error').mockImplementation(() => {});
 			getMockGetLogs().mockRejectedValue(new Error('Failed to load'));
 
 			render(<LogViewer theme={mockTheme} onClose={vi.fn()} />);
 
 			await waitFor(() => {
-				expect(consoleError).toHaveBeenCalledWith('Failed to load logs:', expect.any(Error));
+				expect(consoleError).toHaveBeenCalledWith(
+					'Failed to load logs:',
+					undefined,
+					expect.any(Error)
+				);
 			});
 
 			consoleError.mockRestore();
 		});
 
 		it('should handle clearLogs failure gracefully', async () => {
-			const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleError = vi.spyOn(logger, 'error').mockImplementation(() => {});
 			getMockGetLogs().mockResolvedValue([createMockLog({ message: 'Test' })]);
 			getMockClearLogs().mockRejectedValue(new Error('Failed to clear'));
 
@@ -1393,7 +1398,11 @@ describe('LogViewer', () => {
 			fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 
 			await waitFor(() => {
-				expect(consoleError).toHaveBeenCalledWith('Failed to clear logs:', expect.any(Error));
+				expect(consoleError).toHaveBeenCalledWith(
+					'Failed to clear logs:',
+					undefined,
+					expect.any(Error)
+				);
 			});
 
 			consoleError.mockRestore();

@@ -391,7 +391,7 @@ export function registerAutorunHandlers(
 					`[DEBUG] writeDoc called: folder=${folderPath}, file=${filename}, content.length=${content.length}, content.slice(0,50)="${content.slice(0, 50).replace(/\n/g, '\\n')}"`,
 					LOG_CONTEXT
 				);
-				console.log(
+				logger.info(
 					`[DEBUG writeDoc] folder=${folderPath}, file=${filename}, content.length=${content.length}`
 				);
 

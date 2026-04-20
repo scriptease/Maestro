@@ -28,6 +28,7 @@ import { setAllowPrerelease } from '../../auto-updater';
 import { WebServer } from '../../web-server';
 import { powerManager } from '../../power-manager';
 import { MaestroSettings } from './persistence';
+import { captureException } from '../../utils/sentry';
 import type { BootstrapSettings } from '../../stores/types';
 
 // Type for tunnel manager instance
@@ -73,6 +74,7 @@ export function registerSystemHandlers(deps: SystemHandlerDependencies): void {
 
 			return result.filePaths[0];
 		} catch (error) {
+			void captureException(error);
 			// Log the error but return null to ensure IPC reply is sent
 			logger.error('dialog:selectFolder failed', 'Dialog', { error });
 			return null;
@@ -140,7 +142,8 @@ export function registerSystemHandlers(deps: SystemHandlerDependencies): void {
 				'JetBrains Mono',
 			];
 		} catch (error) {
-			console.error('Font detection error:', error);
+			void captureException(error);
+			logger.error('Font detection error:', undefined, error);
 			// Return common monospace fonts as fallback
 			return [
 				'Monaco',
@@ -170,6 +173,7 @@ export function registerSystemHandlers(deps: SystemHandlerDependencies): void {
 			);
 			return shells;
 		} catch (error) {
+			void captureException(error);
 			logger.error('Shell detection error', 'ShellDetector', error);
 			// Return default shell list with all marked as unavailable
 			return [

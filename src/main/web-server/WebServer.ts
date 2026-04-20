@@ -980,6 +980,7 @@ export class WebServer {
 			this.isRunning = false;
 			logger.info('Server stopped', LOG_CONTEXT);
 		} catch (error) {
+			void captureException(error);
 			logger.error('Failed to stop server', LOG_CONTEXT, error);
 		}
 	}

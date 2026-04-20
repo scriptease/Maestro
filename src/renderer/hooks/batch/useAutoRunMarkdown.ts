@@ -14,6 +14,7 @@ import { MermaidRenderer } from '../../components/MermaidRenderer';
 import { AttachmentImage } from '../../components/AutoRun/AttachmentImage';
 import React from 'react';
 import { openUrl } from '../../utils/openUrl';
+import { logger } from '../../utils/logger';
 
 export interface UseAutoRunMarkdownParams {
 	theme: Theme;
@@ -95,7 +96,7 @@ export function useAutoRunMarkdown({
 			})
 			.catch((err) => {
 				if (!isActive) return;
-				console.error('Failed to count tokens:', err);
+				logger.error('Failed to count tokens:', undefined, err);
 				setTokenCount(null);
 			});
 

@@ -34,6 +34,7 @@ import {
 } from '../hooks';
 import { generateId } from '../utils/ids';
 import { formatMetaKey } from '../utils/shortcutFormatter';
+import { logger } from '../utils/logger';
 
 // Re-export for external consumers
 export { DEFAULT_BATCH_PROMPT, validateAgentPromptHasTaskReference } from '../hooks';
@@ -346,7 +347,7 @@ export function BatchRunnerModal(props: BatchRunnerModalProps) {
 			...(worktreeTarget && { worktreeTarget }),
 		};
 
-		console.log('[BatchRunnerModal] handleGo - calling onGo with config:', config);
+		logger.info('[BatchRunnerModal] handleGo - calling onGo with config:', undefined, config);
 		window.maestro.logger.log('info', 'Go button clicked', 'BatchRunnerModal', {
 			documentsCount: validDocuments.length,
 		});

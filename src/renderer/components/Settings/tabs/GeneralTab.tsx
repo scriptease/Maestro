@@ -43,6 +43,7 @@ import { ForcedParallelWarningModal } from '../../ForcedParallelWarningModal';
 import { getOpenInLabel, isLinuxPlatform } from '../../../utils/platformUtils';
 import { ToggleButtonGroup } from '../../ToggleButtonGroup';
 import { SettingCheckbox } from '../../SettingCheckbox';
+import { logger } from '../../../utils/logger';
 
 export interface GeneralTabProps {
 	theme: Theme;
@@ -218,7 +219,7 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 				setSyncMigratedCount(null);
 			})
 			.catch((err) => {
-				console.error('Failed to load sync settings:', err);
+				logger.error('Failed to load sync settings:', undefined, err);
 				setSyncError('Failed to load storage settings');
 				// Report to Sentry so production failures surface in dashboards
 				// rather than only being visible in the user's console.
@@ -238,7 +239,7 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 				setShellsLoaded(true);
 			}
 		} catch (error) {
-			console.error('Failed to load shells:', error);
+			logger.error('Failed to load shells:', undefined, error);
 		} finally {
 			setShellsLoading(false);
 		}

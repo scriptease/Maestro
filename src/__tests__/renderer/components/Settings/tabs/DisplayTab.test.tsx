@@ -20,6 +20,7 @@
 
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { logger } from '../../../../../renderer/utils/logger';
 import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { DisplayTab } from '../../../../../renderer/components/Settings/tabs/DisplayTab';
 import type { Theme } from '../../../../../renderer/types';
@@ -1480,7 +1481,7 @@ describe('DisplayTab', () => {
 				.fn()
 				.mockRejectedValue(new Error('Font detection failed'));
 
-			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
 
 			render(<DisplayTab theme={mockTheme} />);
 
@@ -1499,7 +1500,11 @@ describe('DisplayTab', () => {
 			// After the rejection resolves, the select should reappear (fontLoading goes false)
 			const fontSelectAfter = screen.getByRole('combobox');
 			expect(fontSelectAfter).toBeInTheDocument();
-			expect(consoleSpy).toHaveBeenCalledWith('Failed to load fonts:', expect.any(Error));
+			expect(consoleSpy).toHaveBeenCalledWith(
+				'Failed to load fonts:',
+				undefined,
+				expect.any(Error)
+			);
 
 			consoleSpy.mockRestore();
 		});
@@ -1509,7 +1514,7 @@ describe('DisplayTab', () => {
 				.fn()
 				.mockRejectedValue(new Error('Font detection failed'));
 
-			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
 
 			render(<DisplayTab theme={mockTheme} />);
 
