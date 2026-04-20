@@ -438,6 +438,29 @@ export const MainPanel = React.memo(
 			[resolveBuffer, props.onSendTextToAgent]
 		);
 
+		// Right-click "Copy to Clipboard" on highlighted text in XTerminal.
+		const handleCopyTerminalSelection = useCallback(
+			(text: string) => {
+				props.onCopyText?.(text, 'Terminal Selection');
+			},
+			[props.onCopyText]
+		);
+
+		// Right-click "Send to Agent" on highlighted text — resolve the tab's display name
+		// so the Send-to-Agent modal shows e.g. "Terminal 2 Selection" as the source.
+		const handleSendTerminalSelectionToAgent = useCallback(
+			(tabId: string, text: string) => {
+				if (!activeSession) return;
+				const tabIndex = (activeSession.terminalTabs ?? []).findIndex((t) => t.id === tabId);
+				const tab = activeSession.terminalTabs?.[tabIndex];
+				const baseName = tab
+					? getTerminalTabDisplayName(tab, tabIndex >= 0 ? tabIndex : 0)
+					: 'Terminal';
+				props.onSendTextToAgent?.(text, `${baseName} Selection`);
+			},
+			[activeSession, props.onSendTextToAgent]
+		);
+
 		// Browser content action wrappers — extract the rendered text of a browser tab
 		// (activating it first if necessary) and delegate to the App-level text handlers.
 		const resolveBrowserContent = useCallback(
@@ -786,6 +809,10 @@ export const MainPanel = React.memo(
 							mountedTerminalSessionsRef={mountedTerminalSessionsRef}
 							terminalSearchOpen={terminalSearchOpen}
 							setTerminalSearchOpen={setTerminalSearchOpen}
+							onTerminalCopySelection={props.onCopyText ? handleCopyTerminalSelection : undefined}
+							onTerminalSendSelectionToAgent={
+								props.onSendTextToAgent ? handleSendTerminalSelectionToAgent : undefined
+							}
 							isMobileLandscape={isMobileLandscape}
 							activeTabContextUsage={activeTabContextUsage}
 							contextWarningsEnabled={contextWarningsEnabled}

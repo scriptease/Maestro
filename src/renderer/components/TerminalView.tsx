@@ -44,6 +44,11 @@ interface TerminalViewProps {
 	onSearchClose?: () => void;
 	/** Whether the terminal panel is currently visible (inputMode === 'terminal'). Used to trigger repaint when returning from AI mode. */
 	isVisible?: boolean;
+	/** Copy the highlighted terminal selection to the clipboard. */
+	onCopySelection?: (text: string) => void;
+	/** Send the highlighted terminal selection to another agent. Tab ID is supplied so the
+	 *  handler can derive a display name (e.g. "Terminal 2") for the target agent modal. */
+	onSendSelectionToAgent?: (tabId: string, text: string) => void;
 }
 
 // ============================================================================
@@ -65,6 +70,8 @@ export const TerminalView = memo(
 			searchOpen,
 			onSearchClose,
 			isVisible,
+			onCopySelection,
+			onSendSelectionToAgent,
 		},
 		ref
 	) {
@@ -387,6 +394,12 @@ export const TerminalView = memo(
 							style={{ pointerEvents: isActive ? 'auto' : 'none' }}
 						>
 							<XTerminal
+								onCopySelection={onCopySelection}
+								onSendSelectionToAgent={
+									onSendSelectionToAgent
+										? (text: string) => onSendSelectionToAgent(tab.id, text)
+										: undefined
+								}
 								ref={(handle) => {
 									if (handle) {
 										terminalRefs.current.set(tab.id, handle);

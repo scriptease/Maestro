@@ -9,6 +9,10 @@ import '@xterm/xterm/css/xterm.css';
 import type { Theme } from '../../shared/theme-types';
 import type { ITheme } from '@xterm/xterm';
 import { LinkContextMenu, type LinkContextMenuState } from './LinkContextMenu';
+import {
+	TerminalSelectionContextMenu,
+	type TerminalSelectionContextMenuState,
+} from './TerminalSelectionContextMenu';
 import { openUrl } from '../utils/openUrl';
 import { safeClipboardWrite } from '../utils/clipboard';
 import { logger } from '../utils/logger';
@@ -201,6 +205,10 @@ export interface XTerminalProps {
 	 *  renderer is disposed to free GPU resources; it is re-initialised when the
 	 *  tab becomes active again. Defaults to true. */
 	isActive?: boolean;
+	/** Called when the user chooses "Copy to Clipboard" on the selection right-click menu. */
+	onCopySelection?: (text: string) => void;
+	/** Called when the user chooses "Send to Agent" on the selection right-click menu. */
+	onSendSelectionToAgent?: (text: string) => void;
 }
 
 // ============================================================================
@@ -208,7 +216,18 @@ export interface XTerminalProps {
 // ============================================================================
 
 export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XTerminal(
-	{ sessionId, theme, fontFamily, fontSize = 12, onData, onResize, onTitleChange, isActive = true },
+	{
+		sessionId,
+		theme,
+		fontFamily,
+		fontSize = 12,
+		onData,
+		onResize,
+		onTitleChange,
+		isActive = true,
+		onCopySelection,
+		onSendSelectionToAgent,
+	},
 	ref
 ) {
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -229,6 +248,17 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 	// Link context menu state
 	const [linkMenu, setLinkMenu] = useState<LinkContextMenuState | null>(null);
 	const hoveredLinkRef = useRef<string | null>(null);
+
+	// Selection context menu state
+	const [selectionMenu, setSelectionMenu] = useState<TerminalSelectionContextMenuState | null>(
+		null
+	);
+	// Latest callback refs — the contextmenu listener is registered once in the mount
+	// effect (empty deps) so we can't capture fresh closures; read through refs instead.
+	const onCopySelectionRef = useRef(onCopySelection);
+	onCopySelectionRef.current = onCopySelection;
+	const onSendSelectionToAgentRef = useRef(onSendSelectionToAgent);
+	onSendSelectionToAgentRef.current = onSendSelectionToAgent;
 
 	// Expose handle to parent
 	useImperativeHandle(
@@ -502,7 +532,9 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 			fitAddon.fit();
 		}
 
-		// Right-click context menu for links
+		// Right-click context menu: prefer the link menu when a URL is hovered;
+		// otherwise show the selection menu when text is highlighted. If neither
+		// applies, let the default context menu show.
 		const termElement = containerRef.current;
 		const handleContextMenu = (e: MouseEvent) => {
 			const url = hoveredLinkRef.current;
@@ -510,6 +542,15 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 				e.preventDefault();
 				e.stopPropagation();
 				setLinkMenu({ x: e.clientX, y: e.clientY, url });
+				return;
+			}
+			const hasHandler = !!(onCopySelectionRef.current || onSendSelectionToAgentRef.current);
+			if (!hasHandler) return;
+			const selection = term.getSelection();
+			if (selection) {
+				e.preventDefault();
+				e.stopPropagation();
+				setSelectionMenu({ x: e.clientX, y: e.clientY, selection });
 			}
 		};
 		termElement.addEventListener('contextmenu', handleContextMenu);
@@ -640,6 +681,7 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 	}, [isActive]);
 
 	const dismissLinkMenu = useCallback(() => setLinkMenu(null), []);
+	const dismissSelectionMenu = useCallback(() => setSelectionMenu(null), []);
 
 	return (
 		<div
@@ -653,6 +695,15 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 		>
 			<div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden' }} />
 			{linkMenu && <LinkContextMenu menu={linkMenu} theme={theme} onDismiss={dismissLinkMenu} />}
+			{selectionMenu && (
+				<TerminalSelectionContextMenu
+					menu={selectionMenu}
+					theme={theme}
+					onDismiss={dismissSelectionMenu}
+					onCopy={onCopySelection}
+					onSendToAgent={onSendSelectionToAgent}
+				/>
+			)}
 		</div>
 	);
 });

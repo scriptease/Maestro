@@ -69,6 +69,10 @@ export interface MainPanelContentProps {
 	mountedTerminalSessionsRef: React.MutableRefObject<Map<string, Session>>;
 	terminalSearchOpen: boolean;
 	setTerminalSearchOpen: (open: boolean) => void;
+	/** Copy a highlighted terminal selection to the clipboard (right-click menu handler). */
+	onTerminalCopySelection?: (text: string) => void;
+	/** Send a highlighted terminal selection to another agent (right-click menu handler). */
+	onTerminalSendSelectionToAgent?: (tabId: string, text: string) => void;
 
 	// Layout
 	isMobileLandscape: boolean;
@@ -262,6 +266,8 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 		mountedTerminalSessionsRef,
 		terminalSearchOpen,
 		setTerminalSearchOpen,
+		onTerminalCopySelection,
+		onTerminalSendSelectionToAgent,
 		isMobileLandscape,
 		activeTabContextUsage,
 		contextWarningsEnabled,
@@ -736,6 +742,8 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 							searchOpen={isCurrentSession ? terminalSearchOpen : false}
 							onSearchClose={isCurrentSession ? () => setTerminalSearchOpen(false) : undefined}
 							isVisible={isTerminalVisible}
+							onCopySelection={onTerminalCopySelection}
+							onSendSelectionToAgent={onTerminalSendSelectionToAgent}
 						/>
 					</div>
 				);
