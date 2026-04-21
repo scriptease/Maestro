@@ -385,6 +385,8 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 			// setWindowOpenHandler blocks — clicks silently fail.
 			linkHandler: {
 				activate(event, text) {
+					// Only left-click opens the link; right-click is reserved for the context menu.
+					if (event.button !== 0) return;
 					openUrl(text, { ctrlKey: event.ctrlKey });
 				},
 				hover(_event, text) {
@@ -427,6 +429,8 @@ export const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(function XT
 						},
 						text: url,
 						activate(event, linkText) {
+							// Only left-click opens the link; right-click is reserved for the context menu.
+							if (event.button !== 0) return;
 							openUrl(linkText, { ctrlKey: event.ctrlKey });
 						},
 						hover(_event, linkText) {
