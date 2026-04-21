@@ -722,6 +722,21 @@ describe('WebSocketMessageHandler', () => {
 			expect(callbacks.openBrowserTab).not.toHaveBeenCalled();
 		});
 
+		it('should normalize bare host:port as http://', async () => {
+			handler.handleMessage(client, {
+				type: 'open_browser_tab',
+				sessionId: 'session-1',
+				url: 'localhost:3000',
+			});
+
+			await vi.waitFor(() => {
+				expect(callbacks.openBrowserTab).toHaveBeenCalledWith(
+					'session-1',
+					'http://localhost:3000/'
+				);
+			});
+		});
+
 		it('should reject when session does not exist', () => {
 			handler.handleMessage(client, {
 				type: 'open_browser_tab',
@@ -826,6 +841,48 @@ describe('WebSocketMessageHandler', () => {
 			expect(response.type).toBe('open_terminal_tab_result');
 			expect(response.success).toBe(false);
 			expect(response.error).toBe('Session not found');
+			expect(callbacks.openTerminalTab).not.toHaveBeenCalled();
+		});
+
+		it('should reject non-string cwd', () => {
+			handler.handleMessage(client, {
+				type: 'open_terminal_tab',
+				sessionId: 'session-1',
+				cwd: 42 as unknown as string,
+			});
+
+			const response = JSON.parse((client.socket.send as any).mock.calls[0][0]);
+			expect(response.type).toBe('open_terminal_tab_result');
+			expect(response.success).toBe(false);
+			expect(response.error).toContain('Invalid cwd');
+			expect(callbacks.openTerminalTab).not.toHaveBeenCalled();
+		});
+
+		it('should reject non-string shell', () => {
+			handler.handleMessage(client, {
+				type: 'open_terminal_tab',
+				sessionId: 'session-1',
+				shell: true as unknown as string,
+			});
+
+			const response = JSON.parse((client.socket.send as any).mock.calls[0][0]);
+			expect(response.type).toBe('open_terminal_tab_result');
+			expect(response.success).toBe(false);
+			expect(response.error).toContain('Invalid shell');
+			expect(callbacks.openTerminalTab).not.toHaveBeenCalled();
+		});
+
+		it('should reject non-string/non-null name', () => {
+			handler.handleMessage(client, {
+				type: 'open_terminal_tab',
+				sessionId: 'session-1',
+				name: 123 as unknown as string,
+			});
+
+			const response = JSON.parse((client.socket.send as any).mock.calls[0][0]);
+			expect(response.type).toBe('open_terminal_tab_result');
+			expect(response.success).toBe(false);
+			expect(response.error).toContain('Invalid name');
 			expect(callbacks.openTerminalTab).not.toHaveBeenCalled();
 		});
 	});

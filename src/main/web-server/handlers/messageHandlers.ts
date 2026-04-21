@@ -1427,8 +1427,8 @@ export class WebSocketMessageHandler {
 	 * Handle open_browser_tab message - open a URL in a browser tab
 	 */
 	private handleOpenBrowserTab(client: WebClient, message: WebClientMessage): void {
-		const sessionId = message.sessionId as string;
-		const url = message.url as string;
+		const sessionId = typeof message.sessionId === 'string' ? message.sessionId : '';
+		const url = typeof message.url === 'string' ? message.url : '';
 		logger.info(
 			`[Web] Received open_browser_tab message: session=${sessionId}, url=${url}`,
 			LOG_CONTEXT
@@ -1457,15 +1457,26 @@ export class WebSocketMessageHandler {
 
 		// Only http(s) URLs are allowed in browser tabs; everything else is rejected
 		// (mailto:, file:, javascript:, etc. would be unsafe or nonsensical here).
+		// Normalize bare host:port inputs (e.g. `localhost:3000`) to http:// so
+		// WHATWG URL parsing doesn't mistake the host for a protocol.
+		const trimmedUrl = url.trim();
+		const hasExplicitScheme = trimmedUrl.includes('://');
+		const candidate = hasExplicitScheme ? trimmedUrl : `http://${trimmedUrl}`;
 		let parsed: URL;
 		try {
-			parsed = new URL(url);
+			parsed = new URL(candidate);
 		} catch {
 			sendErrorResult('Invalid URL');
 			return;
 		}
 		if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
 			sendErrorResult(`Unsupported URL protocol: ${parsed.protocol}`);
+			return;
+		}
+		// A bare input that parses with userinfo is almost certainly malformed
+		// (e.g. `foo:bar@baz` accidentally looking like `user:pass@host`).
+		if (!hasExplicitScheme && (parsed.username || parsed.password)) {
+			sendErrorResult('Invalid URL');
 			return;
 		}
 
@@ -1494,15 +1505,14 @@ export class WebSocketMessageHandler {
 	 * Handle open_terminal_tab message - open a new terminal tab
 	 */
 	private handleOpenTerminalTab(client: WebClient, message: WebClientMessage): void {
-		const sessionId = message.sessionId as string;
-		const cwd = typeof message.cwd === 'string' ? (message.cwd as string) : undefined;
-		const shell = typeof message.shell === 'string' ? (message.shell as string) : undefined;
+		const sessionId = typeof message.sessionId === 'string' ? message.sessionId : '';
+		const rawCwd = message.cwd;
+		const rawShell = message.shell;
 		const rawName = message.name;
-		const name = typeof rawName === 'string' ? rawName : rawName === null ? null : undefined;
 		logger.info(
-			`[Web] Received open_terminal_tab message: session=${sessionId}, cwd=${cwd ?? ''}, shell=${
-				shell ?? ''
-			}`,
+			`[Web] Received open_terminal_tab message: session=${sessionId}, cwd=${
+				typeof rawCwd === 'string' ? rawCwd : ''
+			}, shell=${typeof rawShell === 'string' ? rawShell : ''}`,
 			LOG_CONTEXT
 		);
 
@@ -1520,6 +1530,24 @@ export class WebSocketMessageHandler {
 			sendErrorResult('Missing sessionId');
 			return;
 		}
+
+		// Reject malformed optional fields rather than silently defaulting them,
+		// which could spawn a terminal in the wrong cwd or with the wrong shell.
+		if (rawCwd !== undefined && typeof rawCwd !== 'string') {
+			sendErrorResult('Invalid cwd: must be a string');
+			return;
+		}
+		if (rawShell !== undefined && typeof rawShell !== 'string') {
+			sendErrorResult('Invalid shell: must be a string');
+			return;
+		}
+		if (rawName !== undefined && rawName !== null && typeof rawName !== 'string') {
+			sendErrorResult('Invalid name: must be a string or null');
+			return;
+		}
+		const cwd = typeof rawCwd === 'string' ? rawCwd : undefined;
+		const shell = typeof rawShell === 'string' ? rawShell : undefined;
+		const name = typeof rawName === 'string' ? rawName : rawName === null ? null : undefined;
 
 		const session = this.callbacks.getSessions?.().find((s) => s.id === sessionId);
 		if (!session) {
