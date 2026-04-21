@@ -478,8 +478,13 @@ describe.skipIf(!canLoadBetterSqlite3())('Phase 15B — real SQLite smoke test',
 			os.tmpdir(),
 			`maestro-cue-smoke-${Date.now()}-${Math.random().toString(36).slice(2)}.db`
 		);
+		// Capture the cue-db module lazily so the finally block can close the
+		// SQLite handle even if an assertion above throws. Leaving the handle
+		// open before `fs.unlinkSync` would fail on Windows (file locked) and
+		// leak the connection on POSIX.
+		let cueDb: typeof import('../../../main/cue/cue-db') | null = null;
 		try {
-			const cueDb = await import('../../../main/cue/cue-db');
+			cueDb = await import('../../../main/cue/cue-db');
 			cueDb.initCueDb(undefined, dbPath);
 			cueDb.recordCueEvent({
 				id: 'smoke-1',
@@ -492,8 +497,14 @@ describe.skipIf(!canLoadBetterSqlite3())('Phase 15B — real SQLite smoke test',
 			const events = cueDb.getRecentCueEvents(0);
 			expect(events).toHaveLength(1);
 			expect(events[0].id).toBe('smoke-1');
-			cueDb.closeCueDb();
 		} finally {
+			if (cueDb) {
+				try {
+					cueDb.closeCueDb();
+				} catch {
+					/* best effort — double-close is safe, other errors are non-fatal here */
+				}
+			}
 			try {
 				fs.unlinkSync(dbPath);
 			} catch {

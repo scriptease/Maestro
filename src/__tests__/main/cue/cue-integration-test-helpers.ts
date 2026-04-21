@@ -1,29 +1,48 @@
 /**
  * Phase 15B — Integration test helpers.
  *
- * Two things live here:
+ * Exported utilities:
  *
- * 1. `createInMemoryCueDb()` — a high-fidelity in-memory implementation of
- *    the cue-db module contract. `better-sqlite3` is a native module compiled
- *    against Electron's ABI and does not load under vitest's Node runtime, so
- *    we cannot exercise real SQL in integration tests. Instead we mirror the
- *    module's public API (recordCueEvent / updateCueEventStatus /
- *    getRecentCueEvents / updateHeartbeat / pruneCueEvents /
- *    markGitHubItemSeen / isGitHubItemSeen / etc.) with plain data
- *    structures that preserve the SQL semantics cue-engine actually depends
- *    on: insert ordering, UNIQUE constraints (cue_github_seen), prune-by-age,
- *    and heartbeat upsert (single-row id=1).
+ * - `createInMemoryCueDb()` — a high-fidelity in-memory implementation of
+ *   the cue-db module contract. `better-sqlite3` is a native module compiled
+ *   against Electron's ABI and does not load under vitest's Node runtime, so
+ *   we cannot exercise real SQL in integration tests. Instead we mirror the
+ *   module's public API (recordCueEvent / updateCueEventStatus /
+ *   getRecentCueEvents / updateHeartbeat / pruneCueEvents /
+ *   markGitHubItemSeen / isGitHubItemSeen / etc.) with plain data structures
+ *   that preserve the SQL semantics cue-engine actually depends on: insert
+ *   ordering, UNIQUE constraints (cue_github_seen), prune-by-age, and
+ *   heartbeat upsert (single-row id=1). Exposes `setNowOverride`,
+ *   `queueWriteFailure`, and `resetAll` for deterministic test control.
  *
- *    `cue-db-integration.test.ts` exercises this in-memory implementation
- *    directly to pin the contract. `cue-engine-integration.test.ts` uses it
- *    as the `vi.mock` target for the cue-db module so the real engine pipes
- *    events through it.
+ * - `buildCueDbModuleMock(getDb)` — a factory returning a module-shape object
+ *   that delegates every cue-db function to the supplied InMemoryCueDb.
+ *   Designed for `vi.mock('.../cue-db', () => buildCueDbModuleMock(() =>
+ *   sharedDb))` — the lazy `getDb` getter accommodates vi.mock's hoisting,
+ *   where the factory runs before any top-level `let sharedDb` has executed.
  *
- * 2. `buildWiredCueEngine(overrides)` — constructs a CueEngine with real
- *    backing services (session registry, fan-in tracker, run manager, etc.)
- *    and an optional `mockOnCueRun` callback. Use this to drive end-to-end
- *    scenarios (heartbeat → onCueRun → chain propagation) without spawning
- *    real child processes.
+ * - `canLoadBetterSqlite3()` — probe-instantiates a `:memory:` database so a
+ *   `describe.skipIf(!canLoadBetterSqlite3())` block reflects the native
+ *   binary's real availability. A plain `require('better-sqlite3')` returns
+ *   true even when the prebuilt binary is ABI-mismatched (compiled for
+ *   Electron's Node version, not vitest's); probing catches that.
+ *
+ * - `createOnCueRunSpy(defaultResponse?)` — a lightweight spy for the
+ *   engine's `onCueRun` boundary callback, capturing a per-call summary
+ *   (runId, sessionId, subscriptionName, prompt, event) so integration tests
+ *   can assert the dispatch payload without re-reading every vi.fn() call
+ *   tuple.
+ *
+ * Typical usage (from `cue-engine-integration.test.ts`):
+ *
+ *   let sharedDb: InMemoryCueDb | null = null;
+ *   function getSharedDb() {
+ *     if (!sharedDb) sharedDb = createInMemoryCueDb();
+ *     return sharedDb;
+ *   }
+ *   vi.mock('../../../main/cue/cue-db', () =>
+ *     buildCueDbModuleMock(() => getSharedDb())
+ *   );
  */
 
 import { vi } from 'vitest';

@@ -26,7 +26,11 @@ function validateGlobPattern(pattern: string, prefix: string, errors: string[]):
 		);
 		return;
 	}
-	if (/^[A-Za-z]:[\\/]/.test(pattern)) {
+	// Match any leading `X:` drive letter — both drive-absolute (`C:\foo`,
+	// `C:/foo`) and drive-relative (`C:secret\foo`) forms. Drive-relative
+	// paths resolve against Windows' per-drive current-directory table and
+	// can escape the project root just as effectively as the absolute forms.
+	if (/^[A-Za-z]:/.test(pattern)) {
 		errors.push(
 			`${prefix}: "watch" pattern "${pattern}" is not allowed (Windows drive paths are not permitted)`
 		);

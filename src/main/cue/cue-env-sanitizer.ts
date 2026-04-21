@@ -24,6 +24,7 @@ const BLOCKED_ENV_VARS: ReadonlySet<string> = new Set([
 	'USER',
 	'SHELL',
 	'LD_PRELOAD',
+	'LD_LIBRARY_PATH',
 	'DYLD_INSERT_LIBRARIES',
 	'NODE_OPTIONS',
 ]);

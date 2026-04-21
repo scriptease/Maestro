@@ -361,21 +361,14 @@ describe('CueRunManager — race conditions', () => {
 	// ─── stopAll interleaving ───────────────────────────────────────────────
 
 	describe('stopAll + concurrent new execute', () => {
-		it('stopAll clears the queue and stops every run that was active at the time of the call', () => {
-			// DOCUMENTED RACE: stopAll() snapshots `[...activeRuns.keys()]` once,
-			// then iterates. Each stopRun() frees a concurrency slot and drains
-			// the queue in-line — so when stopAll runs against a session with a
-			// queued event, the drain dispatches that queued event mid-iteration
-			// as a fresh active run. That fresh run is NOT in the original
-			// snapshot and therefore survives stopAll.
+		it('stopAll clears both the queue and every active run (no drained run escapes)', () => {
+			// stopAll's contract: after this function returns, zero active runs
+			// and zero queued events. It achieves this by clearing the queue
+			// FIRST — otherwise stopRun's slot-release would drain a queued
+			// event into a fresh active run that escaped the snapshot.
 			//
-			// The `eventQueue.clear()` at the end of stopAll drops any remaining
-			// queued items (sub-3 here), but it cannot undo a dispatch that
-			// already happened.
-			//
-			// This test pins the current behavior so a future refactor (e.g.
-			// pausing the drain during stopAll) surfaces as a deliberate
-			// assertion flip, not a silent change.
+			// This test pins the invariant so a future refactor that reorders
+			// clear/stop surfaces as an assertion flip.
 			const deferred = deferredOnCueRun();
 			const deps = createDeps({
 				onCueRun: deferred.fn,
@@ -396,13 +389,13 @@ describe('CueRunManager — race conditions', () => {
 
 			manager.stopAll();
 
-			// The originally-active run (sub-1) is gone. The drain of sub-2
-			// during stopRun's slot-release produced a fresh active run. sub-3
-			// was cleared with the queue.
-			expect(manager.getActiveRuns()).toHaveLength(1);
-			expect(manager.getActiveRuns()[0].subscriptionName).toBe('sub-2');
+			expect(manager.getActiveRuns()).toHaveLength(0);
 			expect(manager.getQueueStatus().size).toBe(0);
-			expect(deps.onRunStopped).toHaveBeenCalledTimes(1); // one original active run stopped
+			expect(deps.onRunStopped).toHaveBeenCalledTimes(1); // one active run stopped
+			// onCueRun was called once (for sub-1's initial dispatch) and must
+			// NOT have been called a second time for sub-2 — the queue-clear
+			// prevents the drain during stopRun from re-dispatching.
+			expect(deps.onCueRun).toHaveBeenCalledTimes(1);
 		});
 
 		it('execute after stopAll still works (engine re-enable scenario)', async () => {

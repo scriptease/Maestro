@@ -73,6 +73,14 @@ describe('Phase 11A — validateGlobPattern rejects traversal patterns', () => {
 		expect(errs.some((e) => /Windows drive paths are not permitted/i.test(e))).toBe(true);
 	});
 
+	it('rejects drive-relative Windows paths without a separator after the colon', () => {
+		// `C:secret\*.txt` is resolved against Windows' per-drive CWD table
+		// and can escape the project root. Catch both drive-absolute
+		// (`C:\...`) and drive-relative (`C:...`) shapes with one regex.
+		const errs = watchErrors({ watch: 'C:secret\\*.txt' });
+		expect(errs.some((e) => /Windows drive paths are not permitted/i.test(e))).toBe(true);
+	});
+
 	it('accepts a normal relative glob', () => {
 		const errs = watchErrors({ watch: 'src/**/*.ts' });
 		// There should be no watch-related error.
@@ -256,6 +264,7 @@ describe('Phase 11B — sanitizeCustomEnvVars', () => {
 		'USER',
 		'SHELL',
 		'LD_PRELOAD',
+		'LD_LIBRARY_PATH',
 		'DYLD_INSERT_LIBRARIES',
 		'NODE_OPTIONS',
 	])('drops blocklisted var %s', (name) => {
@@ -334,6 +343,7 @@ describe('Phase 11B — sanitizeCustomEnvVars', () => {
 		const blocked = getBlockedEnvVarNames();
 		expect(blocked.has('PATH')).toBe(true);
 		expect(blocked.has('LD_PRELOAD')).toBe(true);
+		expect(blocked.has('LD_LIBRARY_PATH')).toBe(true);
 		expect(blocked.has('DYLD_INSERT_LIBRARIES')).toBe(true);
 		expect(blocked.has('NODE_OPTIONS')).toBe(true);
 		expect(blocked.has('HOME')).toBe(true);

@@ -1142,10 +1142,23 @@ describe('createCueRunManager', () => {
 			await vi.advanceTimersByTimeAsync(0);
 
 			expect(onCueRun).toHaveBeenCalledTimes(2);
-			// The second call receives the main-task stdout as context.
-			expect(onCueRun.mock.calls[1][0]).toMatchObject({
-				subscriptionName: 'test-sub:output',
-			});
+			// The second call is the output-prompt phase. The run-manager
+			// builds `contextPrompt = outputPrompt + "\n---\nContext from
+			// completed task:\n" + mainStdout` and passes that as the
+			// `prompt` field. It also stashes the main-task stdout on the
+			// event payload under `sourceOutput` for downstream chain
+			// consumers. Verify both channels carry MAIN_TASK_OUTPUT so a
+			// refactor that drops either one fails fast.
+			const outputPromptRequest = onCueRun.mock.calls[1][0] as {
+				subscriptionName: string;
+				prompt: string;
+				event: { payload: { sourceOutput?: string; outputPromptPhase?: boolean } };
+			};
+			expect(outputPromptRequest.subscriptionName).toBe('test-sub:output');
+			expect(outputPromptRequest.prompt).toContain('output-prompt-body');
+			expect(outputPromptRequest.prompt).toContain('MAIN_TASK_OUTPUT');
+			expect(outputPromptRequest.event.payload.sourceOutput).toBe('MAIN_TASK_OUTPUT');
+			expect(outputPromptRequest.event.payload.outputPromptPhase).toBe(true);
 			// onRunCompleted carries the MAIN task output — not the failed
 			// output-prompt's empty string.
 			expect(deps.onRunCompleted).toHaveBeenCalledWith(
