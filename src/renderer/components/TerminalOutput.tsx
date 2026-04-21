@@ -34,6 +34,8 @@ import { LogFilterControls } from './LogFilterControls';
 import { SaveMarkdownModal } from './SaveMarkdownModal';
 import { generateTerminalProseStyles } from '../utils/markdownConfig';
 import { safeClipboardWrite } from '../utils/clipboard';
+import { useSettingsStore } from '../stores/settingsStore';
+const BIONIFY_BUTTON_LABEL = 'B';
 
 // ============================================================================
 // Tool display helpers (pure functions, hoisted out of render path)
@@ -177,6 +179,10 @@ interface LogItemProps {
 	onPublishGist?: (text: string) => void;
 	// Fork conversation from this message (AI mode only, user messages and AI responses — source 'user' | 'ai' | 'stdout')
 	onForkConversation?: (logId: string) => void;
+	bionifyReadingMode: boolean;
+	bionifyIntensity: number;
+	bionifyAlgorithm: string;
+	onToggleBionifyReadingMode: () => void;
 	// Message alignment
 	userMessageAlignment: 'left' | 'right';
 }
@@ -219,6 +225,10 @@ const LogItemComponent = memo(
 		ghCliAvailable,
 		onPublishGist,
 		onForkConversation,
+		bionifyReadingMode,
+		bionifyIntensity,
+		bionifyAlgorithm,
+		onToggleBionifyReadingMode,
 		userMessageAlignment,
 	}: LogItemProps) => {
 		// Ref for the log item container - used for scroll-into-view on expand
@@ -337,6 +347,7 @@ const LogItemComponent = memo(
 		const isReversed = isUserMessage
 			? userMessageAlignment === 'left'
 			: userMessageAlignment === 'right';
+		const showBionifyTabToggle = log.source !== 'user' && isAIMode && !markdownEditMode;
 
 		return (
 			<div
@@ -371,7 +382,7 @@ const LogItemComponent = memo(
 					})()}
 				</div>
 				<div
-					className={`flex-1 min-w-0 p-4 pb-10 rounded-xl border ${isReversed ? 'rounded-tr-none' : 'rounded-tl-none'} relative overflow-hidden`}
+					className={`flex-1 min-w-0 p-4 pb-10 ${showBionifyTabToggle ? 'pr-14' : ''} rounded-xl border ${isReversed ? 'rounded-tr-none' : 'rounded-tl-none'} relative overflow-hidden`}
 					style={{
 						backgroundColor: isUserMessage
 							? isAIMode
@@ -390,6 +401,19 @@ const LogItemComponent = memo(
 									: theme.colors.border,
 					}}
 				>
+					{showBionifyTabToggle && (
+						<button
+							onClick={onToggleBionifyReadingMode}
+							className="absolute top-2 right-2 z-10 p-1.5 rounded opacity-0 group-hover:opacity-50 hover:!opacity-100"
+							style={{ color: bionifyReadingMode ? theme.colors.accent : theme.colors.textDim }}
+							title={
+								bionifyReadingMode ? 'Disable Bionify for this tab' : 'Enable Bionify for this tab'
+							}
+							aria-pressed={bionifyReadingMode}
+						>
+							<span className="text-[12px] font-black leading-none">{BIONIFY_BUTTON_LABEL}</span>
+						</button>
+					)}
 					{/* Local filter icon for system output only */}
 					{log.source !== 'user' && isTerminal && (
 						<div className="absolute top-2 right-2 flex items-center gap-2">
@@ -496,6 +520,9 @@ const LogItemComponent = memo(
 										content={log.text}
 										theme={theme}
 										onCopy={copyToClipboard}
+										enableBionifyReadingMode={bionifyReadingMode}
+										bionifyIntensity={bionifyIntensity}
+										bionifyAlgorithm={bionifyAlgorithm}
 										fileTree={fileTree}
 										cwd={cwd}
 										projectRoot={projectRoot}
@@ -605,6 +632,9 @@ const LogItemComponent = memo(
 											content={displayText}
 											theme={theme}
 											onCopy={copyToClipboard}
+											enableBionifyReadingMode={bionifyReadingMode}
+											bionifyIntensity={bionifyIntensity}
+											bionifyAlgorithm={bionifyAlgorithm}
 											fileTree={fileTree}
 											cwd={cwd}
 											projectRoot={projectRoot}
@@ -688,6 +718,9 @@ const LogItemComponent = memo(
 											content={filteredText}
 											theme={theme}
 											onCopy={copyToClipboard}
+											enableBionifyReadingMode={bionifyReadingMode}
+											bionifyIntensity={bionifyIntensity}
+											bionifyAlgorithm={bionifyAlgorithm}
 											fileTree={fileTree}
 											cwd={cwd}
 											projectRoot={projectRoot}
@@ -763,6 +796,9 @@ const LogItemComponent = memo(
 										content={filteredText}
 										theme={theme}
 										onCopy={copyToClipboard}
+										enableBionifyReadingMode={bionifyReadingMode}
+										bionifyIntensity={bionifyIntensity}
+										bionifyAlgorithm={bionifyAlgorithm}
 										fileTree={fileTree}
 										cwd={cwd}
 										projectRoot={projectRoot}
@@ -959,6 +995,9 @@ const LogItemComponent = memo(
 			prevProps.theme === nextProps.theme &&
 			prevProps.maxOutputLines === nextProps.maxOutputLines &&
 			prevProps.markdownEditMode === nextProps.markdownEditMode &&
+			prevProps.bionifyReadingMode === nextProps.bionifyReadingMode &&
+			prevProps.bionifyIntensity === nextProps.bionifyIntensity &&
+			prevProps.bionifyAlgorithm === nextProps.bionifyAlgorithm &&
 			prevProps.fontFamily === nextProps.fontFamily &&
 			prevProps.userMessageAlignment === nextProps.userMessageAlignment &&
 			prevProps.ghCliAvailable === nextProps.ghCliAvailable &&
@@ -1066,6 +1105,15 @@ export const TerminalOutput = memo(
 			ghCliAvailable,
 			onPublishMessageGist,
 		} = props;
+		const globalBionifyReadingMode = useSettingsStore((s) => s.bionifyReadingMode);
+		const globalBionifyIntensity = useSettingsStore((s) => s.bionifyIntensity);
+		const globalBionifyAlgorithm = useSettingsStore((s) => s.bionifyAlgorithm);
+		const [bionifyOverride, setBionifyOverride] = useState<boolean | null>(null);
+		const effectiveBionifyReadingMode = bionifyOverride ?? globalBionifyReadingMode;
+
+		useEffect(() => {
+			setBionifyOverride(null);
+		}, [session.id, session.activeTabId]);
 
 		// Use the forwarded ref if provided, otherwise create a local one
 		const localRef = useRef<HTMLDivElement>(null);
@@ -1970,6 +2018,12 @@ export const TerminalOutput = memo(
 							onSaveToFile={handleSaveToFile}
 							ghCliAvailable={ghCliAvailable}
 							onPublishGist={onPublishMessageGist}
+							bionifyReadingMode={effectiveBionifyReadingMode}
+							bionifyIntensity={globalBionifyIntensity}
+							bionifyAlgorithm={globalBionifyAlgorithm}
+							onToggleBionifyReadingMode={() =>
+								setBionifyOverride((current) => !(current ?? globalBionifyReadingMode))
+							}
 							userMessageAlignment={userMessageAlignment}
 						/>
 					))}

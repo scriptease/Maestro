@@ -30,6 +30,7 @@ import type {
 	RefreshAutoRunDocsCallback,
 	ConfigureAutoRunCallback,
 	GetThemeCallback,
+	GetBionifyReadingModeCallback,
 	GetCustomCommandsCallback,
 	GetHistoryCallback,
 	GetAutoRunDocsCallback,
@@ -86,6 +87,7 @@ export interface WebServerCallbacks {
 	getSessions: GetSessionsCallback | null;
 	getSessionDetail: GetSessionDetailCallback | null;
 	getTheme: GetThemeCallback | null;
+	getBionifyReadingMode: GetBionifyReadingModeCallback | null;
 	getCustomCommands: GetCustomCommandsCallback | null;
 	writeToSession: WriteToSessionCallback | null;
 	executeCommand: ExecuteCommandCallback | null;
@@ -145,6 +147,7 @@ export class CallbackRegistry {
 		getSessions: null,
 		getSessionDetail: null,
 		getTheme: null,
+		getBionifyReadingMode: null,
 		getCustomCommands: null,
 		writeToSession: null,
 		executeCommand: null,
@@ -211,6 +214,10 @@ export class CallbackRegistry {
 
 	getTheme(): ReturnType<GetThemeCallback> | null {
 		return this.callbacks.getTheme?.() ?? null;
+	}
+
+	getBionifyReadingMode(): ReturnType<GetBionifyReadingModeCallback> {
+		return this.callbacks.getBionifyReadingMode?.() ?? false;
 	}
 
 	getCustomCommands(): ReturnType<GetCustomCommandsCallback> | [] {
@@ -542,6 +549,10 @@ export class CallbackRegistry {
 
 	setGetThemeCallback(callback: GetThemeCallback): void {
 		this.callbacks.getTheme = callback;
+	}
+
+	setGetBionifyReadingModeCallback(callback: GetBionifyReadingModeCallback): void {
+		this.callbacks.getBionifyReadingMode = callback;
 	}
 
 	setGetCustomCommandsCallback(callback: GetCustomCommandsCallback): void {

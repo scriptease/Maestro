@@ -39,6 +39,10 @@ export interface UseAutoRunMarkdownParams {
 	openLightboxByFilename: (filename: string) => void;
 	// Preview ref for anchor scrolling
 	previewRef: RefObject<HTMLElement>;
+	// Bionify reading mode (opt-in per preview surface)
+	enableBionifyReadingMode?: boolean;
+	bionifyIntensity?: number;
+	bionifyAlgorithm?: string;
 }
 
 export interface UseAutoRunMarkdownReturn {
@@ -63,6 +67,9 @@ export function useAutoRunMarkdown({
 	handleMatchRendered,
 	openLightboxByFilename,
 	previewRef,
+	enableBionifyReadingMode = false,
+	bionifyIntensity,
+	bionifyAlgorithm,
 }: UseAutoRunMarkdownParams): UseAutoRunMarkdownReturn {
 	// 1. Memoize prose CSS styles - only regenerate when theme changes
 	const proseStyles = useMemo(() => generateAutoRunProseStyles(theme), [theme]);
@@ -169,6 +176,9 @@ export function useAutoRunMarkdown({
 			// Provide container ref for anchor link scrolling
 			containerRef: previewRef,
 			// No search highlighting here - added separately when needed
+			enableBionifyReadingMode,
+			bionifyIntensity,
+			bionifyAlgorithm,
 		});
 
 		// Add custom image renderer for AttachmentImage
@@ -185,7 +195,16 @@ export function useAutoRunMarkdown({
 					...props,
 				}),
 		};
-	}, [theme, folderPath, sshRemoteId, openLightboxByFilename, handleFileClick]);
+	}, [
+		theme,
+		folderPath,
+		sshRemoteId,
+		openLightboxByFilename,
+		handleFileClick,
+		enableBionifyReadingMode,
+		bionifyIntensity,
+		bionifyAlgorithm,
+	]);
 
 	// 10. Search-highlighted components - only used in preview mode with active search
 	// This allows the base components to remain stable during editing
@@ -204,6 +223,8 @@ export function useAutoRunMarkdown({
 			onFileClick: handleFileClick,
 			onExternalLinkClick: (href, opts) => openUrl(href, opts),
 			containerRef: previewRef,
+			// Disable Bionify transforms while searching so match highlights stay visible.
+			enableBionifyReadingMode: false,
 			searchHighlight: {
 				query: searchQuery,
 				currentMatchIndex,

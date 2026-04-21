@@ -37,6 +37,7 @@ import {
 	deleteRemote,
 	countItemsRemote,
 } from '../../utils/remote-fs';
+import { resolveDirentType } from '../../utils/dirent-utils';
 import { getSshRemoteById } from '../../stores';
 import { captureException } from '../../utils/sentry';
 
@@ -110,6 +111,7 @@ export function registerFilesystemHandlers(): void {
 			}
 			// Map remote entries to match local format.
 			// For symlinks, resolve target type via remote stat so directory/file links remain visible.
+			// Include full path for recursive directory scanning (e.g., document graph).
 			return await Promise.all(
 				result.data!.map(async (entry) => {
 					const fullPath = dirPath.endsWith('/')
@@ -143,28 +145,18 @@ export function registerFilesystemHandlers(): void {
 		// Local: use standard fs operations
 		const entries = await fs.readdir(dirPath, { withFileTypes: true });
 		// Convert Dirent objects to plain objects for IPC serialization.
-		// Resolve symlink targets so linked directories/files are not dropped.
-		return await Promise.all(
-			entries.map(async (entry: any) => {
+		// Resolve symlinks via resolveDirentType so linked directories/files are not dropped.
+		// Broken symlinks are shown as files so they still appear in the browser.
+		// Include full path for recursive directory scanning (e.g., document graph).
+		return Promise.all(
+			entries.map(async (entry) => {
 				const fullPath = path.join(dirPath, entry.name);
-				let isDirectory = entry.isDirectory();
-				let isFile = entry.isFile();
+				const resolved = await resolveDirentType(entry, fullPath);
 				const isSymlink = entry.isSymbolicLink?.() === true;
-				if (isSymlink) {
-					try {
-						const targetStats = await fs.stat(fullPath);
-						isDirectory = targetStats.isDirectory();
-						isFile = targetStats.isFile();
-					} catch {
-						// Broken symlink: keep visible, but neither file nor directory
-						isDirectory = false;
-						isFile = false;
-					}
-				}
 				return {
 					name: entry.name.normalize('NFC'),
-					isDirectory,
-					isFile,
+					isDirectory: resolved.isDirectory,
+					isFile: resolved.isFile || resolved.isBrokenSymlink,
 					...(isSymlink ? { isSymlink: true } : {}),
 					// Preserve raw filesystem name in path for correct local operations
 					path: fullPath,
@@ -467,10 +459,13 @@ export function registerFilesystemHandlers(): void {
 			const countRecursive = async (dir: string) => {
 				const entries = await fs.readdir(dir, { withFileTypes: true });
 				for (const entry of entries) {
-					if (entry.isDirectory()) {
+					const fullPath = path.join(dir, entry.name);
+					const resolved = await resolveDirentType(entry, fullPath);
+					if (resolved.isDirectory) {
 						folderCount++;
-						await countRecursive(path.join(dir, entry.name));
+						await countRecursive(fullPath);
 					} else {
+						// Files, symlinks-to-files, and broken symlinks all count as files
 						fileCount++;
 					}
 				}

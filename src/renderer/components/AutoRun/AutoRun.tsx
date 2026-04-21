@@ -31,6 +31,7 @@ import { useAutoRunScrollSync } from '../../hooks/batch/useAutoRunScrollSync';
 import { Maximize2, Edit as EditIcon, Eye, Search } from 'lucide-react';
 import { formatShortcutKeys } from '../../utils/shortcutFormatter';
 import { logger } from '../../utils/logger';
+import { useSettingsStore } from '../../stores/settingsStore';
 
 // Inner implementation component
 const AutoRunInner = forwardRef<AutoRunHandle, AutoRunProps>(function AutoRunInner(
@@ -155,6 +156,17 @@ const AutoRunInner = forwardRef<AutoRunHandle, AutoRunProps>(function AutoRunInn
 	const [resetTasksModalOpen, setResetTasksModalOpen] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const previewRef = useRef<HTMLDivElement>(null);
+
+	// Bionify reading mode (opt-in per preview surface; disabled while search highlights are active)
+	const bionifyReadingMode = useSettingsStore((s) => s.bionifyReadingMode);
+	const bionifyIntensity = useSettingsStore((s) => s.bionifyIntensity);
+	const bionifyAlgorithm = useSettingsStore((s) => s.bionifyAlgorithm);
+	const [previewBionifyOverride, setPreviewBionifyOverride] = useState<boolean | null>(null);
+	const previewBionifyReadingMode = previewBionifyOverride ?? bionifyReadingMode;
+	// Reset override when the selected document changes
+	useEffect(() => {
+		setPreviewBionifyOverride(null);
+	}, [selectedFile]);
 
 	// Search state and effects
 	const {
@@ -458,6 +470,10 @@ const AutoRunInner = forwardRef<AutoRunHandle, AutoRunProps>(function AutoRunInn
 		handleAutocompleteKeyDown,
 	});
 
+	// Disable Bionify while search is active so search highlights remain visible
+	const hasActivePreviewSearch = searchOpen && searchQuery.trim().length > 0;
+	const effectivePreviewBionifyReadingMode = previewBionifyReadingMode && !hasActivePreviewSearch;
+
 	// Markdown rendering: prose styles, task counts, token count, remark plugins, components
 	const { proseStyles, taskCounts, tokenCount, remarkPlugins, markdownComponents } =
 		useAutoRunMarkdown({
@@ -474,6 +490,9 @@ const AutoRunInner = forwardRef<AutoRunHandle, AutoRunProps>(function AutoRunInn
 			handleMatchRendered,
 			openLightboxByFilename,
 			previewRef,
+			enableBionifyReadingMode: effectivePreviewBionifyReadingMode,
+			bionifyIntensity,
+			bionifyAlgorithm,
 		});
 
 	return (
@@ -540,6 +559,10 @@ const AutoRunInner = forwardRef<AutoRunHandle, AutoRunProps>(function AutoRunInn
 						onCreateDocument={onCreateDocument}
 						isLoading={isLoadingDocuments}
 						documentTaskCounts={documentTaskCounts}
+						bionifyEnabled={previewBionifyReadingMode}
+						onToggleBionify={() =>
+							setPreviewBionifyOverride((current) => !(current ?? bionifyReadingMode))
+						}
 					/>
 				</div>
 			)}

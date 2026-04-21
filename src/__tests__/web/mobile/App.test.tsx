@@ -52,6 +52,9 @@ const mockIsDashboard = vi.fn(() => true);
 const mockIsSession = vi.fn(() => false);
 const mockGoToDashboard = vi.fn();
 const mockSetDesktopTheme = vi.fn();
+const mockSetDesktopBionifyReadingMode = vi.fn();
+let mockDesktopTheme = null;
+let mockDesktopBionifyReadingMode = false;
 
 vi.mock('../../../web/main', () => ({
 	useOfflineStatus: () => mockIsOffline(),
@@ -61,10 +64,27 @@ vi.mock('../../../web/main', () => ({
 		goToDashboard: mockGoToDashboard,
 		sessionId: null,
 	}),
-	useDesktopTheme: () => ({
-		desktopTheme: null,
-		setDesktopTheme: mockSetDesktopTheme,
-	}),
+	useDesktopTheme: () => {
+		const [desktopTheme, setDesktopThemeState] = React.useState(mockDesktopTheme);
+		const [bionifyReadingMode, setBionifyReadingModeState] = React.useState(
+			mockDesktopBionifyReadingMode
+		);
+
+		return {
+			desktopTheme,
+			bionifyReadingMode,
+			setDesktopTheme: (theme: unknown) => {
+				mockDesktopTheme = theme;
+				mockSetDesktopTheme(theme);
+				setDesktopThemeState(theme);
+			},
+			setDesktopBionifyReadingMode: (enabled: boolean) => {
+				mockDesktopBionifyReadingMode = enabled;
+				mockSetDesktopBionifyReadingMode(enabled);
+				setBionifyReadingModeState(enabled);
+			},
+		};
+	},
 }));
 
 // Mock useWebSocket hook
@@ -298,6 +318,11 @@ vi.mock('../../../web/mobile/CommandInputBar', () => ({
 		inputMode,
 		isSessionBusy,
 		onInterrupt,
+		hasActiveSession,
+		cwd,
+		slashCommands,
+		showRecentCommands,
+		...rest
 	}: {
 		isOffline: boolean;
 		isConnected: boolean;
@@ -309,6 +334,11 @@ vi.mock('../../../web/mobile/CommandInputBar', () => ({
 		inputMode: string;
 		isSessionBusy: boolean;
 		onInterrupt: () => void;
+		hasActiveSession: boolean;
+		cwd?: string;
+		slashCommands: unknown[];
+		showRecentCommands: boolean;
+		[key: string]: unknown;
 	}) => (
 		<div data-testid="command-input-bar">
 			<input
@@ -329,6 +359,9 @@ vi.mock('../../../web/mobile/CommandInputBar', () => ({
 			<span data-testid="input-mode">{inputMode}</span>
 			<span data-testid="is-offline">{isOffline ? 'offline' : 'online'}</span>
 			<span data-testid="is-connected">{isConnected ? 'connected' : 'disconnected'}</span>
+			<span data-testid="command-input-has-bionify-prop">
+				{Object.prototype.hasOwnProperty.call(rest, 'enableBionifyReadingMode') ? 'true' : 'false'}
+			</span>
 		</div>
 	),
 	default: () => <div data-testid="command-input-bar-default" />,
@@ -343,6 +376,7 @@ vi.mock('../../../web/mobile/ResponseViewer', () => ({
 		onNavigate,
 		onClose,
 		sessionName,
+		enableBionifyReadingMode,
 	}: {
 		isOpen: boolean;
 		response: unknown;
@@ -351,21 +385,28 @@ vi.mock('../../../web/mobile/ResponseViewer', () => ({
 		onNavigate: (index: number) => void;
 		onClose: () => void;
 		sessionName?: string;
-	}) =>
-		isOpen ? (
-			<div data-testid="response-viewer">
-				<button data-testid="close-response-viewer" onClick={onClose}>
-					Close
-				</button>
-				<button data-testid="navigate-prev" onClick={() => onNavigate(currentIndex - 1)}>
-					Prev
-				</button>
-				<button data-testid="navigate-next" onClick={() => onNavigate(currentIndex + 1)}>
-					Next
-				</button>
-				<span data-testid="response-index">{currentIndex}</span>
-			</div>
-		) : null,
+		enableBionifyReadingMode?: boolean;
+	}) => (
+		<div data-testid="response-viewer-props">
+			<span data-testid="response-viewer-bionify">
+				{enableBionifyReadingMode ? 'true' : 'false'}
+			</span>
+			{isOpen ? (
+				<div data-testid="response-viewer">
+					<button data-testid="close-response-viewer" onClick={onClose}>
+						Close
+					</button>
+					<button data-testid="navigate-prev" onClick={() => onNavigate(currentIndex - 1)}>
+						Prev
+					</button>
+					<button data-testid="navigate-next" onClick={() => onNavigate(currentIndex + 1)}>
+						Next
+					</button>
+					<span data-testid="response-index">{currentIndex}</span>
+				</div>
+			) : null}
+		</div>
+	),
 }));
 
 vi.mock('../../../web/mobile/OfflineQueueBanner', () => ({
@@ -404,15 +445,18 @@ vi.mock('../../../web/mobile/MessageHistory', () => ({
 		inputMode,
 		autoScroll,
 		maxHeight,
+		enableBionifyReadingMode,
 	}: {
 		logs: unknown[];
 		inputMode: string;
 		autoScroll: boolean;
 		maxHeight: string;
+		enableBionifyReadingMode?: boolean;
 	}) => (
 		<div data-testid="message-history">
 			<span data-testid="logs-count">{logs.length}</span>
 			<span data-testid="history-mode">{inputMode}</span>
+			<span data-testid="history-bionify">{enableBionifyReadingMode ? 'true' : 'false'}</span>
 		</div>
 	),
 }));
@@ -707,6 +751,8 @@ describe('MobileApp', () => {
 		mockQueueLength = 0;
 		mockQueueStatus = 'idle';
 		mockHandlers = {};
+		mockDesktopTheme = null;
+		mockDesktopBionifyReadingMode = false;
 
 		// Store original fetch
 		originalFetch = global.fetch;
@@ -1859,6 +1905,33 @@ describe('MobileApp', () => {
 				mode: 'dark',
 				colors: mockColors,
 			});
+		});
+
+		it('syncs desktop bionify mode into web reader surfaces without touching input controls', async () => {
+			render(<MobileApp />);
+
+			await act(async () => {
+				mockHandlers.onSessionsUpdate?.([createMockSession({ id: 'session-1', inputMode: 'ai' })]);
+			});
+
+			await act(async () => {
+				mockHandlers.onSessionOutput?.('session-1', 'Readable prose output', 'ai');
+			});
+
+			expect(screen.getByTestId('history-bionify')).toHaveTextContent('false');
+			expect(screen.getByTestId('response-viewer-bionify')).toHaveTextContent('false');
+			expect(screen.getByTestId('command-input-has-bionify-prop')).toHaveTextContent('false');
+			expect(screen.getByTestId('command-input').tagName.toLowerCase()).toBe('input');
+
+			await act(async () => {
+				mockHandlers.onBionifyReadingModeUpdate?.(true);
+			});
+
+			expect(mockSetDesktopBionifyReadingMode).toHaveBeenCalledWith(true);
+			expect(screen.getByTestId('history-bionify')).toHaveTextContent('true');
+			expect(screen.getByTestId('response-viewer-bionify')).toHaveTextContent('true');
+			expect(screen.getByTestId('command-input-has-bionify-prop')).toHaveTextContent('false');
+			expect(screen.getByTestId('command-input').tagName.toLowerCase()).toBe('input');
 		});
 	});
 

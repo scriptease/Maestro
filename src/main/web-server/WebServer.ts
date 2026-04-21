@@ -74,6 +74,7 @@ import type {
 	RefreshAutoRunDocsCallback,
 	ConfigureAutoRunCallback,
 	GetThemeCallback,
+	GetBionifyReadingModeCallback,
 	GetCustomCommandsCallback,
 	GetHistoryCallback,
 	GetAutoRunDocsCallback,
@@ -331,6 +332,10 @@ export class WebServer {
 
 	setGetThemeCallback(callback: GetThemeCallback): void {
 		this.callbackRegistry.setGetThemeCallback(callback);
+	}
+
+	setGetBionifyReadingModeCallback(callback: GetBionifyReadingModeCallback): void {
+		this.callbackRegistry.setGetBionifyReadingModeCallback(callback);
 	}
 
 	setGetCustomCommandsCallback(callback: GetCustomCommandsCallback): void {
@@ -674,6 +679,7 @@ export class WebServer {
 		this.wsRoute.setCallbacks({
 			getSessions: () => this.callbackRegistry.getSessions(),
 			getTheme: () => this.callbackRegistry.getTheme(),
+			getBionifyReadingMode: () => this.callbackRegistry.getBionifyReadingMode(),
 			getCustomCommands: () => this.callbackRegistry.getCustomCommands(),
 			getAutoRunStates: () => this.liveSessionManager.getAutoRunStates(),
 			getLiveSessionInfo: (sessionId) => this.liveSessionManager.getLiveSessionInfo(sessionId),
@@ -875,6 +881,10 @@ export class WebServer {
 
 	broadcastThemeChange(theme: Theme): void {
 		this.broadcastService.broadcastThemeChange(theme);
+	}
+
+	broadcastBionifyReadingModeChange(enabled: boolean): void {
+		this.broadcastService.broadcastBionifyReadingModeChange(enabled);
 	}
 
 	broadcastCustomCommands(commands: CustomAICommand[]): void {

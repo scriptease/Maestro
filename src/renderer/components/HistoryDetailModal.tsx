@@ -30,6 +30,7 @@ import { calculateContextDisplay } from '../utils/contextUsage';
 import { getContextColor } from '../utils/theme';
 import { DoubleCheck } from './History';
 import { safeClipboardWrite } from '../utils/clipboard';
+import { useSettingsStore } from '../stores/settingsStore';
 
 interface HistoryDetailModalProps {
 	theme: Theme;
@@ -66,6 +67,7 @@ export function HistoryDetailModal({
 	projectRoot,
 	onFileClick,
 }: HistoryDetailModalProps) {
+	const bionifyReadingMode = useSettingsStore((s) => s.bionifyReadingMode);
 	const onCloseRef = useRef(onClose);
 	onCloseRef.current = onClose;
 	const [copiedSessionId, setCopiedSessionId] = useState(false);
@@ -530,6 +532,7 @@ export function HistoryDetailModal({
 						cwd={cwd}
 						projectRoot={projectRoot}
 						onFileClick={onFileClick}
+						enableBionifyReadingMode={bionifyReadingMode}
 					/>
 				</div>
 

@@ -62,6 +62,7 @@ import { generateProseStyles } from '../../utils/markdownConfig';
 import { safeClipboardWrite } from '../../utils/clipboard';
 import type { FileNode } from '../../types/fileTree';
 import { logger } from '../../utils/logger';
+import { useSettingsStore } from '../../stores/settingsStore';
 
 /** Debounce delay for graph rebuilds when settings change (ms) */
 const GRAPH_REBUILD_DEBOUNCE_DELAY = 300;
@@ -206,6 +207,7 @@ export function DocumentGraphView({
 	onLayoutTypeChange,
 	sshRemoteId,
 }: DocumentGraphViewProps) {
+	const bionifyReadingMode = useSettingsStore((s) => s.bionifyReadingMode);
 	// Graph data state
 	const [nodes, setNodes] = useState<MindMapNode[]>([]);
 	const [links, setLinks] = useState<MindMapLink[]>([]);
@@ -1941,6 +1943,7 @@ export function DocumentGraphView({
 										cwd={previewFile.relativePath.split('/').slice(0, -1).join('/')}
 										onFileClick={handlePreviewFile}
 										sshRemoteId={sshRemoteId}
+										enableBionifyReadingMode={bionifyReadingMode}
 									/>
 								) : null}
 							</div>

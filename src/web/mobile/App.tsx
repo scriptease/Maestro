@@ -1076,7 +1076,7 @@ export default function MobileApp() {
 	const { theme } = useTheme();
 	const isOffline = useOfflineStatus();
 	const webTerminalRef = useRef<WebTerminalHandle>(null);
-	const { setDesktopTheme } = useDesktopTheme();
+	const { bionifyReadingMode, setDesktopTheme, setDesktopBionifyReadingMode } = useDesktopTheme();
 
 	// View state persistence and screen tracking (hook consolidates multiple effects)
 	const {
@@ -1347,6 +1347,7 @@ export default function MobileApp() {
 		hapticTapPattern: HAPTIC_PATTERNS.tap,
 		onResponseComplete: handleResponseComplete,
 		onThemeUpdate: setDesktopTheme,
+		onBionifyReadingModeUpdate: setDesktopBionifyReadingMode,
 		onCustomCommands: setCustomCommands,
 		onAutoRunStateChange: (sessionId, state) => {
 			webLogger.info(
@@ -2922,6 +2923,7 @@ export default function MobileApp() {
 						maxHeight="none"
 						thinkingMode={thinkingMode}
 						sessionState={activeSession?.state}
+						enableBionifyReadingMode={bionifyReadingMode}
 					/>
 				)}
 			</div>
@@ -3344,6 +3346,7 @@ export default function MobileApp() {
 				onNavigate={handleNavigateResponse}
 				onClose={handleCloseResponseViewer}
 				sessionName={activeSession?.name}
+				enableBionifyReadingMode={bionifyReadingMode}
 			/>
 		</div>
 	);

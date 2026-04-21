@@ -14,7 +14,7 @@ import { remarkFileLinks, buildFileTreeIndices } from '../utils/remarkFileLinks'
 import { extractHexColor } from '../../shared/hexColor';
 import remarkFrontmatter from 'remark-frontmatter';
 import { remarkFrontmatterTable } from '../utils/remarkFrontmatterTable';
-import { REMARK_GFM_PLUGINS } from '../utils/markdownConfig';
+import { REMARK_GFM_PLUGINS, applyReadableTextTransforms } from '../utils/markdownConfig';
 import { LinkContextMenu, type LinkContextMenuState } from './LinkContextMenu';
 import { FileContextMenu, type FileContextMenuState } from './FileContextMenu';
 import { getHomeDir, getHomeDirAsync } from '../utils/homeDir';
@@ -299,6 +299,12 @@ interface MarkdownRendererProps {
 	allowRawHtml?: boolean;
 	/** SSH remote ID for remote file operations */
 	sshRemoteId?: string;
+	/** Apply Bionify reading-mode emphasis to prose text only when explicitly enabled */
+	enableBionifyReadingMode?: boolean;
+	/** Visual intensity for Bionify emphasis */
+	bionifyIntensity?: number;
+	/** Algorithm string controlling Bionify highlight lengths */
+	bionifyAlgorithm?: string;
 }
 
 /**
@@ -325,6 +331,9 @@ export const MarkdownRenderer = memo(
 		onFileClick,
 		allowRawHtml = false,
 		sshRemoteId,
+		enableBionifyReadingMode = false,
+		bionifyIntensity,
+		bionifyAlgorithm,
 	}: MarkdownRendererProps) => {
 		// Resolve homeDir for tilde path expansion (module-level cache, fetched once)
 		const [homeDir, setHomeDir] = useState<string | undefined>(getHomeDir);
@@ -378,6 +387,14 @@ export const MarkdownRenderer = memo(
 		const dismissLinkMenu = useCallback(() => setLinkMenu(null), []);
 		const [fileMenu, setFileMenu] = useState<FileContextMenuState | null>(null);
 		const dismissFileMenu = useCallback(() => setFileMenu(null), []);
+
+		const withReadableTransforms = (children: React.ReactNode) =>
+			applyReadableTextTransforms(children, {
+				theme,
+				enableBionifyReadingMode,
+				bionifyIntensity,
+				bionifyAlgorithm,
+			});
 
 		return (
 			<div
@@ -517,6 +534,33 @@ export const MarkdownRenderer = memo(
 								</code>
 							);
 						},
+						p: ({ node: _node, children, ...props }: any) => (
+							<p {...props}>{withReadableTransforms(children)}</p>
+						),
+						li: ({ node: _node, children, ...props }: any) => (
+							<li {...props}>{withReadableTransforms(children)}</li>
+						),
+						blockquote: ({ node: _node, children, ...props }: any) => (
+							<blockquote {...props}>{withReadableTransforms(children)}</blockquote>
+						),
+						h1: ({ node: _node, children, ...props }: any) => (
+							<h1 {...props}>{withReadableTransforms(children)}</h1>
+						),
+						h2: ({ node: _node, children, ...props }: any) => (
+							<h2 {...props}>{withReadableTransforms(children)}</h2>
+						),
+						h3: ({ node: _node, children, ...props }: any) => (
+							<h3 {...props}>{withReadableTransforms(children)}</h3>
+						),
+						h4: ({ node: _node, children, ...props }: any) => (
+							<h4 {...props}>{withReadableTransforms(children)}</h4>
+						),
+						h5: ({ node: _node, children, ...props }: any) => (
+							<h5 {...props}>{withReadableTransforms(children)}</h5>
+						),
+						h6: ({ node: _node, children, ...props }: any) => (
+							<h6 {...props}>{withReadableTransforms(children)}</h6>
+						),
 						img: ({
 							node: _node,
 							src,
@@ -556,7 +600,12 @@ export const MarkdownRenderer = memo(
 								/>
 							</div>
 						),
-						th: ({ node: _node, style, ...props }: JSX.IntrinsicElements['th'] & ExtraProps) => (
+						th: ({
+							node: _node,
+							style,
+							children,
+							...props
+						}: JSX.IntrinsicElements['th'] & ExtraProps) => (
 							<th
 								{...props}
 								style={{
@@ -566,9 +615,16 @@ export const MarkdownRenderer = memo(
 									whiteSpace: 'nowrap',
 									...(style || {}),
 								}}
-							/>
+							>
+								{withReadableTransforms(children)}
+							</th>
 						),
-						td: ({ node: _node, style, ...props }: JSX.IntrinsicElements['td'] & ExtraProps) => (
+						td: ({
+							node: _node,
+							style,
+							children,
+							...props
+						}: JSX.IntrinsicElements['td'] & ExtraProps) => (
 							<td
 								{...props}
 								style={{
@@ -580,7 +636,9 @@ export const MarkdownRenderer = memo(
 									verticalAlign: 'top',
 									...(style || {}),
 								}}
-							/>
+							>
+								{withReadableTransforms(children)}
+							</td>
 						),
 						// Strip event handler attributes (e.g. onToggle) that rehype-raw may
 						// pass through as strings from AI-generated HTML, which React rejects.

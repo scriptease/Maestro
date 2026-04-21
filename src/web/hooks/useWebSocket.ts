@@ -116,6 +116,7 @@ export type ServerMessageType =
 	| 'session_offline'
 	| 'user_input'
 	| 'theme'
+	| 'bionify_reading_mode'
 	| 'custom_commands'
 	| 'autorun_state'
 	| 'autorun_docs_changed'
@@ -265,6 +266,14 @@ export interface UserInputMessage extends ServerMessage {
 export interface ThemeMessage extends ServerMessage {
 	type: 'theme';
 	theme: Theme;
+}
+
+/**
+ * Bionify reading-mode message from server
+ */
+export interface BionifyReadingModeMessage extends ServerMessage {
+	type: 'bionify_reading_mode';
+	enabled: boolean;
 }
 
 /**
@@ -467,6 +476,7 @@ export type TypedServerMessage =
 	| SessionExitMessage
 	| UserInputMessage
 	| ThemeMessage
+	| BionifyReadingModeMessage
 	| CustomCommandsMessage
 	| AutoRunStateMessage
 	| AutoRunDocsChangedMessage
@@ -513,6 +523,8 @@ export interface WebSocketEventHandlers {
 	onUserInput?: (sessionId: string, command: string, inputMode: 'ai' | 'terminal') => void;
 	/** Called when theme is received or updated */
 	onThemeUpdate?: (theme: Theme) => void;
+	/** Called when the global Bionify reading-mode setting is received or updated */
+	onBionifyReadingModeUpdate?: (enabled: boolean) => void;
 	/** Called when custom commands are received */
 	onCustomCommands?: (commands: CustomCommand[]) => void;
 	/** Called when AutoRun state changes (batch processing on desktop) */
@@ -887,6 +899,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 					case 'theme': {
 						const themeMsg = message as ThemeMessage;
 						handlersRef.current?.onThemeUpdate?.(themeMsg.theme);
+						break;
+					}
+
+					case 'bionify_reading_mode': {
+						const bionifyMsg = message as BionifyReadingModeMessage;
+						handlersRef.current?.onBionifyReadingModeUpdate?.(bionifyMsg.enabled);
 						break;
 					}
 
