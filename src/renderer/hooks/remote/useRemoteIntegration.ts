@@ -341,6 +341,24 @@ export function useRemoteIntegration(deps: UseRemoteIntegrationDeps): UseRemoteI
 		// success when a tab was actually created.
 		const unsubscribeNewTabWithPrompt = window.maestro.process.onRemoteNewAITabWithPrompt(
 			(sessionId: string, prompt: string, responseChannel: string) => {
+				// Guard: the downstream maestro:remoteCommand handler drops commands
+				// for missing or busy sessions. Check here so we don't create an
+				// orphan tab and falsely ack success.
+				const targetSession = sessionsRef.current.find((s) => s.id === sessionId);
+				if (!targetSession) {
+					logger.warn(
+						'[useRemoteIntegration] onRemoteNewAITabWithPrompt: session not found, dropping prompt'
+					);
+					window.maestro.process.sendRemoteNewAITabWithPromptResponse(responseChannel, false);
+					return;
+				}
+				if (targetSession.state === 'busy') {
+					logger.warn(
+						'[useRemoteIntegration] onRemoteNewAITabWithPrompt: session is busy, dropping prompt'
+					);
+					window.maestro.process.sendRemoteNewAITabWithPromptResponse(responseChannel, false);
+					return;
+				}
 				let tabCreated = false;
 				flushSync(() => {
 					setSessions((prev) =>

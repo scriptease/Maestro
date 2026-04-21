@@ -1571,12 +1571,13 @@ export class WebSocketMessageHandler {
 	 * happens to be active.
 	 */
 	private handleNewAITabWithPrompt(client: WebClient, message: WebClientMessage): void {
-		const sessionId = message.sessionId as string;
-		const prompt = message.prompt as string;
+		const sessionId = typeof message.sessionId === 'string' ? message.sessionId : '';
+		const prompt = typeof message.prompt === 'string' ? message.prompt : '';
 		logger.info(
-			`[Web] Received new_ai_tab_with_prompt message: session=${sessionId}, prompt=${
-				prompt?.substring(0, 50) ?? ''
-			}`,
+			`[Web] Received new_ai_tab_with_prompt message: session=${sessionId}, prompt=${prompt.substring(
+				0,
+				50
+			)}`,
 			LOG_CONTEXT
 		);
 

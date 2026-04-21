@@ -871,6 +871,20 @@ describe('WebSocketMessageHandler', () => {
 			expect(callbacks.newAITabWithPrompt).not.toHaveBeenCalled();
 		});
 
+		it('should reject non-string prompt without throwing', () => {
+			handler.handleMessage(client, {
+				type: 'new_ai_tab_with_prompt',
+				sessionId: 'session-1',
+				prompt: 42 as unknown as string,
+			});
+
+			const response = JSON.parse((client.socket.send as any).mock.calls[0][0]);
+			expect(response.type).toBe('new_ai_tab_with_prompt_result');
+			expect(response.success).toBe(false);
+			expect(response.error).toContain('Missing sessionId or prompt');
+			expect(callbacks.newAITabWithPrompt).not.toHaveBeenCalled();
+		});
+
 		it('should reject when session does not exist', () => {
 			handler.handleMessage(client, {
 				type: 'new_ai_tab_with_prompt',
