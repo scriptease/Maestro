@@ -722,6 +722,20 @@ describe('WebSocketMessageHandler', () => {
 			expect(callbacks.openBrowserTab).not.toHaveBeenCalled();
 		});
 
+		it('should reject when session does not exist', () => {
+			handler.handleMessage(client, {
+				type: 'open_browser_tab',
+				sessionId: 'ghost-session',
+				url: 'https://example.com/',
+			});
+
+			const response = JSON.parse((client.socket.send as any).mock.calls[0][0]);
+			expect(response.type).toBe('open_browser_tab_result');
+			expect(response.success).toBe(false);
+			expect(response.error).toBe('Session not found');
+			expect(callbacks.openBrowserTab).not.toHaveBeenCalled();
+		});
+
 		it('should handle callback failure', async () => {
 			(callbacks.openBrowserTab as any).mockRejectedValue(new Error('boom'));
 			handler.handleMessage(client, {
@@ -801,6 +815,19 @@ describe('WebSocketMessageHandler', () => {
 			expect(response.error).toContain('Missing sessionId');
 			expect(callbacks.openTerminalTab).not.toHaveBeenCalled();
 		});
+
+		it('should reject when session does not exist', () => {
+			handler.handleMessage(client, {
+				type: 'open_terminal_tab',
+				sessionId: 'ghost-session',
+			});
+
+			const response = JSON.parse((client.socket.send as any).mock.calls[0][0]);
+			expect(response.type).toBe('open_terminal_tab_result');
+			expect(response.success).toBe(false);
+			expect(response.error).toBe('Session not found');
+			expect(callbacks.openTerminalTab).not.toHaveBeenCalled();
+		});
 	});
 
 	describe('New AI Tab With Prompt (Web → Desktop)', () => {
@@ -841,6 +868,20 @@ describe('WebSocketMessageHandler', () => {
 			expect(response.type).toBe('new_ai_tab_with_prompt_result');
 			expect(response.success).toBe(false);
 			expect(response.error).toContain('Missing sessionId or prompt');
+			expect(callbacks.newAITabWithPrompt).not.toHaveBeenCalled();
+		});
+
+		it('should reject when session does not exist', () => {
+			handler.handleMessage(client, {
+				type: 'new_ai_tab_with_prompt',
+				sessionId: 'ghost-session',
+				prompt: 'hello',
+			});
+
+			const response = JSON.parse((client.socket.send as any).mock.calls[0][0]);
+			expect(response.type).toBe('new_ai_tab_with_prompt_result');
+			expect(response.success).toBe(false);
+			expect(response.error).toBe('Session not found');
 			expect(callbacks.newAITabWithPrompt).not.toHaveBeenCalled();
 		});
 

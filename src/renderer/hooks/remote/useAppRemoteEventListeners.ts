@@ -117,15 +117,24 @@ export function useAppRemoteEventListeners(deps: UseAppRemoteEventListenersDeps)
 		refreshFileTree(sessionId);
 	});
 
-	// Handle remote open browser tab events from CLI/web interface
+	// Handle remote open browser tab events from CLI/web interface.
+	// Acks success to responseChannel so the CLI only reports success after
+	// the tab is actually created.
 	useEventListener('maestro:openBrowserTab', (e: Event) => {
-		const { sessionId, url } = (e as CustomEvent).detail as {
+		const { sessionId, url, responseChannel } = (e as CustomEvent).detail as {
 			sessionId: string;
 			url: string;
+			responseChannel?: string;
+		};
+		const ack = (success: boolean) => {
+			if (responseChannel) {
+				window.maestro.process.sendRemoteOpenBrowserTabResponse(responseChannel, success);
+			}
 		};
 		const session = sessionsRef.current.find((s) => s.id === sessionId);
 		if (!session) {
 			logger.error('[Remote] Session not found for openBrowserTab:', undefined, sessionId);
+			ack(false);
 			return;
 		}
 		setActiveSessionId(sessionId);
@@ -158,17 +167,27 @@ export function useAppRemoteEventListeners(deps: UseAppRemoteEventListenersDeps)
 				};
 			})
 		);
+		ack(true);
 	});
 
-	// Handle remote open terminal tab events from CLI/web interface
+	// Handle remote open terminal tab events from CLI/web interface.
+	// Acks success to responseChannel so the CLI only reports success after
+	// the tab is actually created.
 	useEventListener('maestro:openTerminalTab', (e: Event) => {
-		const { sessionId, config } = (e as CustomEvent).detail as {
+		const { sessionId, config, responseChannel } = (e as CustomEvent).detail as {
 			sessionId: string;
 			config: { cwd?: string; shell?: string; name?: string | null };
+			responseChannel?: string;
+		};
+		const ack = (success: boolean) => {
+			if (responseChannel) {
+				window.maestro.process.sendRemoteOpenTerminalTabResponse(responseChannel, success);
+			}
 		};
 		const session = sessionsRef.current.find((s) => s.id === sessionId);
 		if (!session) {
 			logger.error('[Remote] Session not found for openTerminalTab:', undefined, sessionId);
+			ack(false);
 			return;
 		}
 		setActiveSessionId(sessionId);
@@ -184,6 +203,7 @@ export function useAppRemoteEventListeners(deps: UseAppRemoteEventListenersDeps)
 				return { ...updated, inputMode: 'terminal' as const };
 			})
 		);
+		ack(true);
 	});
 
 	// --- Auto Run Operations ---

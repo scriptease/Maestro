@@ -1449,6 +1449,12 @@ export class WebSocketMessageHandler {
 			return;
 		}
 
+		const session = this.callbacks.getSessions?.().find((s) => s.id === sessionId);
+		if (!session) {
+			sendErrorResult('Session not found');
+			return;
+		}
+
 		// Only http(s) URLs are allowed in browser tabs; everything else is rejected
 		// (mailto:, file:, javascript:, etc. would be unsafe or nonsensical here).
 		let parsed: URL;
@@ -1515,14 +1521,18 @@ export class WebSocketMessageHandler {
 			return;
 		}
 
+		const session = this.callbacks.getSessions?.().find((s) => s.id === sessionId);
+		if (!session) {
+			sendErrorResult('Session not found');
+			return;
+		}
+
 		// If a cwd is provided, confine it to the agent working directory
 		// (same rule as open_file_tab — prevents spawning a shell outside scope).
 		let resolvedCwd: string | undefined;
 		if (cwd) {
-			const sessions = this.callbacks.getSessions?.();
-			const session = sessions?.find((s) => s.id === sessionId);
-			if (!session?.cwd) {
-				sendErrorResult('Session not found or has no working directory');
+			if (!session.cwd) {
+				sendErrorResult('Session has no working directory');
 				return;
 			}
 			const sessionRoot = path.resolve(session.cwd);
@@ -1582,6 +1592,12 @@ export class WebSocketMessageHandler {
 
 		if (!sessionId || !prompt) {
 			sendErrorResult('Missing sessionId or prompt');
+			return;
+		}
+
+		const session = this.callbacks.getSessions?.().find((s) => s.id === sessionId);
+		if (!session) {
+			sendErrorResult('Session not found');
 			return;
 		}
 

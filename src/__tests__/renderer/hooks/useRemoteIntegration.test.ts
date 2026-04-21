@@ -97,6 +97,7 @@ describe('useRemoteIntegration', () => {
 		onRemoteNewAITabWithPrompt: vi.fn().mockImplementation(() => {
 			return () => {};
 		}),
+		sendRemoteNewAITabWithPromptResponse: vi.fn(),
 		onRemoteOpenFileTab: vi.fn().mockImplementation(() => {
 			return () => {};
 		}),
@@ -106,9 +107,11 @@ describe('useRemoteIntegration', () => {
 		onRemoteOpenBrowserTab: vi.fn().mockImplementation(() => {
 			return () => {};
 		}),
+		sendRemoteOpenBrowserTabResponse: vi.fn(),
 		onRemoteOpenTerminalTab: vi.fn().mockImplementation(() => {
 			return () => {};
 		}),
+		sendRemoteOpenTerminalTabResponse: vi.fn(),
 		onRemoteRefreshAutoRunDocs: vi.fn().mockImplementation(() => {
 			return () => {};
 		}),

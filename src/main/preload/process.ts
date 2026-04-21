@@ -469,42 +469,71 @@ export function createProcessApi() {
 		},
 
 		/**
-		 * Subscribe to remote open browser tab from CLI/web interface
+		 * Subscribe to remote open browser tab from CLI/web interface.
+		 * Renderer must ack success via sendRemoteOpenBrowserTabResponse.
 		 */
-		onRemoteOpenBrowserTab: (callback: (sessionId: string, url: string) => void): (() => void) => {
-			const handler = (_: unknown, sessionId: string, url: string) => callback(sessionId, url);
+		onRemoteOpenBrowserTab: (
+			callback: (sessionId: string, url: string, responseChannel: string) => void
+		): (() => void) => {
+			const handler = (_: unknown, sessionId: string, url: string, responseChannel: string) =>
+				callback(sessionId, url, responseChannel);
 			ipcRenderer.on('remote:openBrowserTab', handler);
 			return () => ipcRenderer.removeListener('remote:openBrowserTab', handler);
 		},
 
 		/**
-		 * Subscribe to remote open terminal tab from CLI/web interface
+		 * Send response for remote open browser tab
+		 */
+		sendRemoteOpenBrowserTabResponse: (responseChannel: string, success: boolean): void => {
+			ipcRenderer.send(responseChannel, success);
+		},
+
+		/**
+		 * Subscribe to remote open terminal tab from CLI/web interface.
+		 * Renderer must ack success via sendRemoteOpenTerminalTabResponse.
 		 */
 		onRemoteOpenTerminalTab: (
 			callback: (
 				sessionId: string,
-				config: { cwd?: string; shell?: string; name?: string | null }
+				config: { cwd?: string; shell?: string; name?: string | null },
+				responseChannel: string
 			) => void
 		): (() => void) => {
 			const handler = (
 				_: unknown,
 				sessionId: string,
-				config: { cwd?: string; shell?: string; name?: string | null }
-			) => callback(sessionId, config);
+				config: { cwd?: string; shell?: string; name?: string | null },
+				responseChannel: string
+			) => callback(sessionId, config, responseChannel);
 			ipcRenderer.on('remote:openTerminalTab', handler);
 			return () => ipcRenderer.removeListener('remote:openTerminalTab', handler);
 		},
 
 		/**
-		 * Subscribe to remote "new AI tab with prompt" from CLI/web interface
+		 * Send response for remote open terminal tab
+		 */
+		sendRemoteOpenTerminalTabResponse: (responseChannel: string, success: boolean): void => {
+			ipcRenderer.send(responseChannel, success);
+		},
+
+		/**
+		 * Subscribe to remote "new AI tab with prompt" from CLI/web interface.
+		 * Renderer must ack success via sendRemoteNewAITabWithPromptResponse.
 		 */
 		onRemoteNewAITabWithPrompt: (
-			callback: (sessionId: string, prompt: string) => void
+			callback: (sessionId: string, prompt: string, responseChannel: string) => void
 		): (() => void) => {
-			const handler = (_: unknown, sessionId: string, prompt: string) =>
-				callback(sessionId, prompt);
+			const handler = (_: unknown, sessionId: string, prompt: string, responseChannel: string) =>
+				callback(sessionId, prompt, responseChannel);
 			ipcRenderer.on('remote:newAITabWithPrompt', handler);
 			return () => ipcRenderer.removeListener('remote:newAITabWithPrompt', handler);
+		},
+
+		/**
+		 * Send response for remote "new AI tab with prompt"
+		 */
+		sendRemoteNewAITabWithPromptResponse: (responseChannel: string, success: boolean): void => {
+			ipcRenderer.send(responseChannel, success);
 		},
 
 		/**
