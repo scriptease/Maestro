@@ -15,7 +15,8 @@
 import { useCallback } from 'react';
 import type { Session, UsageStats } from '../../types';
 import { substituteTemplateVariables, TemplateContext } from '../../utils/templateVariables';
-import { countUnfinishedTasks, countCheckedTasks } from './batchUtils';
+import { countMarkdownTasks } from './batchUtils';
+import type { AgentSpawnErrorKind } from '../agent/useAgentExecution';
 import { logger } from '../../utils/logger';
 
 /**
@@ -138,6 +139,16 @@ export interface TaskResult {
 	 * This correctly accounts for both completed tasks and newly added tasks.
 	 */
 	totalTasksChange: number;
+
+	/**
+	 * Optional failure detail from the agent run.
+	 */
+	errorMessage?: string;
+
+	/**
+	 * Structured failure category from the agent run.
+	 */
+	errorKind?: AgentSpawnErrorKind;
 }
 
 /**
@@ -177,6 +188,8 @@ export interface DocumentProcessorCallbacks {
 		agentSessionId?: string;
 		usageStats?: UsageStats;
 		contextUsage?: number;
+		error?: string;
+		errorKind?: AgentSpawnErrorKind;
 	}>;
 }
 
@@ -257,11 +270,12 @@ export function useDocumentProcessor(): UseDocumentProcessorReturn {
 			if (!result.success || !result.content) {
 				return { content: '', taskCount: 0, checkedCount: 0 };
 			}
+			const taskCounts = countMarkdownTasks(result.content);
 
 			return {
 				content: result.content,
-				taskCount: countUnfinishedTasks(result.content),
-				checkedCount: countCheckedTasks(result.content),
+				taskCount: taskCounts.unchecked,
+				checkedCount: taskCounts.checked,
 			};
 		},
 		[]
@@ -419,7 +433,7 @@ export function useDocumentProcessor(): UseDocumentProcessorReturn {
 				}
 			} else if (!result.success) {
 				shortSummary = `[${filename}] Task failed`;
-				fullSynopsis = result.response || shortSummary;
+				fullSynopsis = result.error || result.response || shortSummary;
 			}
 
 			return {
@@ -437,6 +451,8 @@ export function useDocumentProcessor(): UseDocumentProcessorReturn {
 				newCheckedCount,
 				addedUncheckedTasks,
 				totalTasksChange,
+				errorMessage: result.error,
+				errorKind: result.errorKind,
 			};
 		},
 		[readDocAndCountTasks]

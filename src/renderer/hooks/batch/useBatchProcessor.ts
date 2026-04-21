@@ -27,10 +27,12 @@ import { notifyToast } from '../../stores/notificationStore';
 import { useTimeTracking } from './useTimeTracking';
 import { useWorktreeManager } from './useWorktreeManager';
 import { useDocumentProcessor } from './useDocumentProcessor';
+import type { AgentSpawnErrorKind } from '../agent/useAgentExecution';
 import { logger } from '../../utils/logger';
 
 // Debounce delay for batch state updates (Quick Win 1)
 const BATCH_STATE_DEBOUNCE_MS = 200;
+const AUTO_RUN_PROGRESS_POLL_INTERVAL_MS = 3000;
 
 // Regex to match checked markdown checkboxes for reset-on-completion
 // Matches both [x] and [X] with various checkbox formats (standard and GitHub-style)
@@ -75,6 +77,8 @@ interface UseBatchProcessorProps {
 		agentSessionId?: string;
 		usageStats?: UsageStats;
 		contextUsage?: number;
+		error?: string;
+		errorKind?: AgentSpawnErrorKind;
 	}>;
 	onAddHistoryEntry: (entry: Omit<HistoryEntry, 'id'>) => void | Promise<void>;
 	onComplete?: (info: BatchCompleteInfo) => void;
@@ -233,31 +237,7 @@ export function useBatchProcessor({
 	// Dispatch batch actions through the store. The store applies batchReducer
 	// synchronously, eliminating the need for manual ref syncing.
 	const dispatch = useCallback((action: BatchAction) => {
-		const prevStates = useBatchStore.getState().batchRunStates;
 		useBatchStore.getState().dispatchBatch(action);
-		const newStates = useBatchStore.getState().batchRunStates;
-
-		// DEBUG: Log dispatch to trace state updates
-		if (
-			action.type === 'START_BATCH' ||
-			action.type === 'UPDATE_PROGRESS' ||
-			action.type === 'SET_STOPPING' ||
-			action.type === 'COMPLETE_BATCH'
-		) {
-			const sessionId = action.sessionId;
-			logger.info('[BatchProcessor:dispatch]', undefined, [
-				action.type,
-				{
-					sessionId,
-					prevIsRunning: prevStates[sessionId]?.isRunning,
-					newIsRunning: newStates[sessionId]?.isRunning,
-					prevIsStopping: prevStates[sessionId]?.isStopping,
-					newIsStopping: newStates[sessionId]?.isStopping,
-					prevCompleted: prevStates[sessionId]?.completedTasksAcrossAllDocs,
-					newCompleted: newStates[sessionId]?.completedTasksAcrossAllDocs,
-				},
-			]);
-		}
 	}, []);
 
 	// Custom prompts per session — lives in batchStore
@@ -307,10 +287,8 @@ export function useBatchProcessor({
 	// This handles React 18 StrictMode double-render and ensures ref is always correct
 	useEffect(() => {
 		isMountedRef.current = true;
-		logger.info('[BatchProcessor] Mounted, isMountedRef set to true');
 		return () => {
 			isMountedRef.current = false;
-			logger.info('[BatchProcessor] Unmounting, isMountedRef set to false');
 
 			// Reject all pending error resolution promises with 'abort' to unblock any waiting async code
 			// This prevents memory leaks from promises that would never resolve
@@ -376,14 +354,6 @@ export function useBatchProcessor({
 						const currentState = useBatchStore.getState().batchRunStates;
 						const newState = updater(currentState);
 						newStateForSession = newState[sessionId] || null;
-
-						// DEBUG: Log to trace progress updates
-						logger.info('[BatchProcessor:onUpdate] Debounce fired:', undefined, {
-							sessionId,
-							refHasSession: !!currentState[sessionId],
-							refCompletedTasks: currentState[sessionId]?.completedTasksAcrossAllDocs,
-							newCompletedTasks: newStateForSession?.completedTasksAcrossAllDocs,
-						});
 
 						// Dispatch UPDATE_PROGRESS with the computed changes
 						// For complex state changes, we extract the session's new state and dispatch appropriately
@@ -466,7 +436,7 @@ export function useBatchProcessor({
 	const timeTracking = useTimeTracking({
 		getActiveSessionIds: useCallback(() => {
 			return Object.entries(useBatchStore.getState().batchRunStates)
-				.filter(([_, state]) => state.isRunning)
+				.filter(([, state]) => state.isRunning && !state.errorPaused)
 				.map(([sessionId]) => sessionId);
 		}, []),
 		onTimeUpdate: useCallback(
@@ -510,7 +480,7 @@ export function useBatchProcessor({
 	const activeBatchSessionIds = useMemo(
 		() =>
 			Object.entries(batchRunStates)
-				.filter(([, state]) => state.isRunning)
+				.filter(([, state]) => state.isRunning && !state.errorPaused)
 				.map(([sessionId]) => sessionId),
 		[batchRunStates]
 	);
@@ -539,89 +509,11 @@ export function useBatchProcessor({
 		(
 			sessionId: string,
 			updater: (prev: Record<string, BatchRunState>) => Record<string, BatchRunState>,
-			_immediate: boolean = false
+			immediate: boolean = false
 		) => {
-			// DEBUG: Bypass debouncing entirely to test if that's the issue
-			// Apply update directly without debouncing
-			const currentState = useBatchStore.getState().batchRunStates;
-			const newState = updater(currentState);
-			const newStateForSession = newState[sessionId] || null;
-
-			logger.info(
-				'[BatchProcessor:updateBatchStateAndBroadcast] DIRECT update (no debounce)',
-				undefined,
-				{
-					sessionId,
-					prevCompleted: currentState[sessionId]?.completedTasksAcrossAllDocs,
-					newCompleted: newStateForSession?.completedTasksAcrossAllDocs,
-				}
-			);
-
-			if (newStateForSession) {
-				const prevSessionState = currentState[sessionId] || DEFAULT_BATCH_STATE;
-
-				dispatch({
-					type: 'UPDATE_PROGRESS',
-					sessionId,
-					payload: {
-						currentDocumentIndex:
-							newStateForSession.currentDocumentIndex !== prevSessionState.currentDocumentIndex
-								? newStateForSession.currentDocumentIndex
-								: undefined,
-						currentDocTasksTotal:
-							newStateForSession.currentDocTasksTotal !== prevSessionState.currentDocTasksTotal
-								? newStateForSession.currentDocTasksTotal
-								: undefined,
-						currentDocTasksCompleted:
-							newStateForSession.currentDocTasksCompleted !==
-							prevSessionState.currentDocTasksCompleted
-								? newStateForSession.currentDocTasksCompleted
-								: undefined,
-						totalTasksAcrossAllDocs:
-							newStateForSession.totalTasksAcrossAllDocs !==
-							prevSessionState.totalTasksAcrossAllDocs
-								? newStateForSession.totalTasksAcrossAllDocs
-								: undefined,
-						completedTasksAcrossAllDocs:
-							newStateForSession.completedTasksAcrossAllDocs !==
-							prevSessionState.completedTasksAcrossAllDocs
-								? newStateForSession.completedTasksAcrossAllDocs
-								: undefined,
-						totalTasks:
-							newStateForSession.totalTasks !== prevSessionState.totalTasks
-								? newStateForSession.totalTasks
-								: undefined,
-						completedTasks:
-							newStateForSession.completedTasks !== prevSessionState.completedTasks
-								? newStateForSession.completedTasks
-								: undefined,
-						currentTaskIndex:
-							newStateForSession.currentTaskIndex !== prevSessionState.currentTaskIndex
-								? newStateForSession.currentTaskIndex
-								: undefined,
-						sessionIds:
-							newStateForSession.sessionIds !== prevSessionState.sessionIds
-								? newStateForSession.sessionIds
-								: undefined,
-						accumulatedElapsedMs:
-							newStateForSession.accumulatedElapsedMs !== prevSessionState.accumulatedElapsedMs
-								? newStateForSession.accumulatedElapsedMs
-								: undefined,
-						lastActiveTimestamp:
-							newStateForSession.lastActiveTimestamp !== prevSessionState.lastActiveTimestamp
-								? newStateForSession.lastActiveTimestamp
-								: undefined,
-						loopIteration:
-							newStateForSession.loopIteration !== prevSessionState.loopIteration
-								? newStateForSession.loopIteration
-								: undefined,
-					},
-				});
-			}
-
-			broadcastAutoRunState(sessionId, newStateForSession);
+			_scheduleDebouncedUpdate(sessionId, updater, immediate);
 		},
-		[broadcastAutoRunState]
+		[_scheduleDebouncedUpdate]
 	);
 
 	// Update ref to always have latest updateBatchStateAndBroadcast (fixes HMR stale closure)
@@ -1127,8 +1019,23 @@ export function useBatchProcessor({
 						// This handles: template substitution, document expansion, agent spawning,
 						// session registration, re-reading document, and synopsis generation
 
-						// Poll all documents every 3s during agent processing for real-time progress
-						const progressPollInterval = setInterval(async () => {
+						// Poll all documents during task execution for real-time progress.
+						let progressPollActive = true;
+						let progressPollInFlight = false;
+						let progressPollGeneration = 0;
+						let progressPollTimeout: ReturnType<typeof setTimeout> | null = null;
+						const stopProgressPolling = () => {
+							progressPollActive = false;
+							progressPollGeneration++;
+							if (progressPollTimeout) {
+								clearTimeout(progressPollTimeout);
+								progressPollTimeout = null;
+							}
+						};
+						const runProgressPoll = async () => {
+							if (!progressPollActive || progressPollInFlight) return;
+							const generationAtStart = progressPollGeneration;
+							progressPollInFlight = true;
 							try {
 								let polledTotal = 0;
 								let polledChecked = 0;
@@ -1137,6 +1044,7 @@ export function useBatchProcessor({
 									polledTotal += r.taskCount + r.checkedCount;
 									polledChecked += r.checkedCount;
 								}
+								if (!progressPollActive || generationAtStart !== progressPollGeneration) return;
 								updateBatchStateAndBroadcastRef.current!(sessionId, (prev) => {
 									const prevState = prev[sessionId] || DEFAULT_BATCH_STATE;
 									if (
@@ -1154,10 +1062,43 @@ export function useBatchProcessor({
 										},
 									};
 								});
+
+								// Keep the displayed document content fresh during batch runs, even if
+								// file watcher events are coalesced or dropped.
+								const currentSession = sessionsRef.current.find((s) => s.id === sessionId);
+								const selectedDoc = currentSession?.autoRunSelectedFile;
+								if (selectedDoc) {
+									const selectedDocResult = await window.maestro.autorun.readDoc(
+										folderPath,
+										selectedDoc + '.md',
+										sshRemoteId
+									);
+									if (selectedDocResult.success) {
+										if (!progressPollActive || generationAtStart !== progressPollGeneration) return;
+										const nextContent = selectedDocResult.content || '';
+										if (nextContent !== currentSession.autoRunContent) {
+											onUpdateSession(sessionId, {
+												autoRunContent: nextContent,
+												autoRunContentVersion: (currentSession.autoRunContentVersion || 0) + 1,
+											});
+										}
+									}
+								}
 							} catch {
 								// Ignore polling errors — agent may be modifying file
+							} finally {
+								progressPollInFlight = false;
+								if (progressPollActive && generationAtStart === progressPollGeneration) {
+									progressPollTimeout = setTimeout(() => {
+										void runProgressPoll();
+									}, AUTO_RUN_PROGRESS_POLL_INTERVAL_MS);
+								}
 							}
-						}, 3000);
+						};
+						progressPollGeneration++;
+						progressPollTimeout = setTimeout(() => {
+							void runProgressPoll();
+						}, AUTO_RUN_PROGRESS_POLL_INTERVAL_MS);
 
 						try {
 							const taskResult = await documentProcessor.processTask(
@@ -1180,7 +1121,7 @@ export function useBatchProcessor({
 								}
 							);
 
-							clearInterval(progressPollInterval);
+							stopProgressPolling();
 
 							// Track agent session IDs
 							if (taskResult.agentSessionId) {
@@ -1203,6 +1144,7 @@ export function useBatchProcessor({
 								elapsedTimeMs,
 								agentSessionId,
 								success,
+								errorKind,
 							} = taskResult;
 
 							// Detect stalling via task-count invariance: if no tasks were checked off AND
@@ -1220,7 +1162,13 @@ export function useBatchProcessor({
 							const afterLen = taskResult.contentAfterTask?.length ?? 0;
 							const byteDelta = afterLen - beforeLen;
 
-							if (tasksCompletedThisRun === 0 && !taskSetChanged) {
+							// Watchdog failures indicate the agent hung or blew past its time budget,
+							// so skip the heuristic and terminate this document immediately.
+							const isWatchdogFailure =
+								errorKind === 'watchdog-stalled' || errorKind === 'watchdog-timeout';
+							if (isWatchdogFailure) {
+								consecutiveNoChangeCount = MAX_CONSECUTIVE_NO_CHANGES;
+							} else if (tasksCompletedThisRun === 0 && !taskSetChanged) {
 								consecutiveNoChangeCount++;
 							} else {
 								consecutiveNoChangeCount = 0;
@@ -1464,7 +1412,7 @@ export function useBatchProcessor({
 							remainingTasks = newRemainingTasks;
 							docContent = taskResult.contentAfterTask;
 						} catch (error) {
-							clearInterval(progressPollInterval);
+							stopProgressPolling();
 							logger.error(
 								`[BatchProcessor] Error running task in ${docEntry.filename} for session ${sessionId}:`,
 								undefined,
@@ -1901,9 +1849,6 @@ export function useBatchProcessor({
 			// Critical: Always flush debounced updates and dispatch COMPLETE_BATCH to clean up state.
 			// These operations are safe regardless of mount state - React handles reducer dispatches gracefully,
 			// and broadcasts are external calls that don't affect React state.
-			logger.info(
-				'[BatchProcessor:startBatchRun] Flushing debounced updates before COMPLETE_BATCH'
-			);
 			flushDebouncedUpdate(sessionId);
 
 			// Reset state for this session using COMPLETE_BATCH action
@@ -1975,7 +1920,6 @@ export function useBatchProcessor({
 	 */
 	const stopBatchRun = useCallback(
 		(sessionId: string) => {
-			logger.info('[BatchProcessor:stopBatchRun] Called with sessionId:', undefined, sessionId);
 			stopRequestedRefs.current[sessionId] = true;
 			const errorResolution = errorResolutionRefs.current[sessionId];
 			if (errorResolution) {
@@ -2000,7 +1944,10 @@ export function useBatchProcessor({
 	 */
 	const killBatchRun = useCallback(
 		async (sessionId: string) => {
-			logger.info('[BatchProcessor:killBatchRun] Force killing session:', undefined, sessionId);
+			console.assert(
+				!sessionId.includes('-batch-'),
+				'[BatchProcessor:killBatchRun] sessionId must not contain "-batch-"'
+			);
 
 			// 0. Flush Auto Run stats + history BEFORE we tear down timeTracking below.
 			//    stopTracking() deletes the tracker, so elapsed time must be captured now.
@@ -2051,9 +1998,25 @@ export function useBatchProcessor({
 				}
 			}
 
-			// 1. Kill the agent process and wait for termination before cleaning up state
+			// 1. Kill all active batch processes for this session and wait for termination before cleanup.
+			// Batch process session IDs are generated as: `${sessionId}-batch-${timestamp}`.
 			try {
-				await window.maestro.process.kill(sessionId);
+				const activeProcesses = await window.maestro.process.getActiveProcesses();
+				const batchProcessIds = activeProcesses
+					.filter(
+						// Intentional scope: kill the root session process and any descendant
+						// auto-run task processes prefixed with `${sessionId}-batch-`.
+						(proc) =>
+							proc.sessionId === sessionId || proc.sessionId.startsWith(`${sessionId}-batch-`)
+					)
+					.map((proc) => proc.sessionId);
+
+				// Fallback to legacy direct ID in case process listing is stale.
+				if (batchProcessIds.length === 0) {
+					batchProcessIds.push(sessionId);
+				}
+
+				await Promise.allSettled(batchProcessIds.map((id) => window.maestro.process.kill(id)));
 			} catch (error) {
 				logger.error('[BatchProcessor:killBatchRun] Failed to kill process:', undefined, error);
 			}
