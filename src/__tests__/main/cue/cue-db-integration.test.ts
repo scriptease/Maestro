@@ -236,9 +236,16 @@ describe('Phase 15B — cue-db in-memory contract', () => {
 		});
 	});
 
-	// ─── Concurrent-like writes ───────────────────────────────────────────
+	// ─── Rapid successive writes ──────────────────────────────────────────
+	//
+	// JS is single-threaded and `Promise.resolve().then(...)` just schedules
+	// microtasks — there's no real concurrency. What we exercise here is a
+	// microtask flood: 100 writes serialized through the event loop in
+	// immediate succession. Still worth pinning because the mirror uses a
+	// Map + array pair for ordering, and a naive refactor that rebuilt the
+	// ordering array from the Map on every write would silently lose events.
 
-	describe('concurrent writes', () => {
+	describe('rapid successive writes', () => {
 		it('preserves all 100 events written in rapid succession', async () => {
 			const writes = Array.from({ length: 100 }, (_, i) =>
 				Promise.resolve().then(() =>
@@ -279,7 +286,11 @@ describe('Phase 15B — cue-db in-memory contract', () => {
 
 	describe('pruneCueEvents', () => {
 		it('deletes events older than the cutoff', () => {
-			// Freeze "now" at 10_000 so the cutoff math is deterministic.
+			// Step `now` forward deterministically: old event at 1_000,
+			// recent event at 9_500, prune call at 10_000. With
+			// olderThanMs=5_000 the cutoff is 10_000 - 5_000 = 5_000, so the
+			// old event (1_000 < 5_000) is dropped and the recent event
+			// (9_500 >= 5_000) survives.
 			db.setNowOverride(1000);
 			db.recordCueEvent({
 				id: 'old',

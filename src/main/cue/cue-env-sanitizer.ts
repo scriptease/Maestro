@@ -6,12 +6,16 @@
  * misconfigured YAML cannot inject loader-level variables that would run
  * attacker-controlled code in the child process.
  *
- * Policy (spec-exact, per Phase 11 plan):
+ * Policy:
  *   - Name regex:  /^[a-zA-Z_][a-zA-Z0-9_]*$/  (POSIX env var convention)
- *   - Blocklist:   PATH, HOME, USER, SHELL, LD_PRELOAD,
+ *   - Blocklist:   PATH, HOME, USER, SHELL, LD_PRELOAD, LD_LIBRARY_PATH,
  *                  DYLD_INSERT_LIBRARIES, NODE_OPTIONS
- *     Case-sensitive comparison (POSIX semantics — Windows env var
- *     case-insensitivity is an orthogonal concern and out of scope here).
+ *     Comparison is CASE-INSENSITIVE (we uppercase the incoming name before
+ *     membership check). Windows env var lookup is case-insensitive — `Path`
+ *     and `PATH` refer to the same variable — so a case-sensitive blocklist
+ *     would let an attacker bypass the guard by spelling `Path` or `PaTh`.
+ *     The returned `droppedNames` preserves the original casing of the
+ *     input so operators see what was actually rejected.
  *
  * Dropped entries are silently omitted from the returned map and reported in
  * `droppedNames`; callers that supply an `onLog` hook get a warn-level line
@@ -70,7 +74,11 @@ export function sanitizeCustomEnvVars(
 			}
 			continue;
 		}
-		if (BLOCKED_ENV_VARS.has(name)) {
+		// Uppercase before membership check so Windows-style casing variants
+		// (`path`, `PaTh`) cannot bypass the blocklist. droppedNames still
+		// carries the original casing so the warn log matches what the user
+		// actually typed.
+		if (BLOCKED_ENV_VARS.has(name.toUpperCase())) {
 			droppedNames.push(name);
 			if (onLog) {
 				onLog('warn', `[CUE] Dropped custom env var "${name}" — blocklisted for safety`);

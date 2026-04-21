@@ -294,13 +294,30 @@ describe('Phase 11B — sanitizeCustomEnvVars', () => {
 		});
 	});
 
-	it('drops blocklisted vars case-sensitively only (lowercase "path" passes)', () => {
-		// Spec-exact case-sensitive behavior: lowercase "path" is allowed because
-		// the blocklist matches the upper-case POSIX spelling. Documents the
-		// policy so an intentional change is deliberate.
-		const res = sanitizeCustomEnvVars({ path: '/opt/my-bin' });
-		expect(res.sanitized).toEqual({ path: '/opt/my-bin' });
-		expect(res.droppedNames).toEqual([]);
+	it('drops blocklisted vars case-insensitively (Windows env vars are case-insensitive)', () => {
+		// Windows env var lookup is case-insensitive — `Path` and `PATH`
+		// refer to the same slot, so a case-sensitive blocklist would let an
+		// attacker bypass the guard with `path` or `PaTh`. Verify both
+		// lowercase and mixed-case variants get dropped and logged.
+		const onLog = vi.fn();
+		const res = sanitizeCustomEnvVars(
+			{
+				path: '/opt/my-bin',
+				PaTh: '/opt/other',
+				LD_preload: 'evil.so',
+				ld_library_path: '/tmp/evil',
+			},
+			onLog
+		);
+		expect(res.sanitized).toEqual({});
+		// droppedNames preserves the original casing so operators see what
+		// the user actually typed.
+		expect(res.droppedNames).toEqual(['path', 'PaTh', 'LD_preload', 'ld_library_path']);
+		expect(onLog).toHaveBeenCalledTimes(4);
+		for (const call of onLog.mock.calls) {
+			expect(call[0]).toBe('warn');
+			expect(call[1]).toMatch(/blocklisted/);
+		}
 	});
 
 	it('preserves the order of dropped names', () => {
@@ -418,6 +435,54 @@ describe('Phase 11C — prompt_file path containment', () => {
 		const sub = parseWithPromptFile(path.join(projectRoot, '.maestro', 'prompts', 'ok.md'));
 		expect(sub.prompt).toBe('hello');
 	});
+
+	it.runIf(process.platform === 'darwin' || process.platform === 'win32')(
+		'resolves prompt_file references whose casing differs from projectRoot on case-insensitive filesystems',
+		() => {
+			// Only meaningful on case-insensitive FSes (macOS / Windows). A
+			// case-sensitive `startsWith` would false-negative reject a legit
+			// path when the projectRoot happens to be cased differently than
+			// the prompt-file reference — the filesystem treats them as the
+			// same file, so the containment guard must too.
+			const raw = yaml.dump({
+				subscriptions: [
+					{
+						name: 't',
+						event: 'time.heartbeat',
+						interval_minutes: 1,
+						// Legitimate in-root path, but upper-cased — should
+						// still resolve to the real file's contents.
+						prompt_file: path.join(projectRoot, '.maestro', 'prompts', 'OK.MD').toUpperCase(),
+					},
+				],
+			});
+			const doc = parseCueConfigDocument(raw, projectRoot);
+			expect(doc).not.toBeNull();
+			// Path casing beyond the root prefix may not match a real file
+			// on disk, so `prompt` can still be '' if the upper-cased
+			// filename doesn't exist — what we're asserting is the
+			// CONTAINMENT guard didn't reject it. `readPromptFile` returning
+			// '' (file not found) vs undefined (containment rejection) means
+			// the promptSpec.file is still recorded. Easier to test: swap the
+			// root itself to a case-variant and check the file resolves.
+			const upperRoot = projectRoot; // keep FS-matching casing
+			// Intentionally mismatch case on the ROOT passed in, but keep
+			// the prompt_file reference lowercase-consistent with disk. If
+			// our guard rejected case-variant roots, this would return ''.
+			const rawMismatched = yaml.dump({
+				subscriptions: [
+					{
+						name: 't',
+						event: 'time.heartbeat',
+						interval_minutes: 1,
+						prompt_file: '.maestro/prompts/ok.md',
+					},
+				],
+			});
+			const docMismatched = parseCueConfigDocument(rawMismatched, upperRoot.toUpperCase());
+			expect(docMismatched?.subscriptions[0].prompt).toBe('hello');
+		}
+	);
 });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -473,6 +538,12 @@ const isPosix = process.platform !== 'win32';
 
 describe('Phase 11D — cue-db file permissions', () => {
 	const createdFiles: string[] = [];
+	// initCueDb calls fs.mkdirSync(dirname(dbPath), { recursive: true }) when
+	// the parent directory does not exist. The chmod-failure test points at a
+	// non-existent dir so the tmpdir gets a new subdirectory created on every
+	// run — track those so afterEach cleans them up instead of leaving them
+	// behind in the user's tmpdir.
+	const createdDirs: string[] = [];
 
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -486,6 +557,14 @@ describe('Phase 11D — cue-db file permissions', () => {
 			const file = createdFiles.pop()!;
 			try {
 				fs.unlinkSync(file);
+			} catch {
+				// best effort
+			}
+		}
+		while (createdDirs.length > 0) {
+			const dir = createdDirs.pop()!;
+			try {
+				fs.rmSync(dir, { recursive: true, force: true });
 			} catch {
 				// best effort
 			}
@@ -516,11 +595,15 @@ describe('Phase 11D — cue-db file permissions', () => {
 		// mocked so it does not care, but `fs.chmodSync` will throw ENOENT
 		// because there is no file at the path to chmod. Exactly the error
 		// shape we want to exercise.
-		const dbPath = path.join(
+		const parentDir = path.join(
 			os.tmpdir(),
-			`maestro-cue-chmod-missing-${Date.now()}-${Math.random()}`,
-			'inner.db'
+			`maestro-cue-chmod-missing-${Date.now()}-${Math.random()}`
 		);
+		const dbPath = path.join(parentDir, 'inner.db');
+		// initCueDb will create `parentDir` via mkdirSync(recursive) even
+		// though the DB file itself is never created (better-sqlite3 is
+		// mocked). Register it for afterEach cleanup so the tmpdir stays tidy.
+		createdDirs.push(parentDir);
 
 		expect(() => initCueDb(onLog, dbPath)).not.toThrow();
 

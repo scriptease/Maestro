@@ -39,7 +39,16 @@ function readPromptFile(projectRoot: string, promptFile: string): string | undef
 	const absPath = path.isAbsolute(promptFile)
 		? path.resolve(promptFile)
 		: path.resolve(normalizedRoot, promptFile);
-	if (!absPath.startsWith(normalizedRoot + path.sep)) {
+	// Windows (NTFS) and macOS (APFS/HFS+ default) are case-insensitive
+	// filesystems — `/Users/Foo/proj/.maestro/x.md` and
+	// `/Users/foo/proj/.maestro/x.md` refer to the same file but a
+	// case-sensitive `startsWith` would false-negative reject the latter.
+	// Lower-case both sides on those platforms to match filesystem semantics;
+	// on Linux (case-sensitive) the raw comparison is correct.
+	const caseInsensitiveFs = process.platform === 'win32' || process.platform === 'darwin';
+	const cmpRoot = caseInsensitiveFs ? normalizedRoot.toLowerCase() : normalizedRoot;
+	const cmpPath = caseInsensitiveFs ? absPath.toLowerCase() : absPath;
+	if (!cmpPath.startsWith(cmpRoot + path.sep)) {
 		return undefined;
 	}
 	try {
