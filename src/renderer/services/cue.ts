@@ -138,9 +138,13 @@ export const cueService = {
 		});
 	},
 
-	async triggerSubscription(subscriptionName: string, prompt?: string): Promise<boolean> {
+	async triggerSubscription(
+		subscriptionName: string,
+		prompt?: string,
+		sourceAgentId?: string
+	): Promise<boolean> {
 		return createIpcMethod({
-			call: () => window.maestro.cue.triggerSubscription(subscriptionName, prompt),
+			call: () => window.maestro.cue.triggerSubscription(subscriptionName, prompt, sourceAgentId),
 			errorContext: 'Cue triggerSubscription',
 			rethrow: true,
 		});

@@ -286,6 +286,27 @@ The file format is:
 }
 ```
 
+### Reading Prompts (`prompts list` / `prompts get`)
+
+The CLI exposes Maestro's prompt registry directly so other agents can self-fetch reference material on demand. Parent prompts can use the `{{REF:name}}` directive (see [Prompt Customization → Include Directives](/prompt-customization#include-directives)) to expand into a one-line pointer; the agent then runs `prompts get` to retrieve the full content.
+
+```bash
+# List every available prompt id with description and category
+maestro-cli prompts list
+
+# JSON output for scripting
+maestro-cli prompts list --json
+
+# Print a specific prompt's content (honors user customizations)
+maestro-cli prompts get _maestro-cli
+maestro-cli prompts get autorun-default
+
+# Include metadata in the response
+maestro-cli prompts get _maestro-cue --json
+```
+
+`prompts get` returns the same content the desktop app would deliver, so customizations made via Settings → **Maestro Prompts** are reflected immediately. Bundled include fragments use a leading underscore in their id (e.g., `_maestro-cli`, `_history-format`); standalone prompts do not.
+
 ### Managing Settings
 
 View and modify any Maestro configuration setting directly from the CLI. Changes take effect immediately in the running desktop app — no restart required.
@@ -532,18 +553,43 @@ maestro-cli auto-run doc1.md --loop --max-loops 3 --launch
 
 # Reset task checkboxes on completion (useful with looping)
 maestro-cli auto-run doc1.md --reset-on-completion --loop --launch
+
+# Run the auto-run inside a fresh git worktree on a dedicated branch
+maestro-cli auto-run doc1.md --agent <agent-id> --launch \
+  --worktree --branch feature/auto-x --worktree-path ../repo-auto-x
+
+# Open a PR against the repo's default branch when the auto-run finishes
+maestro-cli auto-run doc1.md --agent <agent-id> --launch \
+  --worktree --branch feature/auto-x --worktree-path ../repo-auto-x \
+  --create-pr
+
+# Target a specific base branch for the PR
+maestro-cli auto-run doc1.md --agent <agent-id> --launch \
+  --worktree --branch feature/auto-x --worktree-path ../repo-auto-x \
+  --create-pr --pr-target-branch develop
 ```
 
-| Flag                    | Description                                              |
-| ----------------------- | -------------------------------------------------------- |
-| `-a, --agent <id>`      | Target agent to run the documents (partial ID supported) |
-| `-s, --session <id>`    | Deprecated — use `--agent` instead                       |
-| `-p, --prompt <text>`   | Custom prompt/instructions for the agent                 |
-| `--loop`                | Enable looping (re-run documents after completion)       |
-| `--max-loops <n>`       | Maximum number of loop iterations (implies `--loop`)     |
-| `--save-as <name>`      | Save the configuration as a named playbook               |
-| `--launch`              | Immediately start the auto-run after configuring         |
-| `--reset-on-completion` | Reset task checkboxes when documents complete            |
+| Flag                          | Description                                                                                     |
+| ----------------------------- | ----------------------------------------------------------------------------------------------- |
+| `-a, --agent <id>`            | Target agent to run the documents (partial ID supported)                                        |
+| `-s, --session <id>`          | Deprecated — use `--agent` instead                                                              |
+| `-p, --prompt <text>`         | Custom prompt/instructions for the agent                                                        |
+| `--loop`                      | Enable looping (re-run documents after completion)                                              |
+| `--max-loops <n>`             | Maximum number of loop iterations (implies `--loop`)                                            |
+| `--save-as <name>`            | Save the configuration as a named playbook                                                      |
+| `--launch`                    | Immediately start the auto-run after configuring                                                |
+| `--reset-on-completion`       | Reset task checkboxes when documents complete                                                   |
+| `--worktree`                  | Run the auto-run inside a git worktree (requires `--launch`, `--branch`, and `--worktree-path`) |
+| `--branch <name>`             | Branch name for the worktree (created if it does not exist)                                     |
+| `--worktree-path <path>`      | Filesystem path for the worktree (must be a sibling of the repo, not nested inside it)          |
+| `--create-pr`                 | Open a GitHub PR when the auto-run completes successfully                                       |
+| `--pr-target-branch <branch>` | Target branch for the PR (defaults to the repo's default branch)                                |
+
+Worktree mode reuses the desktop app's Auto Run pipeline: the app creates the
+worktree (or reuses an existing one on the same repo), checks out the requested
+branch, dispatches the agent inside the worktree, and — when `--create-pr` is
+set — runs `gh pr create` once the batch completes. See
+[Git Worktrees](git-worktrees.md) for more on worktree behavior.
 
 ### Checking Status
 
@@ -554,6 +600,59 @@ maestro-cli status
 ```
 
 Returns the app version, uptime, and connection status.
+
+## Cue Automation
+
+Interact with Maestro Cue subscriptions directly from the command line.
+
+### Listing Subscriptions
+
+List all Cue subscriptions across all agents:
+
+```bash
+maestro-cli cue list
+
+# JSON output (for scripting)
+maestro-cli cue list --json
+```
+
+Shows each subscription's name, event type, agent, enabled status, and last trigger time.
+
+### Triggering a Subscription
+
+Manually trigger a Cue subscription by name, bypassing its normal event conditions:
+
+```bash
+# Trigger a subscription
+maestro-cli cue trigger <subscription-name>
+
+# Trigger with a custom prompt (overrides the configured prompt)
+maestro-cli cue trigger <subscription-name> --prompt "Deploy to staging only"
+
+# JSON output (for scripting)
+maestro-cli cue trigger <subscription-name> --json
+```
+
+| Flag                     | Description                                                          |
+| ------------------------ | -------------------------------------------------------------------- |
+| `-p, --prompt <text>`    | Override the subscription's configured prompt                        |
+| `--source-agent-id <id>` | Identify the originating agent (populates `{{CUE_SOURCE_AGENT_ID}}`) |
+| `--json`                 | Output as JSON (for scripting and CI/CD integration)                 |
+
+The `--prompt` flag is especially useful for `cli.trigger` subscriptions, where the prompt text is available in the subscription's template as `{{CUE_CLI_PROMPT}}`.
+
+**Examples:**
+
+```bash
+# Trigger a review pipeline after finishing work
+maestro-cli cue trigger "code-review" --prompt "Review the changes in the auth module"
+
+# Trigger a deploy from CI
+maestro-cli cue trigger "deploy" --prompt "Deploy commit abc123 to production" --json
+
+# Re-run a failed automation
+maestro-cli cue trigger "lint-on-save"
+```
 
 ## Scheduling with Cron
 
@@ -576,6 +675,7 @@ This means agents can:
 - **Refresh the file tree** after creating or modifying files
 - **Configure and launch auto-runs** with documents they create
 - **Send messages** to other agents for inter-agent coordination
+- **Discover Cue subscriptions** with `cue list` and **trigger automation pipelines** with `cue trigger`
 
 When a user asks an agent to change a Maestro setting, the agent can use the CLI directly rather than instructing the user to navigate the settings modal. Changes take effect instantly.
 

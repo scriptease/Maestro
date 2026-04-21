@@ -1,5 +1,6 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import Store from 'electron-store';
+import type { AgentConfigsData } from '../../stores/types';
 import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -47,12 +48,7 @@ const handlerOpts = (
 	...extra,
 });
 
-/**
- * Interface for agent configuration store data
- */
-interface AgentConfigsData {
-	configs: Record<string, Record<string, any>>;
-}
+// AgentConfigsData imported from stores/types
 
 /**
  * Dependencies required for process handler registration
@@ -909,6 +905,9 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 								: sshResult.config.host
 						);
 
+						// Build remote command parts
+						const remoteParts: string[] = [];
+
 						// Remote command (must come after destination)
 						if (workingDirOverride) {
 							// Handle leading ~ by using $HOME outside of quotes so the remote shell expands it
@@ -917,8 +916,23 @@ export function registerProcessHandlers(deps: ProcessHandlerDependencies): void 
 								: workingDirOverride === '~'
 									? '"$HOME"'
 									: shellEscape(workingDirOverride);
-							sshArgs.push(`cd ${cdPath} && exec "$SHELL"`);
+							remoteParts.push(`cd ${cdPath}`);
 						}
+
+						// Export merged env vars on the remote side
+						const envExports: string[] = [];
+						for (const [key, value] of Object.entries(mergedEnvVars)) {
+							if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
+								envExports.push(`export ${key}=${shellEscape(value)}`);
+							}
+						}
+						if (envExports.length > 0) {
+							remoteParts.push(envExports.join(' && '));
+						}
+
+						remoteParts.push('exec "$SHELL"');
+						sshArgs.push(remoteParts.join(' && '));
+
 						return processManager.spawn({
 							sessionId: config.sessionId,
 							toolType: 'terminal',

@@ -118,6 +118,7 @@ function createMockCallbacks(): MessageHandlerCallbacks {
 		getCueSubscriptions: vi.fn().mockResolvedValue([]),
 		toggleCueSubscription: vi.fn().mockResolvedValue(true),
 		getCueActivity: vi.fn().mockResolvedValue([]),
+		triggerCueSubscription: vi.fn().mockResolvedValue(true),
 		getUsageDashboard: vi.fn().mockResolvedValue({}),
 		getAchievements: vi.fn().mockResolvedValue([]),
 		writeToTerminal: vi.fn().mockReturnValue(true),
@@ -911,6 +912,7 @@ describe('WebSocketMessageHandler', () => {
 					maxLoops: 3,
 					saveAsPlaybook: undefined,
 					launch: true,
+					worktree: undefined,
 				});
 			});
 
@@ -978,6 +980,7 @@ describe('WebSocketMessageHandler', () => {
 					maxLoops: undefined,
 					saveAsPlaybook: 'My Playbook',
 					launch: undefined,
+					worktree: undefined,
 				});
 			});
 
@@ -1004,6 +1007,72 @@ describe('WebSocketMessageHandler', () => {
 				expect(lastResponse.type).toBe('error');
 				expect(lastResponse.message).toContain('Auto-run configuration failed');
 			});
+		});
+
+		it('should forward configure auto run with worktree config', async () => {
+			(callbacks.configureAutoRun as any).mockResolvedValue({ success: true });
+
+			handler.handleMessage(client, {
+				type: 'configure_auto_run',
+				sessionId: 'session-1',
+				documents: [{ filename: 'doc1.md' }],
+				launch: true,
+				worktree: {
+					enabled: true,
+					path: '/tmp/worktree',
+					branchName: 'feature/auto-run',
+					createPROnCompletion: true,
+					prTargetBranch: 'main',
+				},
+			});
+
+			await vi.waitFor(() => {
+				expect(callbacks.configureAutoRun).toHaveBeenCalledWith('session-1', {
+					documents: [{ filename: 'doc1.md' }],
+					prompt: undefined,
+					loopEnabled: undefined,
+					maxLoops: undefined,
+					saveAsPlaybook: undefined,
+					launch: true,
+					worktree: {
+						enabled: true,
+						path: '/tmp/worktree',
+						branchName: 'feature/auto-run',
+						createPROnCompletion: true,
+						prTargetBranch: 'main',
+					},
+				});
+			});
+		});
+
+		it('should reject worktree missing required fields', () => {
+			handler.handleMessage(client, {
+				type: 'configure_auto_run',
+				sessionId: 'session-1',
+				documents: [{ filename: 'doc1.md' }],
+				launch: true,
+				worktree: { enabled: true, path: '/tmp/wt', branchName: '' },
+			});
+
+			const response = JSON.parse((client.socket.send as any).mock.calls[0][0]);
+			expect(response.type).toBe('error');
+			expect(response.message).toContain('worktree.branchName');
+			expect(callbacks.configureAutoRun).not.toHaveBeenCalled();
+		});
+
+		it('should reject non-object worktree', () => {
+			handler.handleMessage(client, {
+				type: 'configure_auto_run',
+				sessionId: 'session-1',
+				documents: [{ filename: 'doc1.md' }],
+				launch: true,
+				worktree: 'not-an-object',
+			});
+
+			const response = JSON.parse((client.socket.send as any).mock.calls[0][0]);
+			expect(response.type).toBe('error');
+			expect(response.message).toContain('worktree must be an object');
+			expect(callbacks.configureAutoRun).not.toHaveBeenCalled();
 		});
 
 		it('should handle missing configureAutoRun callback', () => {
@@ -1251,6 +1320,84 @@ describe('WebSocketMessageHandler', () => {
 			const response = JSON.parse((client.socket.send as any).mock.calls[0][0]);
 			expect(response.type).toBe('terminal_resize_result');
 			expect(response.success).toBe(true);
+		});
+	});
+
+	describe('Trigger Cue Subscription (sourceAgentId)', () => {
+		it('should pass sourceAgentId through to triggerCueSubscription callback', async () => {
+			handler.handleMessage(client, {
+				type: 'trigger_cue_subscription',
+				subscriptionName: 'my-sub',
+				sourceAgentId: 'agent-xyz-123',
+			});
+
+			await vi.waitFor(() => {
+				expect(callbacks.triggerCueSubscription).toHaveBeenCalledWith(
+					'my-sub',
+					undefined,
+					'agent-xyz-123'
+				);
+			});
+		});
+
+		it('should pass prompt and sourceAgentId together', async () => {
+			handler.handleMessage(client, {
+				type: 'trigger_cue_subscription',
+				subscriptionName: 'my-sub',
+				prompt: 'custom prompt',
+				sourceAgentId: 'agent-abc',
+			});
+
+			await vi.waitFor(() => {
+				expect(callbacks.triggerCueSubscription).toHaveBeenCalledWith(
+					'my-sub',
+					'custom prompt',
+					'agent-abc'
+				);
+			});
+		});
+
+		it('should pass undefined sourceAgentId when not provided', async () => {
+			handler.handleMessage(client, {
+				type: 'trigger_cue_subscription',
+				subscriptionName: 'my-sub',
+			});
+
+			await vi.waitFor(() => {
+				expect(callbacks.triggerCueSubscription).toHaveBeenCalledWith(
+					'my-sub',
+					undefined,
+					undefined
+				);
+			});
+		});
+
+		it('should return trigger_cue_subscription_result on success', async () => {
+			handler.handleMessage(client, {
+				type: 'trigger_cue_subscription',
+				subscriptionName: 'my-sub',
+				sourceAgentId: 'agent-xyz',
+			});
+
+			await vi.waitFor(() => {
+				expect(client.socket.send).toHaveBeenCalled();
+			});
+
+			const response = JSON.parse((client.socket.send as any).mock.calls[0][0]);
+			expect(response.type).toBe('trigger_cue_subscription_result');
+			expect(response.success).toBe(true);
+			expect(response.subscriptionName).toBe('my-sub');
+		});
+
+		it('should reject missing subscriptionName', () => {
+			handler.handleMessage(client, {
+				type: 'trigger_cue_subscription',
+				sourceAgentId: 'agent-xyz',
+			});
+
+			const response = JSON.parse((client.socket.send as any).mock.calls[0][0]);
+			expect(response.type).toBe('error');
+			expect(callbacks.triggerCueSubscription).not.toHaveBeenCalled();
 		});
 	});
 });

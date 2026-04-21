@@ -3,6 +3,11 @@ import { renderHook, act } from '@testing-library/react';
 import { useTabStore } from '../../../renderer/stores/tabStore';
 import { useSessionStore } from '../../../renderer/stores/sessionStore';
 import type { Session, AITab, FilePreviewTab, TerminalTab } from '../../../renderer/types';
+import {
+	createMockAITab as createBaseMockAITab,
+	createMockFileTab as createBaseMockFileTab,
+} from '../../helpers/mockTab';
+import { createMockSession } from '../../helpers/mockSession';
 
 // ============================================================================
 // Test Helpers
@@ -10,79 +15,25 @@ import type { Session, AITab, FilePreviewTab, TerminalTab } from '../../../rende
 
 function createMockAITab(overrides: Partial<AITab> = {}): AITab {
 	const id = overrides.id ?? `tab-${Math.random().toString(36).slice(2, 8)}`;
-	return {
+	return createBaseMockAITab({
 		id,
-		agentSessionId: null,
-		name: overrides.name ?? null,
-		starred: false,
-		logs: [],
-		inputValue: '',
-		stagedImages: [],
-		createdAt: Date.now(),
-		state: 'idle',
 		hasUnread: false,
 		isAtBottom: true,
 		...overrides,
-	} as AITab;
+	});
 }
 
 function createMockFileTab(overrides: Partial<FilePreviewTab> = {}): FilePreviewTab {
 	const id = overrides.id ?? `file-${Math.random().toString(36).slice(2, 8)}`;
-	return {
+	return createBaseMockFileTab({
 		id,
 		path: overrides.path ?? `/test/${id}.ts`,
 		name: overrides.name ?? id,
-		extension: overrides.extension ?? '.ts',
-		content: overrides.content ?? 'test content',
-		scrollTop: 0,
-		searchQuery: '',
-		editMode: false,
-		editContent: undefined,
-		createdAt: Date.now(),
-		lastModified: Date.now(),
 		...overrides,
-	} as FilePreviewTab;
+	});
 }
 
-function createMockSession(overrides: Partial<Session> = {}): Session {
-	return {
-		id: overrides.id ?? `session-${Math.random().toString(36).slice(2, 8)}`,
-		name: overrides.name ?? 'Test Session',
-		toolType: 'claude-code',
-		state: 'idle',
-		cwd: '/test',
-		fullPath: '/test',
-		projectRoot: '/test',
-		aiLogs: [],
-		shellLogs: [],
-		workLog: [],
-		contextUsage: 0,
-		inputMode: 'ai',
-		aiPid: 0,
-		terminalPid: 0,
-		port: 0,
-		isLive: false,
-		changedFiles: [],
-		isGitRepo: false,
-		fileTree: [],
-		fileExplorerExpanded: [],
-		fileExplorerScrollPos: 0,
-		executionQueue: [],
-		activeTimeMs: 0,
-		aiTabs: [],
-		activeTabId: '',
-		closedTabHistory: [],
-		filePreviewTabs: [],
-		activeFileTabId: null,
-		browserTabs: [],
-		activeBrowserTabId: null,
-		unifiedTabOrder: [],
-		unifiedClosedTabHistory: [],
-		terminalTabs: [],
-		activeTerminalTabId: null,
-		...overrides,
-	} as Session;
-}
+// createMockSession imported from shared helper
 
 /**
  * Set up sessionStore with an active session that has tabs.

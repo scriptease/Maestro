@@ -12,7 +12,16 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSlug from 'rehype-slug';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { getSyntaxStyle } from '../../utils/syntaxTheme';
-import { FileCode, ChevronUp, ChevronDown, AlertTriangle, RefreshCw, X } from 'lucide-react';
+import {
+	FileCode,
+	ChevronUp,
+	ChevronDown,
+	AlertTriangle,
+	RefreshCw,
+	X,
+	Filter,
+} from 'lucide-react';
+import { GhostIconButton } from '../ui/GhostIconButton';
 import { captureException } from '../../utils/sentry';
 import { safeClipboardWrite, safeClipboardWriteBlob } from '../../utils/clipboard';
 import { useLayerStack } from '../../contexts/LayerStackContext';
@@ -21,7 +30,7 @@ import { useClickOutside } from '../../hooks/ui/useClickOutside';
 import { Modal, ModalFooter } from '../ui/Modal';
 import { MermaidRenderer } from '../MermaidRenderer';
 import { CsvTableRenderer } from '../CsvTableRenderer';
-import { JsonlViewer } from '../JsonlViewer';
+import { JsonlViewer, SYNTAX_EXAMPLES } from '../JsonlViewer';
 import { getEncoder } from '../../utils/tokenCounter';
 import { remarkFileLinks, buildFileTreeIndices } from '../../utils/remarkFileLinks';
 import { getHomeDir, getHomeDirAsync } from '../../utils/homeDir';
@@ -47,6 +56,8 @@ import { useFilePreviewSearch } from '../../hooks/file';
 import { FilePreviewHeader } from './FilePreviewHeader';
 import { ImageViewer } from './ImageViewer';
 import { FilePreviewToc } from './FilePreviewToc';
+import { HighlightedCodeEditor } from './HighlightedCodeEditor';
+import { logger } from '../../utils/logger';
 
 export const FilePreview = React.memo(
 	forwardRef<FilePreviewHandle, FilePreviewProps>(function FilePreview(
@@ -110,6 +121,10 @@ export const FilePreview = React.memo(
 		const [isSaving, setIsSaving] = useState(false);
 		const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false);
 		const [copyNotificationMessage, setCopyNotificationMessage] = useState('');
+		const [searchMode, setSearchMode] = useState<'text' | 'jq'>('text');
+		const [showJqHelp, setShowJqHelp] = useState(false);
+		const [jqError, setJqError] = useState<string | null>(null);
+		const jqHelpRef = useRef<HTMLDivElement>(null);
 		const notificationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 		// Clear notification timeout on unmount
@@ -199,6 +214,8 @@ export const FilePreview = React.memo(
 		const isMarkdown = language === 'markdown';
 		const isCsv = language === 'csv';
 		const isJsonl = language === 'jsonl';
+		const isJson = language === 'json';
+		const supportsJq = isJsonl || isJson;
 		const csvDelimiter = file?.name.toLowerCase().endsWith('.tsv') ? '\t' : ',';
 		const isImage = file ? isImageFile(file.name) : false;
 
@@ -255,15 +272,46 @@ export const FilePreview = React.memo(
 			isImage,
 			isCsv,
 			isJsonl,
+			isJson,
 			isEditableText,
 			markdownEditMode,
 			editContent,
 			fileContent: file?.content,
 			accentColor: theme.colors.accent,
+			searchMode,
 			displayedContentLength: displayContent.length,
 			initialSearchQuery,
 			onSearchQueryChange,
 		});
+
+		// Close jq help on outside click or Escape
+		useEffect(() => {
+			if (!showJqHelp) return;
+			const handleClick = (e: MouseEvent) => {
+				if (jqHelpRef.current && !jqHelpRef.current.contains(e.target as Node)) {
+					setShowJqHelp(false);
+				}
+			};
+			const handleKey = (e: KeyboardEvent) => {
+				if (e.key === 'Escape') {
+					setShowJqHelp(false);
+					e.stopPropagation();
+				}
+			};
+			document.addEventListener('mousedown', handleClick);
+			document.addEventListener('keydown', handleKey, true);
+			return () => {
+				document.removeEventListener('mousedown', handleClick);
+				document.removeEventListener('keydown', handleKey, true);
+			};
+		}, [showJqHelp]);
+
+		// Reset search mode when file changes
+		useEffect(() => {
+			setSearchMode('text');
+			setShowJqHelp(false);
+			setJqError(null);
+		}, [file?.path]);
 
 		// Track if content is truncated for display
 		const isContentTruncated = file?.content && displayContent.length < file.content.length;
@@ -428,7 +476,7 @@ export const FilePreview = React.memo(
 						})
 					)
 					.catch((err) => {
-						console.error('Failed to get file stats:', err);
+						logger.error('Failed to get file stats:', undefined, err);
 						setFileStats(null);
 					});
 			}
@@ -448,7 +496,7 @@ export const FilePreview = React.memo(
 					setTokenCount(tokens.length);
 				})
 				.catch((err) => {
-					console.error('Failed to count tokens:', err);
+					logger.error('Failed to count tokens:', undefined, err);
 					setTokenCount(null);
 				});
 		}, [file?.content, isImage, isBinary, isLargeFile]);
@@ -527,7 +575,7 @@ export const FilePreview = React.memo(
 				}
 				showNotification('File Saved');
 			} catch (err) {
-				console.error('Failed to save file:', err);
+				logger.error('Failed to save file:', undefined, err);
 				showNotification('Save Failed');
 			} finally {
 				setIsSaving(false);
@@ -607,6 +655,8 @@ export const FilePreview = React.memo(
 			} else if (searchOpen) {
 				setSearchOpen(false);
 				setSearchQuery('');
+				setSearchMode('text');
+				setJqError(null);
 				// Refocus container so keyboard navigation (arrow keys) still works
 				containerRef.current?.focus();
 			} else if (!isTabMode) {
@@ -751,6 +801,8 @@ export const FilePreview = React.memo(
 					e.stopPropagation();
 					setSearchOpen(false);
 					setSearchQuery('');
+					setSearchMode('text');
+					setJqError(null);
 					containerRef.current?.focus();
 					return;
 				}
@@ -949,13 +1001,9 @@ export const FilePreview = React.memo(
 							>
 								Reload
 							</button>
-							<button
-								onClick={() => setFileChangedOnDisk(false)}
-								className="p-1 rounded hover:bg-white/10 transition-colors"
-								title="Dismiss"
-							>
+							<GhostIconButton onClick={() => setFileChangedOnDisk(false)} title="Dismiss">
 								<X className="w-3 h-3" style={{ color: theme.colors.textDim }} />
-							</button>
+							</GhostIconButton>
 						</div>
 					</div>
 				)}
@@ -968,65 +1016,214 @@ export const FilePreview = React.memo(
 				>
 					{/* Floating Search */}
 					{searchOpen && (
-						<div className="sticky top-0 z-10 pb-4">
-							<div className="flex items-center gap-2">
-								<input
-									ref={searchInputRef}
-									type="text"
-									value={searchQuery}
-									onChange={(e) => setSearchQuery(e.target.value)}
-									onKeyDown={(e) => {
-										if (e.key === 'Escape') {
-											e.preventDefault();
-											e.stopPropagation();
-											setSearchOpen(false);
-											setSearchQuery('');
-											// Refocus container so keyboard navigation still works
-											containerRef.current?.focus();
-										} else if (e.key === 'Enter' && !e.shiftKey) {
-											e.preventDefault();
-											goToNextMatch();
-										} else if (e.key === 'Enter' && e.shiftKey) {
-											e.preventDefault();
-											goToPrevMatch();
+						<div className="sticky top-0 z-10 pb-4" ref={jqHelpRef}>
+							<div className="relative">
+								<div className="flex items-center gap-2">
+									{/* jq mode toggle for JSON/JSONL files */}
+									{supportsJq && (
+										<button
+											onClick={() => {
+												const next = searchMode === 'text' ? 'jq' : 'text';
+												setSearchMode(next);
+												setSearchQuery('');
+												setShowJqHelp(false);
+												setJqError(null);
+												setTimeout(() => searchInputRef.current?.focus(), 0);
+											}}
+											className="flex items-center gap-1 px-2 rounded border text-xs font-medium whitespace-nowrap transition-colors self-stretch"
+											style={{
+												borderColor:
+													searchMode === 'jq' ? theme.colors.accent : theme.colors.border,
+												backgroundColor:
+													searchMode === 'jq' ? theme.colors.accent + '20' : theme.colors.bgSidebar,
+												color: searchMode === 'jq' ? theme.colors.accent : theme.colors.textDim,
+											}}
+											title={searchMode === 'jq' ? 'Switch to text search' : 'Switch to jq filter'}
+										>
+											<Filter className="w-3 h-3" />
+											jq
+										</button>
+									)}
+									<input
+										ref={searchInputRef}
+										type="text"
+										value={searchQuery}
+										onChange={(e) => setSearchQuery(e.target.value)}
+										onKeyDown={(e) => {
+											if (e.key === 'Escape') {
+												e.preventDefault();
+												e.stopPropagation();
+												if (showJqHelp) {
+													setShowJqHelp(false);
+												} else {
+													setSearchOpen(false);
+													setSearchQuery('');
+													setSearchMode('text');
+													setJqError(null);
+													containerRef.current?.focus();
+												}
+											} else if (searchMode === 'text') {
+												if (e.key === 'Enter' && !e.shiftKey) {
+													e.preventDefault();
+													goToNextMatch();
+												} else if (e.key === 'Enter' && e.shiftKey) {
+													e.preventDefault();
+													goToPrevMatch();
+												}
+											}
+										}}
+										onFocus={() => {
+											if (searchMode === 'jq' && !searchQuery) setShowJqHelp(true);
+										}}
+										placeholder={
+											searchMode === 'jq'
+												? 'jq filter — .field, select(.x == "y"), keys, contains("...")'
+												: 'Search in file... (Enter: next, Shift+Enter: prev)'
 										}
-									}}
-									placeholder="Search in file... (Enter: next, Shift+Enter: prev)"
-									className="flex-1 px-3 py-2 rounded border bg-transparent outline-none text-sm"
-									style={{
-										borderColor: theme.colors.accent,
-										color: theme.colors.textMain,
-										backgroundColor: theme.colors.bgSidebar,
-									}}
-									autoFocus
-								/>
-								{searchQuery.trim() && (
-									<>
-										<span
-											className="text-xs whitespace-nowrap"
-											style={{ color: theme.colors.textDim }}
+										className="flex-1 px-3 py-2 rounded border bg-transparent outline-none text-sm"
+										style={{
+											borderColor:
+												searchMode === 'jq'
+													? jqError
+														? theme.colors.error + '80'
+														: searchQuery
+															? theme.colors.accent + '60'
+															: theme.colors.border
+													: theme.colors.accent,
+											color: theme.colors.textMain,
+											backgroundColor: theme.colors.bgSidebar,
+											fontFamily:
+												searchMode === 'jq'
+													? 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
+													: undefined,
+											fontSize: searchMode === 'jq' ? '12px' : undefined,
+										}}
+										spellCheck={searchMode === 'jq' ? false : undefined}
+										autoFocus
+									/>
+									{/* Text search: match count + prev/next navigation */}
+									{searchMode === 'text' && searchQuery.trim() && (
+										<>
+											<span
+												className="text-xs whitespace-nowrap"
+												style={{ color: theme.colors.textDim }}
+											>
+												{totalMatches > 0
+													? `${currentMatchIndex + 1}/${totalMatches}`
+													: 'No matches'}
+											</span>
+											<button
+												onClick={goToPrevMatch}
+												disabled={totalMatches === 0}
+												className="p-1.5 rounded hover:bg-white/10 transition-colors disabled:opacity-30"
+												style={{ color: theme.colors.textDim }}
+												title="Previous match (Shift+Enter)"
+											>
+												<ChevronUp className="w-4 h-4" />
+											</button>
+											<button
+												onClick={goToNextMatch}
+												disabled={totalMatches === 0}
+												className="p-1.5 rounded hover:bg-white/10 transition-colors disabled:opacity-30"
+												style={{ color: theme.colors.textDim }}
+												title="Next match (Enter)"
+											>
+												<ChevronDown className="w-4 h-4" />
+											</button>
+										</>
+									)}
+									{/* jq mode: clear button + help toggle */}
+									{searchMode === 'jq' && (
+										<>
+											{searchQuery && (
+												<button
+													onClick={() => {
+														setSearchQuery('');
+														searchInputRef.current?.focus();
+													}}
+													className="p-1 rounded hover:bg-white/10 transition-colors"
+													style={{ color: theme.colors.textDim }}
+													title="Clear filter"
+												>
+													<X className="w-3.5 h-3.5" />
+												</button>
+											)}
+											<button
+												onClick={() => setShowJqHelp((p) => !p)}
+												className="flex items-center justify-center px-2 rounded border text-xs font-medium transition-colors self-stretch"
+												style={{
+													borderColor: showJqHelp ? theme.colors.accent : theme.colors.border,
+													backgroundColor: showJqHelp
+														? theme.colors.accent + '20'
+														: theme.colors.bgSidebar,
+													color: showJqHelp ? theme.colors.accent : theme.colors.textDim,
+												}}
+												title="Show syntax help"
+											>
+												?
+											</button>
+										</>
+									)}
+								</div>
+								{/* jq error */}
+								{searchMode === 'jq' && jqError && (
+									<div
+										className="mt-1 px-2 py-1 rounded text-xs"
+										style={{ color: theme.colors.error }}
+									>
+										{jqError}
+									</div>
+								)}
+								{/* jq syntax help popup */}
+								{searchMode === 'jq' && showJqHelp && (
+									<div
+										className="absolute top-full left-0 right-0 mt-1 rounded-lg shadow-xl overflow-hidden z-50"
+										style={{
+											backgroundColor: theme.colors.bgSidebar,
+											border: `1px solid ${theme.colors.border}`,
+										}}
+									>
+										<div
+											className="px-3 py-2 text-xs font-medium"
+											style={{
+												color: theme.colors.textDim,
+												borderBottom: `1px solid ${theme.colors.border}`,
+											}}
 										>
-											{totalMatches > 0 ? `${currentMatchIndex + 1}/${totalMatches}` : 'No matches'}
-										</span>
-										<button
-											onClick={goToPrevMatch}
-											disabled={totalMatches === 0}
-											className="p-1.5 rounded hover:bg-white/10 transition-colors disabled:opacity-30"
-											style={{ color: theme.colors.textDim }}
-											title="Previous match (Shift+Enter)"
-										>
-											<ChevronUp className="w-4 h-4" />
-										</button>
-										<button
-											onClick={goToNextMatch}
-											disabled={totalMatches === 0}
-											className="p-1.5 rounded hover:bg-white/10 transition-colors disabled:opacity-30"
-											style={{ color: theme.colors.textDim }}
-											title="Next match (Enter)"
-										>
-											<ChevronDown className="w-4 h-4" />
-										</button>
-									</>
+											jq Filter Syntax
+										</div>
+										<div className="max-h-64 overflow-y-auto scrollbar-thin">
+											{SYNTAX_EXAMPLES.map(({ expr, desc }) => (
+												<button
+													key={expr}
+													className="w-full flex items-center gap-3 px-3 py-1.5 text-left hover:bg-white/5 transition-colors"
+													onClick={() => {
+														setSearchQuery(expr);
+														setShowJqHelp(false);
+														searchInputRef.current?.focus();
+													}}
+												>
+													<code
+														className="flex-shrink-0 px-1.5 py-0.5 rounded text-xs"
+														style={{
+															backgroundColor: theme.colors.accent + '20',
+															color: theme.colors.accent,
+															fontFamily:
+																'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+														}}
+													>
+														{expr}
+													</code>
+													<span
+														className="text-xs truncate"
+														style={{ color: theme.colors.textDim }}
+													>
+														{desc}
+													</span>
+												</button>
+											))}
+										</div>
+									</div>
 								)}
 							</div>
 						</div>
@@ -1056,17 +1253,13 @@ export const FilePreview = React.memo(
 							</div>
 						</div>
 					) : isEditableText && markdownEditMode ? (
-						// Edit mode - show editable textarea for any text file
-						<textarea
+						// Edit mode - syntax-highlighted editor for any text file
+						<HighlightedCodeEditor
 							ref={textareaRef}
 							value={editContent}
-							onChange={(e) => setEditContent(e.target.value)}
-							className="w-full h-full font-mono text-sm resize-none outline-none bg-transparent"
-							style={{
-								color: theme.colors.textMain,
-								caretColor: theme.colors.accent,
-								lineHeight: '1.6',
-							}}
+							onChange={setEditContent}
+							language={language}
+							theme={theme}
 							spellCheck={false}
 							onKeyDown={(e) => {
 								// Handle Cmd+S for save
@@ -1171,12 +1364,15 @@ export const FilePreview = React.memo(
 							searchQuery={searchQuery}
 							onMatchCount={setMatchCount}
 						/>
-					) : isJsonl && !markdownEditMode ? (
+					) : (isJsonl || (isJson && searchMode === 'jq')) && !markdownEditMode ? (
 						<JsonlViewer
 							content={file.content}
 							theme={theme}
-							searchQuery={searchQuery}
-							onMatchCount={setMatchCount}
+							parseMode={isJson ? 'json' : 'jsonl'}
+							searchQuery={searchMode === 'text' ? searchQuery : undefined}
+							jqFilter={searchMode === 'jq' ? searchQuery : undefined}
+							onMatchCount={searchMode === 'text' ? setMatchCount : undefined}
+							onJqError={setJqError}
 						/>
 					) : isMarkdown ? (
 						<div

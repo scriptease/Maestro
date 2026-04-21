@@ -64,12 +64,20 @@ export interface TabStoreState {
 	// Gist publishing state (moved from App.tsx local state)
 	tabGistContent: { filename: string; content: string } | null;
 	fileGistUrls: Record<string, GistInfo>;
+	/**
+	 * Pending terminal buffer content queued for "Send to Agent".
+	 * When set, the shared handleSendToAgent handler uses this buffer text as the
+	 * transferred message body instead of extracting logs from the active AI tab.
+	 * Cleared once the transfer completes or the SendToAgent modal is closed.
+	 */
+	pendingTerminalBufferSend: { content: string; sourceName: string } | null;
 }
 
 export interface TabStoreActions {
 	// === Gist UI state ===
 
 	setTabGistContent: (content: { filename: string; content: string } | null) => void;
+	setPendingTerminalBufferSend: (pending: { content: string; sourceName: string } | null) => void;
 	setFileGistUrls: (urls: Record<string, GistInfo>) => void;
 	setFileGistUrl: (path: string, info: GistInfo) => void;
 	clearFileGistUrl: (path: string) => void;
@@ -128,13 +136,15 @@ export interface TabStoreActions {
 
 	/**
 	 * Navigate to a tab by its position in the unified tab order.
+	 * @param showUnreadOnly - If true, index into the unread-filtered visible tabs (matches tab bar)
 	 */
-	navigateToIndex: (index: number) => NavigateToUnifiedTabResult | null;
+	navigateToIndex: (index: number, showUnreadOnly?: boolean) => NavigateToUnifiedTabResult | null;
 
 	/**
 	 * Navigate to the last tab in unified order.
+	 * @param showUnreadOnly - If true, go to the last tab in the unread-filtered visible list
 	 */
-	navigateToLast: () => NavigateToUnifiedTabResult | null;
+	navigateToLast: (showUnreadOnly?: boolean) => NavigateToUnifiedTabResult | null;
 
 	// === Tab metadata ===
 
@@ -301,11 +311,14 @@ export const useTabStore = create<TabStore>()((set) => ({
 	// --- State ---
 	tabGistContent: null,
 	fileGistUrls: {},
+	pendingTerminalBufferSend: null,
 
 	// --- Actions ---
 
 	// Gist UI state
 	setTabGistContent: (content) => set({ tabGistContent: content }),
+
+	setPendingTerminalBufferSend: (pending) => set({ pendingTerminalBufferSend: pending }),
 
 	setFileGistUrls: (urls) => set({ fileGistUrls: urls }),
 
@@ -400,19 +413,19 @@ export const useTabStore = create<TabStore>()((set) => ({
 		return result;
 	},
 
-	navigateToIndex: (index) => {
+	navigateToIndex: (index, showUnreadOnly) => {
 		const session = getActiveSession();
 		if (!session) return null;
-		const result = navigateToIndexHelper(session, index);
+		const result = navigateToIndexHelper(session, index, showUnreadOnly);
 		if (!result) return null;
 		updateActiveSession(result.session);
 		return result;
 	},
 
-	navigateToLast: () => {
+	navigateToLast: (showUnreadOnly) => {
 		const session = getActiveSession();
 		if (!session) return null;
-		const result = navigateToLastHelper(session);
+		const result = navigateToLastHelper(session, showUnreadOnly);
 		if (!result) return null;
 		updateActiveSession(result.session);
 		return result;

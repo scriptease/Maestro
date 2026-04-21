@@ -88,7 +88,7 @@ describe('buildAgentArgs', () => {
 	// -- jsonOutputArgs --
 	it('adds jsonOutputArgs when not already present', () => {
 		const agent = makeAgent({ jsonOutputArgs: ['--format', 'json'] });
-		const result = buildAgentArgs(agent, { baseArgs: ['--print'] });
+		const result = buildAgentArgs(agent, { baseArgs: ['--print'], prompt: 'test' });
 		expect(result).toEqual(['--print', '--format', 'json']);
 	});
 
@@ -96,9 +96,16 @@ describe('buildAgentArgs', () => {
 		const agent = makeAgent({ jsonOutputArgs: ['--format', 'json'] });
 		const result = buildAgentArgs(agent, {
 			baseArgs: ['--print', '--format', 'stream'],
+			prompt: 'test',
 		});
 		// '--format' is already in baseArgs, so jsonOutputArgs should not be added
 		expect(result).toEqual(['--print', '--format', 'stream']);
+	});
+
+	it('skips jsonOutputArgs when prompt is empty', () => {
+		const agent = makeAgent({ jsonOutputArgs: ['--format', 'json'] });
+		const result = buildAgentArgs(agent, { baseArgs: ['--print'], prompt: '' });
+		expect(result).toEqual(['--print']);
 	});
 
 	// -- workingDirArgs --
@@ -365,7 +372,7 @@ describe('buildAgentArgs', () => {
 	it('does not mutate the original baseArgs array', () => {
 		const baseArgs = ['--print'];
 		const agent = makeAgent({ jsonOutputArgs: ['--format', 'json'] });
-		buildAgentArgs(agent, { baseArgs });
+		buildAgentArgs(agent, { baseArgs, prompt: 'test' });
 		expect(baseArgs).toEqual(['--print']);
 	});
 

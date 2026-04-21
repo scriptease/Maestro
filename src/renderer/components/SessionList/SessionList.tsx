@@ -15,6 +15,7 @@ import {
 	Trash2,
 	Bot,
 } from 'lucide-react';
+import { GhostIconButton } from '../ui/GhostIconButton';
 import type { Session, Group, Theme } from '../../types';
 import { getBadgeForTime } from '../../constants/conductorBadges';
 import { SessionItem } from '../SessionItem';
@@ -38,6 +39,7 @@ import { useSessionCategories } from '../../hooks/session/useSessionCategories';
 import { useSessionFilterMode } from '../../hooks/session/useSessionFilterMode';
 import { cueService } from '../../services/cue';
 import { captureException } from '../../utils/sentry';
+import { useEventListener } from '../../hooks/utils/useEventListener';
 
 // ============================================================================
 // SessionContextMenu - Right-click context menu for session items
@@ -411,26 +413,21 @@ function SessionListInner(props: SessionListProps) {
 	}, [liveOverlayOpen, menuOpen]);
 
 	// Listen for tour UI actions to control hamburger menu state
-	useEffect(() => {
-		const handleTourAction = (event: Event) => {
-			const customEvent = event as CustomEvent<{ type: string; value?: string }>;
-			const { type } = customEvent.detail;
+	useEventListener('tour:action', (event: Event) => {
+		const customEvent = event as CustomEvent<{ type: string; value?: string }>;
+		const { type } = customEvent.detail;
 
-			switch (type) {
-				case 'openHamburgerMenu':
-					setMenuOpen(true);
-					break;
-				case 'closeHamburgerMenu':
-					setMenuOpen(false);
-					break;
-				default:
-					break;
-			}
-		};
-
-		window.addEventListener('tour:action', handleTourAction);
-		return () => window.removeEventListener('tour:action', handleTourAction);
-	}, []);
+		switch (type) {
+			case 'openHamburgerMenu':
+				setMenuOpen(true);
+				break;
+			case 'closeHamburgerMenu':
+				setMenuOpen(false);
+				break;
+			default:
+				break;
+		}
+	});
 
 	// Get git file change counts per session from focused context
 	// Using useGitFileStatus instead of full useGitStatus reduces re-renders
@@ -830,14 +827,14 @@ function SessionListInner(props: SessionListProps) {
 						<div className="flex items-center">
 							{/* Hamburger Menu */}
 							<div className="relative z-30" ref={menuRef} data-tour="hamburger-menu">
-								<button
+								<GhostIconButton
 									onClick={() => setMenuOpen(!menuOpen)}
-									className="p-2 rounded hover:bg-white/10 transition-colors"
-									style={{ color: theme.colors.textDim }}
+									padding="p-2"
 									title="Menu"
+									color={theme.colors.textDim}
 								>
 									<Menu className="w-4 h-4" />
-								</button>
+								</GhostIconButton>
 								{/* Menu Overlay */}
 								{menuOpen && (
 									<div
@@ -863,16 +860,12 @@ function SessionListInner(props: SessionListProps) {
 					</>
 				) : (
 					<div className="w-full flex flex-col items-center gap-2 relative z-30" ref={menuRef}>
-						<button
-							onClick={() => setMenuOpen(!menuOpen)}
-							className="p-2 rounded hover:bg-white/10 transition-colors"
-							title="Menu"
-						>
+						<GhostIconButton onClick={() => setMenuOpen(!menuOpen)} padding="p-2" title="Menu">
 							<Wand2
 								className={`w-6 h-6${isAnyBusy ? ' wand-sparkle-active' : ''}`}
 								style={{ color: theme.colors.accent }}
 							/>
-						</button>
+						</GhostIconButton>
 						{/* Menu Overlay for Collapsed Sidebar */}
 						{menuOpen && (
 							<div

@@ -11,6 +11,7 @@ import { getActiveTab } from '../../utils/tabHelpers';
 import { getStdinFlags, prepareMaestroSystemPrompt } from '../../utils/spawnHelpers';
 import { generateId } from '../../utils/ids';
 import { estimateContextUsage } from '../../utils/contextUsage';
+import { logger } from '../../utils/logger';
 
 /**
  * Result from agent spawn operations.
@@ -183,8 +184,14 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 			try {
 				const agent = await window.maestro.agents.get(session.toolType);
 				if (!agent) {
-					console.error(`[spawnAgentForSession] Agent not found for toolType: ${session.toolType}`);
+					logger.error(`[spawnAgentForSession] Agent not found for toolType: ${session.toolType}`);
 					return { success: false };
+				}
+
+				// Validate command before registering listeners to avoid leaked subscriptions
+				const commandToUse = agent.path || agent.command;
+				if (!commandToUse) {
+					throw new Error(`${session.toolType} agent has no command configured`);
 				}
 
 				// For batch processing, use a unique session ID per task run to avoid contaminating the main AI terminal
@@ -267,7 +274,11 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 									})
 									.catch((err) => {
 										// Don't fail the batch flow if stats recording fails
-										console.warn('[spawnAgentForSession] Failed to record query stats:', err);
+										logger.warn(
+											'[spawnAgentForSession] Failed to record query stats:',
+											undefined,
+											err
+										);
 									});
 
 								// Estimate context usage from the last single-turn event (not accumulated totals)
@@ -418,7 +429,6 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 
 					// Spawn the agent for batch processing
 					// Use effectiveCwd which may be a worktree path for parallel execution
-					const commandToUse = agent.path || agent.command;
 					const { sendPromptViaStdin, sendPromptViaStdinRaw } = getStdinFlags({
 						isSshSession: !!session.sshRemoteId || !!session.sessionSshRemoteConfig?.enabled,
 						supportsStreamJsonInput: agent.capabilities?.supportsStreamJsonInput ?? false,
@@ -453,7 +463,7 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 						});
 				});
 			} catch (error) {
-				console.error('Error spawning agent:', error);
+				logger.error('Error spawning agent:', undefined, error);
 				return { success: false };
 			}
 		},
@@ -505,8 +515,14 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 			try {
 				const agent = await window.maestro.agents.get(toolType);
 				if (!agent) {
-					console.error(`[spawnBackgroundSynopsis] Agent not found for toolType: ${toolType}`);
+					logger.error(`[spawnBackgroundSynopsis] Agent not found for toolType: ${toolType}`);
 					return { success: false };
+				}
+
+				// Validate command before registering listeners to avoid leaked subscriptions
+				const commandToUse = sessionConfig?.customPath || agent.path || agent.command;
+				if (!commandToUse) {
+					throw new Error(`${toolType} agent has no command configured`);
 				}
 
 				// Use a unique target ID for background synopsis
@@ -589,7 +605,6 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 							effectiveSessionSshRemoteConfig = mainSession.sessionSshRemoteConfig;
 						}
 					}
-					const commandToUse = sessionConfig?.customPath || agent.path || agent.command;
 					const { sendPromptViaStdin, sendPromptViaStdinRaw } = getStdinFlags({
 						isSshSession: !!effectiveSessionSshRemoteConfig?.enabled,
 						supportsStreamJsonInput: agent.capabilities?.supportsStreamJsonInput ?? false,
@@ -621,7 +636,7 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 						});
 				});
 			} catch (error) {
-				console.error('Error spawning background synopsis:', error);
+				logger.error('Error spawning background synopsis:', undefined, error);
 				return { success: false };
 			}
 		},
@@ -638,23 +653,29 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 			return;
 		}
 
-		console.log('[cancelPendingSynopsis] Cancelling synopsis sessions for', maestroSessionId, {
-			count: synopsisSessions.size,
-			sessionIds: Array.from(synopsisSessions),
-		});
+		logger.info('[cancelPendingSynopsis] Cancelling synopsis sessions for', undefined, [
+			maestroSessionId,
+			{
+				count: synopsisSessions.size,
+				sessionIds: Array.from(synopsisSessions),
+			},
+		]);
 
 		// Kill all active synopsis processes for this session
 		const killPromises = Array.from(synopsisSessions).map(async (synopsisSessionId) => {
 			try {
 				await window.maestro.process.kill(synopsisSessionId);
-				console.log('[cancelPendingSynopsis] Killed synopsis session:', synopsisSessionId);
+				logger.info(
+					'[cancelPendingSynopsis] Killed synopsis session:',
+					undefined,
+					synopsisSessionId
+				);
 			} catch (error) {
 				// Process may have already exited
-				console.warn(
-					'[cancelPendingSynopsis] Failed to kill synopsis session:',
+				logger.warn('[cancelPendingSynopsis] Failed to kill synopsis session:', undefined, [
 					synopsisSessionId,
-					error
-				);
+					error,
+				]);
 			}
 		});
 

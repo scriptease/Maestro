@@ -12,6 +12,7 @@ import { NewTabPopover } from './NewTabPopover';
 import { SearchPopover } from './SearchPopover';
 import { isUnifiedTabActive, getShortcutHint } from './tabBarUtils';
 import type { TabBarProps } from './types';
+import { logger } from '../../utils/logger';
 
 /** Approximate width of the sticky right "+" button area (px) */
 const STICKY_RIGHT_WIDTH = 48;
@@ -63,15 +64,20 @@ function TabBarInner({
 	onTerminalTabSelect,
 	onTerminalTabClose,
 	onTerminalTabRename,
+	onCopyTerminalBuffer,
+	onPublishTerminalBufferGist,
+	onSendTerminalBufferToAgent,
+	onCopyBrowserContent,
+	onSendBrowserContentToAgent,
 	colorBlindMode,
 }: TabBarProps) {
 	// Dev-time warnings for missing handlers when unified tabs are provided
 	if (process.env.NODE_ENV !== 'production' && unifiedTabs) {
 		if (!onFileTabSelect || !onFileTabClose) {
-			console.warn('[TabBar] unifiedTabs provided but onFileTabSelect/onFileTabClose missing');
+			logger.warn('[TabBar] unifiedTabs provided but onFileTabSelect/onFileTabClose missing');
 		}
 		if (!onTerminalTabSelect || !onTerminalTabClose) {
-			console.warn(
+			logger.warn(
 				'[TabBar] unifiedTabs provided but onTerminalTabSelect/onTerminalTabClose missing'
 			);
 		}
@@ -443,7 +449,13 @@ function TabBarInner({
 						const showSeparator = index > 0 && !isActive && !isPrevActive;
 						const isFirstTab = originalIndex === 0;
 						const isLastTab = originalIndex === allTabs.length - 1;
-						const shortcutHint = getShortcutHint(originalIndex, isLastTab, showUnreadOnly);
+						// When the unread filter is active, jump shortcuts (Cmd+N / Cmd+0) operate on
+						// the filtered list — so hints must reflect the displayed position, not the
+						// underlying unifiedTabs index.
+						const isLastDisplayed = index === displayedUnifiedTabs.length - 1;
+						const shortcutHint = showUnreadOnly
+							? getShortcutHint(index, isLastDisplayed)
+							: getShortcutHint(originalIndex, isLastTab);
 
 						if (unifiedTab.type === 'ai') {
 							return (
@@ -529,6 +541,9 @@ function TabBarInner({
 										onCloseOtherTabs={onCloseOtherTabs ? handleTabCloseOther : undefined}
 										onCloseTabsLeft={onCloseTabsLeft ? handleTabCloseLeft : undefined}
 										onCloseTabsRight={onCloseTabsRight ? handleTabCloseRight : undefined}
+										onCopyBuffer={onCopyTerminalBuffer}
+										onPublishBufferGist={ghCliAvailable ? onPublishTerminalBufferGist : undefined}
+										onSendBufferToAgent={onSendTerminalBufferToAgent}
 										totalTabs={allTabs.length}
 										tabIndex={originalIndex}
 										shortcutHint={shortcutHint}
@@ -562,6 +577,8 @@ function TabBarInner({
 										onCloseOtherTabs={onCloseOtherTabs ? handleTabCloseOther : undefined}
 										onCloseTabsLeft={onCloseTabsLeft ? handleTabCloseLeft : undefined}
 										onCloseTabsRight={onCloseTabsRight ? handleTabCloseRight : undefined}
+										onCopyContent={onCopyBrowserContent}
+										onSendContentToAgent={onSendBrowserContentToAgent}
 										totalTabs={allTabs.length}
 										tabIndex={originalIndex}
 										shortcutHint={shortcutHint}
@@ -579,7 +596,11 @@ function TabBarInner({
 						const showSeparator = index > 0 && !isActive && !isPrevActive;
 						const isFirstTab = originalIndex === 0;
 						const isLastTab = originalIndex === tabs.length - 1;
-						const shortcutHint = getShortcutHint(originalIndex, isLastTab, showUnreadOnly);
+						// Legacy mode: displayedTabs is the filtered list when unread filter is on.
+						const isLastDisplayed = index === displayedTabs.length - 1;
+						const shortcutHint = showUnreadOnly
+							? getShortcutHint(index, isLastDisplayed)
+							: getShortcutHint(originalIndex, isLastTab);
 
 						return (
 							<React.Fragment key={tab.id}>

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Loader2 } from 'lucide-react';
+
+import { Spinner } from '../ui/Spinner';
 import { TerminalOutput } from '../TerminalOutput';
 import {
 	TerminalView,
@@ -20,6 +21,7 @@ import type {
 	BrowserTab,
 	FilePreviewTab,
 	ThinkingItem,
+	QueuedItem,
 } from '../../types';
 import type { SlashCommand } from './types';
 import type { TabCompletionSuggestion, TabCompletionFilter } from '../../hooks';
@@ -56,6 +58,8 @@ export interface MainPanelContentProps {
 	handleFilePreviewSearchQueryChange: (searchQuery: string) => void;
 	handleFilePreviewReload: () => void;
 	handleBrowserTabUpdate?: (sessionId: string, tabId: string, updates: Partial<BrowserTab>) => void;
+	/** Ref registry for the currently-mounted BrowserTabView — used to extract the active tab's content */
+	browserViewRef?: React.MutableRefObject<import('./BrowserTabView').BrowserTabViewHandle | null>;
 
 	// Terminal mounting props
 	terminalViewRefs: React.MutableRefObject<
@@ -143,6 +147,11 @@ export interface MainPanelContentProps {
 	thinkingItems: ThinkingItem[];
 	onStopBatchRun?: (sessionId?: string) => void;
 	onRemoveQueuedItem?: (itemId: string) => void;
+	onForceSendQueuedItem?: (itemId: string) => void;
+	forcedParallelEnabled?: boolean;
+	getForceSendContext?: (
+		item: QueuedItem
+	) => { targetTabBusy: boolean; otherBusyTabs: { id: string; displayName: string }[] } | null;
 	onOpenQueueBrowser?: () => void;
 	showFlashNotification?: (message: string) => void;
 
@@ -247,6 +256,7 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 		handleFilePreviewSearchQueryChange,
 		handleFilePreviewReload,
 		handleBrowserTabUpdate,
+		browserViewRef,
 		terminalViewRefs,
 		mountedTerminalSessionIds,
 		mountedTerminalSessionsRef,
@@ -306,6 +316,9 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 		thinkingItems,
 		onStopBatchRun,
 		onRemoveQueuedItem,
+		onForceSendQueuedItem,
+		forcedParallelEnabled,
+		getForceSendContext,
 		onOpenQueueBrowser,
 		showFlashNotification,
 		summarizeProgress,
@@ -382,6 +395,7 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 	const activeFocus = useUIStore((s) => s.activeFocus);
 	const outputSearchOpen = useUIStore((s) => s.outputSearchOpen);
 	const outputSearchQuery = useUIStore((s) => s.outputSearchQuery);
+	const outputSearchRegex = useUIStore((s) => s.outputSearchRegex);
 
 	return (
 		/* Content area: Show FilePreview when file tab is active, otherwise show terminal output */
@@ -392,6 +406,9 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 			{/* Skip rendering when loading remote file - loading state takes over entire main area */}
 			{activeSession.inputMode === 'ai' && activeBrowserTabId && activeBrowserTab ? (
 				<BrowserTabView
+					ref={(handle) => {
+						if (browserViewRef) browserViewRef.current = handle;
+					}}
 					tab={activeBrowserTab}
 					theme={theme}
 					onUpdateTab={(tabId, updates) =>
@@ -405,7 +422,7 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 					style={{ backgroundColor: theme.colors.bgMain }}
 				>
 					<div className="flex flex-col items-center gap-3">
-						<Loader2 className="w-8 h-8 animate-spin" style={{ color: theme.colors.accent }} />
+						<Spinner size={32} color={theme.colors.accent} />
 						<div className="text-center">
 							<div className="text-sm font-medium" style={{ color: theme.colors.textMain }}>
 								Loading{' '}
@@ -533,8 +550,10 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 								activeFocus={activeFocus}
 								outputSearchOpen={outputSearchOpen}
 								outputSearchQuery={outputSearchQuery}
+								outputSearchRegex={outputSearchRegex}
 								setOutputSearchOpen={useUIStore.getState().setOutputSearchOpen}
 								setOutputSearchQuery={useUIStore.getState().setOutputSearchQuery}
+								setOutputSearchRegex={useUIStore.getState().setOutputSearchRegex}
 								setActiveFocus={useUIStore.getState().setActiveFocus}
 								setLightboxImage={setLightboxImage}
 								inputRef={inputRef}
@@ -542,6 +561,9 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 								maxOutputLines={maxOutputLines}
 								onDeleteLog={onDeleteLog}
 								onRemoveQueuedItem={onRemoveQueuedItem}
+								onForceSendQueuedItem={onForceSendQueuedItem}
+								forcedParallelEnabled={forcedParallelEnabled}
+								getForceSendContext={getForceSendContext}
 								onInterrupt={handleInterrupt}
 								onScrollPositionChange={onScrollPositionChange}
 								onAtBottomChange={onAtBottomChange}

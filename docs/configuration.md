@@ -40,7 +40,7 @@ Click **Reset to Default** to restore the bundled version. This also takes effec
 
 Customizations are stored separately from bundled prompts and survive app updates. You can also access the four most common prompts directly from **Quick Actions** (`Cmd+K` / `Ctrl+K`): Maestro System Prompt, Auto Run Default, Commit Command, and Group Chat Moderator.
 
-For template variables, the `{{INCLUDE:name}}` directive, creating reusable prompt fragments, and more, see the full [Prompt Customization](/prompt-customization) guide.
+For template variables, the `{{INCLUDE:name}}` and `{{REF:name}}` directives, creating reusable prompt fragments, and more, see the full [Prompt Customization](/prompt-customization) guide.
 
 ## Conductor Profile
 

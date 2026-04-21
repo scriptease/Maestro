@@ -1,15 +1,5 @@
-import { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
-import {
-	ChevronRight,
-	ChevronDown,
-	Copy,
-	Check,
-	Filter,
-	X,
-	ChevronUp,
-	List,
-	Table2,
-} from 'lucide-react';
+import { useState, useMemo, useCallback, useEffect, memo } from 'react';
+import { ChevronRight, ChevronDown, Copy, Check, ChevronUp, List, Table2 } from 'lucide-react';
 import type { Theme } from '../types';
 import { CollapsibleJsonViewer } from './CollapsibleJsonViewer';
 import { parseJq, evaluateJq, JqError } from '../utils/jqFilter';
@@ -21,7 +11,11 @@ interface JsonlViewerProps {
 	content: string;
 	theme: Theme;
 	searchQuery?: string;
+	jqFilter?: string;
+	/** 'jsonl' splits by line; 'json' parses the entire content as one document */
+	parseMode?: 'jsonl' | 'json';
 	onMatchCount?: (count: number) => void;
+	onJqError?: (error: string | null) => void;
 }
 
 interface ParsedLine {
@@ -68,6 +62,21 @@ function parseJsonlLines(content: string): ParsedLine[] {
 		}
 	}
 	return lines;
+}
+
+function parseJsonDocument(content: string): ParsedLine[] {
+	try {
+		return [{ index: 1, raw: content, data: JSON.parse(content), error: null }];
+	} catch (e) {
+		return [
+			{
+				index: 1,
+				raw: content,
+				data: null,
+				error: e instanceof Error ? e.message : 'Invalid JSON',
+			},
+		];
+	}
 }
 
 function applyFilter(lines: ParsedLine[], expr: JqExpr | null): FilteredLine[] {
@@ -511,7 +520,7 @@ JsonlTable.displayName = 'JsonlTable';
 
 // ── Syntax help popover ──────────────────────────────────────────────────────
 
-const SYNTAX_EXAMPLES = [
+export const SYNTAX_EXAMPLES = [
 	{ expr: '.', desc: 'Identity (show full object)' },
 	{ expr: '.fieldName', desc: 'Extract a field' },
 	{ expr: '.foo.bar', desc: 'Nested field access' },
@@ -529,48 +538,6 @@ const SYNTAX_EXAMPLES = [
 	{ expr: '.items | sort_by(.name)', desc: 'Sort array by key' },
 	{ expr: '.tags | unique', desc: 'Deduplicate array' },
 ];
-
-function SyntaxHelp({ theme, onInsert }: { theme: Theme; onInsert: (expr: string) => void }) {
-	return (
-		<div
-			className="absolute top-full left-0 right-0 mt-1 rounded-lg shadow-xl overflow-hidden z-50"
-			style={{
-				backgroundColor: theme.colors.bgSidebar,
-				border: `1px solid ${theme.colors.border}`,
-			}}
-		>
-			<div
-				className="px-3 py-2 text-xs font-medium"
-				style={{ color: theme.colors.textDim, borderBottom: `1px solid ${theme.colors.border}` }}
-			>
-				jq Filter Syntax
-			</div>
-			<div className="max-h-64 overflow-y-auto scrollbar-thin">
-				{SYNTAX_EXAMPLES.map(({ expr, desc }) => (
-					<button
-						key={expr}
-						className="w-full flex items-center gap-3 px-3 py-1.5 text-left hover:bg-white/5 transition-colors"
-						onClick={() => onInsert(expr)}
-					>
-						<code
-							className="flex-shrink-0 px-1.5 py-0.5 rounded text-xs"
-							style={{
-								backgroundColor: theme.colors.accent + '20',
-								color: theme.colors.accent,
-								fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-							}}
-						>
-							{expr}
-						</code>
-						<span className="text-xs truncate" style={{ color: theme.colors.textDim }}>
-							{desc}
-						</span>
-					</button>
-				))}
-			</div>
-		</div>
-	);
-}
 
 // ── View mode toggle ─────────────────────────────────────────────────────────
 
@@ -623,22 +590,28 @@ function ViewModeToggle({
 
 // ── Main component ───────────────────────────────────────────────────────────
 
-export function JsonlViewer({ content, theme, searchQuery, onMatchCount }: JsonlViewerProps) {
-	const [filterText, setFilterText] = useState('');
+export function JsonlViewer({
+	content,
+	theme,
+	searchQuery,
+	jqFilter,
+	parseMode = 'jsonl',
+	onMatchCount,
+	onJqError,
+}: JsonlViewerProps) {
 	const [expandedLines, setExpandedLines] = useState<Set<number>>(new Set());
 	const [expandedTableLine, setExpandedTableLine] = useState<number | null>(null);
-	const [showHelp, setShowHelp] = useState(false);
 	const [viewModeOverride, setViewModeOverride] = useState<ViewMode | null>(null);
-	const filterInputRef = useRef<HTMLInputElement>(null);
-	const helpRef = useRef<HTMLDivElement>(null);
 
-	const debouncedFilter = useDebouncedValue(filterText, FILTER_DEBOUNCE_MS);
+	const debouncedFilter = useDebouncedValue(jqFilter ?? '', FILTER_DEBOUNCE_MS);
 
-	// Parse all lines
-	const allLines = useMemo(() => parseJsonlLines(content), [content]);
+	const allLines = useMemo(
+		() => (parseMode === 'json' ? parseJsonDocument(content) : parseJsonlLines(content)),
+		[content, parseMode]
+	);
 	const parseErrors = useMemo(() => allLines.filter((l) => l.error !== null).length, [allLines]);
 
-	// Parse and apply filter
+	// Parse and apply jq filter
 	const { filteredLines, filterError } = useMemo(() => {
 		const trimmed = debouncedFilter.trim();
 		if (!trimmed) {
@@ -654,6 +627,11 @@ export function JsonlViewer({ content, theme, searchQuery, onMatchCount }: Jsonl
 			};
 		}
 	}, [allLines, debouncedFilter]);
+
+	// Report jq errors to parent
+	useEffect(() => {
+		onJqError?.(filterError);
+	}, [filterError, onJqError]);
 
 	// Text search within filtered results
 	const textSearchFiltered = useMemo(() => {
@@ -680,22 +658,10 @@ export function JsonlViewer({ content, theme, searchQuery, onMatchCount }: Jsonl
 		? textSearchFiltered.slice(0, MAX_DISPLAY_LINES)
 		: textSearchFiltered;
 
-	// Report match count
+	// Report match count for text search
 	useEffect(() => {
 		onMatchCount?.(searchQuery?.trim() ? textSearchFiltered.length : 0);
 	}, [textSearchFiltered.length, searchQuery, onMatchCount]);
-
-	// Close help on outside click
-	useEffect(() => {
-		if (!showHelp) return;
-		const handler = (e: MouseEvent) => {
-			if (helpRef.current && !helpRef.current.contains(e.target as Node)) {
-				setShowHelp(false);
-			}
-		};
-		document.addEventListener('mousedown', handler);
-		return () => document.removeEventListener('mousedown', handler);
-	}, [showHelp]);
 
 	const toggleLine = useCallback((lineIndex: number) => {
 		setExpandedLines((prev) => {
@@ -724,87 +690,8 @@ export function JsonlViewer({ content, theme, searchQuery, onMatchCount }: Jsonl
 		setExpandedTableLine(null);
 	}, []);
 
-	const handleInsertSyntax = useCallback((expr: string) => {
-		setFilterText(expr);
-		setShowHelp(false);
-		filterInputRef.current?.focus();
-	}, []);
-
-	const handleFilterKeyDown = useCallback(
-		(e: React.KeyboardEvent) => {
-			if (e.key === 'Escape') {
-				if (filterText) {
-					setFilterText('');
-				} else {
-					(e.target as HTMLInputElement).blur();
-				}
-				e.stopPropagation();
-			}
-		},
-		[filterText]
-	);
-
 	return (
 		<div className="flex flex-col h-full">
-			{/* Filter bar */}
-			<div className="flex-shrink-0 px-4 pt-3 pb-2" ref={helpRef}>
-				<div className="relative">
-					<div
-						className="flex items-center gap-2 rounded-lg px-3 py-2"
-						style={{
-							backgroundColor: theme.colors.bgActivity,
-							border: `1px solid ${filterError ? theme.colors.error + '80' : filterText ? theme.colors.accent + '60' : theme.colors.border}`,
-						}}
-					>
-						<Filter
-							className="w-3.5 h-3.5 flex-shrink-0"
-							style={{ color: filterText ? theme.colors.accent : theme.colors.textDim }}
-						/>
-						<input
-							ref={filterInputRef}
-							type="text"
-							value={filterText}
-							onChange={(e) => setFilterText(e.target.value)}
-							onKeyDown={handleFilterKeyDown}
-							onFocus={() => !filterText && setShowHelp(true)}
-							placeholder='jq filter — .field, select(.x == "y"), keys, contains("...")'
-							className="flex-1 bg-transparent outline-none text-xs"
-							style={{
-								color: theme.colors.textMain,
-								fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-							}}
-							spellCheck={false}
-						/>
-						{filterText && (
-							<button
-								onClick={() => {
-									setFilterText('');
-									filterInputRef.current?.focus();
-								}}
-								className="p-0.5 rounded hover:bg-white/10 transition-colors"
-								style={{ color: theme.colors.textDim }}
-							>
-								<X className="w-3.5 h-3.5" />
-							</button>
-						)}
-						<button
-							onClick={() => setShowHelp((p) => !p)}
-							className="px-1.5 py-0.5 rounded text-xs hover:bg-white/10 transition-colors"
-							style={{ color: theme.colors.textDim }}
-							title="Show syntax help"
-						>
-							?
-						</button>
-					</div>
-					{filterError && (
-						<div className="mt-1 px-2 py-1 rounded text-xs" style={{ color: theme.colors.error }}>
-							{filterError}
-						</div>
-					)}
-					{showHelp && <SyntaxHelp theme={theme} onInsert={handleInsertSyntax} />}
-				</div>
-			</div>
-
 			{/* Toolbar */}
 			<div
 				className="flex-shrink-0 flex items-center gap-3 px-4 py-1.5"

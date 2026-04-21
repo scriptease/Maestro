@@ -21,6 +21,7 @@ import { refreshAutoRun } from './commands/refresh-auto-run';
 import { status } from './commands/status';
 import { autoRun } from './commands/auto-run';
 import { cueTrigger } from './commands/cue-trigger';
+import { cueList } from './commands/cue-list';
 import { createAgent } from './commands/create-agent';
 import { removeAgent } from './commands/remove-agent';
 import { listSshRemotes } from './commands/list-ssh-remotes';
@@ -38,6 +39,7 @@ import {
 	settingsAgentSet,
 	settingsAgentReset,
 } from './commands/settings-agent';
+import { promptsGet, promptsList } from './commands/prompts-get';
 
 // Read version from package.json at runtime
 function getVersion(): string {
@@ -140,6 +142,7 @@ program
 	.option('-s, --session <id>', 'Resume an existing agent session (for multi-turn conversations)')
 	.option('-r, --read-only', 'Run in read-only/plan mode (agent cannot modify files)')
 	.option('-t, --tab', 'Open/focus the session tab in Maestro desktop')
+	.option('-l, --live', 'Send message through Maestro desktop (appears in tab)')
 	.action(send);
 
 // Open file command - open a file in the Maestro desktop app
@@ -192,6 +195,20 @@ program
 	.option('--save-as <name>', "Save as a playbook with this name (don't launch)")
 	.option('--launch', 'Start the auto-run immediately (default: just configure)')
 	.option('--reset-on-completion', 'Enable reset-on-completion for all documents')
+	.option(
+		'--worktree',
+		'Run the auto-run inside a git worktree (requires --launch, --branch, --worktree-path)'
+	)
+	.option('--branch <name>', 'Branch name for the worktree (created if it does not exist)')
+	.option(
+		'--worktree-path <path>',
+		'Filesystem path for the worktree (must be a sibling of the repo)'
+	)
+	.option('--create-pr', 'Open a GitHub PR when the auto-run completes successfully')
+	.option(
+		'--pr-target-branch <branch>',
+		'Target branch for the PR (defaults to the repo default branch)'
+	)
 	.action(autoRun);
 
 // Cue commands - interact with Maestro Cue automation
@@ -202,7 +219,14 @@ cue
 	.description('Manually trigger a Cue subscription by name')
 	.option('-p, --prompt <text>', 'Override the subscription prompt with custom text')
 	.option('--json', 'Output as JSON (for scripting)')
+	.option('--source-agent-id <id>', 'Agent ID to pass as source context for write-back')
 	.action(cueTrigger);
+
+cue
+	.command('list')
+	.description('List all Cue subscriptions across agents')
+	.option('--json', 'Output as JSON (for scripting)')
+	.action(cueList);
 
 // Director's Notes commands
 const directorNotes = program
@@ -365,5 +389,22 @@ agent
 	.description('Remove an agent config key')
 	.option('--json', 'Output as JSON line (for scripting)')
 	.action(settingsAgentReset);
+
+// Prompts command — read Maestro's bundled or user-customized system prompts.
+// Designed for agent self-fetch: parent prompts reference includes via `{{REF:_name}}`
+// and the agent retrieves the full content on demand with `prompts get _name`.
+const prompts = program.command('prompts').description('Read Maestro system prompts');
+
+prompts
+	.command('list')
+	.description('List all known prompt ids with descriptions')
+	.option('--json', 'Output as JSON (for scripting)')
+	.action(promptsList);
+
+prompts
+	.command('get <id>')
+	.description('Print a prompt by id (honors user customizations from Settings → Maestro Prompts)')
+	.option('--json', 'Output as JSON object with metadata + content')
+	.action(promptsGet);
 
 program.parse();

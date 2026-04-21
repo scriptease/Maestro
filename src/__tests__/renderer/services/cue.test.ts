@@ -36,10 +36,13 @@ const mockCue = {
 	onActivityUpdate: vi.fn(),
 };
 
+const mockLogger = {
+	log: vi.fn(),
+};
+
 beforeEach(() => {
 	vi.clearAllMocks();
-	(window as any).maestro = { cue: mockCue };
-	vi.spyOn(console, 'error').mockImplementation(() => {});
+	(window as any).maestro = { cue: mockCue, logger: mockLogger };
 });
 
 // ─── Read methods ─────────────────────────────────────────────────────────────
@@ -55,7 +58,12 @@ describe('cueService — read methods', () => {
 		it('returns empty object on error', async () => {
 			mockCue.getSettings.mockRejectedValue(new Error('fail'));
 			expect(await cueService.getSettings()).toEqual({});
-			expect(console.error).toHaveBeenCalledWith('Cue getSettings error:', expect.any(Error));
+			expect(mockLogger.log).toHaveBeenCalledWith(
+				'error',
+				'Cue getSettings error:',
+				undefined,
+				expect.any(Error)
+			);
 		});
 	});
 
@@ -212,8 +220,10 @@ describe('cueService — write methods', () => {
 
 	it('triggerSubscription — passes args and rethrows on error', async () => {
 		mockCue.triggerSubscription.mockRejectedValue(new Error('IPC fail'));
-		await expect(cueService.triggerSubscription('sub-1', 'prompt')).rejects.toThrow('IPC fail');
-		expect(mockCue.triggerSubscription).toHaveBeenCalledWith('sub-1', 'prompt');
+		await expect(cueService.triggerSubscription('sub-1', 'prompt', 'agent-1')).rejects.toThrow(
+			'IPC fail'
+		);
+		expect(mockCue.triggerSubscription).toHaveBeenCalledWith('sub-1', 'prompt', 'agent-1');
 	});
 
 	it('refreshSession — passes args and rethrows on error', async () => {

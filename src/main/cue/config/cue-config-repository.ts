@@ -78,6 +78,34 @@ export function deleteCueConfigFile(projectRoot: string): boolean {
 }
 
 /**
+ * Remove `.maestro/prompts/` if it exists and contains no files. Called
+ * after pruning with an empty keep-set (e.g. from `cue:deleteYaml`) so
+ * the project's `.maestro` footprint collapses cleanly. Non-empty
+ * directories are left alone — a non-`.md` file the user placed here
+ * manually is none of Cue's business.
+ *
+ * Returns `true` if the directory was removed, `false` otherwise. Swallows
+ * errors (reports to Sentry) so callers can run this as best-effort
+ * cleanup without failing the surrounding operation.
+ */
+export function removeEmptyPromptsDir(projectRoot: string): boolean {
+	const promptsDir = path.resolve(path.join(projectRoot, CUE_PROMPTS_DIR));
+	if (!fs.existsSync(promptsDir)) return false;
+	try {
+		const entries = fs.readdirSync(promptsDir);
+		if (entries.length > 0) return false;
+		fs.rmdirSync(promptsDir);
+		return true;
+	} catch (err) {
+		captureException(err, {
+			operation: 'removeEmptyPromptsDir',
+			dir: promptsDir,
+		});
+		return false;
+	}
+}
+
+/**
  * Write a Cue prompt file (a .md file referenced by `prompt_file:` in YAML).
  *
  * `relativePath` is interpreted relative to `projectRoot`. Parent directories
@@ -180,11 +208,27 @@ export function pruneOrphanedPromptFiles(
 /**
  * Watches both canonical and legacy Cue config paths.
  * Debounces onChange by 1 second.
+ *
+ * Uses a `torn` flag and instance check so any event that slips past
+ * `watcher.close()` (chokidar emits an `unlink` for in-flight events on some
+ * platforms) is rejected — preventing a stale watcher from triggering a
+ * refresh on a session that has been torn down or re-registered.
+ *
+ * `opts.onReady` fires once chokidar finishes its initial scan — use it in
+ * tests so they don't have to sleep on a timer while chokidar registers
+ * watched paths (that sleep was a flakiness source on slow CI runners).
+ * Production callers can ignore the opt; file changes before `ready` are
+ * uncommon for config reloads triggered by the user.
  */
-export function watchCueConfigFile(projectRoot: string, onChange: () => void): () => void {
+export function watchCueConfigFile(
+	projectRoot: string,
+	onChange: () => void,
+	opts?: { onReady?: () => void }
+): () => void {
 	const canonicalPath = path.join(projectRoot, CUE_CONFIG_PATH);
 	const legacyPath = path.join(projectRoot, LEGACY_CUE_CONFIG_PATH);
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	let torn = false;
 
 	const watcher = chokidar.watch([canonicalPath, legacyPath], {
 		persistent: true,
@@ -192,11 +236,13 @@ export function watchCueConfigFile(projectRoot: string, onChange: () => void): (
 	});
 
 	const debouncedOnChange = () => {
+		if (torn) return;
 		if (debounceTimer) {
 			clearTimeout(debounceTimer);
 		}
 		debounceTimer = setTimeout(() => {
 			debounceTimer = null;
+			if (torn) return;
 			onChange();
 		}, 1000);
 	};
@@ -204,10 +250,15 @@ export function watchCueConfigFile(projectRoot: string, onChange: () => void): (
 	watcher.on('add', debouncedOnChange);
 	watcher.on('change', debouncedOnChange);
 	watcher.on('unlink', debouncedOnChange);
+	if (opts?.onReady) {
+		watcher.once('ready', opts.onReady);
+	}
 
 	return () => {
+		torn = true;
 		if (debounceTimer) {
 			clearTimeout(debounceTimer);
+			debounceTimer = null;
 		}
 		watcher.close();
 	};

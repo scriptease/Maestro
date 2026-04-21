@@ -14,6 +14,7 @@ import { captureException } from '../utils/sentry';
 import { notifyToast } from '../stores/notificationStore';
 import type { Session, TerminalTab } from '../types';
 import type { Theme } from '../../shared/theme-types';
+import { logger } from '../utils/logger';
 
 // ============================================================================
 // Types
@@ -25,6 +26,8 @@ export interface TerminalViewHandle {
 	searchActiveTerminal(query: string): boolean;
 	searchNext(): boolean;
 	searchPrevious(): boolean;
+	/** Read the full scrollback + visible buffer for the specified terminal tab. */
+	getTerminalBuffer(tabId: string): string;
 }
 
 interface TerminalViewProps {
@@ -142,6 +145,9 @@ export const TerminalView = memo(
 				searchPrevious(): boolean {
 					if (!activeTab) return false;
 					return terminalRefs.current.get(activeTab.id)?.searchPrevious() ?? false;
+				},
+				getTerminalBuffer(tabId: string): string {
+					return terminalRefs.current.get(tabId)?.getBuffer() ?? '';
 				},
 			}),
 			[activeTab]
@@ -314,7 +320,7 @@ export const TerminalView = memo(
 					const tabId = tab.id;
 					if (age < 2000) {
 						// Startup failure — close tab and show error toast
-						console.warn(
+						logger.warn(
 							`[TerminalView] Shell exited ${age}ms after creation (exit code: ${tab.exitCode ?? '?'}). Closing tab.`
 						);
 						setTimeout(() => closeTerminalTab(tabId), 0);

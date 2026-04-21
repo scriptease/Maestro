@@ -26,12 +26,15 @@ import type {
 	PipelineEdge as PipelineEdgeType,
 	TriggerNodeData,
 	AgentNodeData,
+	CommandNodeData,
 	CuePipelineSessionInfo as SessionInfo,
 	IncomingAgentEdgeInfo,
 } from '../../../shared/cue-pipeline-types';
 import type { CueSettings } from '../../../shared/cue';
 import { TriggerNode, type TriggerNodeDataProps } from './nodes/TriggerNode';
 import { AgentNode, type AgentNodeDataProps } from './nodes/AgentNode';
+import { CommandNode, type CommandNodeDataProps } from './nodes/CommandNode';
+import { ErrorNode } from './nodes/ErrorNode';
 import { edgeTypes } from './edges/PipelineEdge';
 import { TriggerDrawer } from './drawers/TriggerDrawer';
 import { AgentDrawer } from './drawers/AgentDrawer';
@@ -43,6 +46,8 @@ import { EVENT_COLORS } from './cueEventConstants';
 const nodeTypes = {
 	trigger: TriggerNode,
 	agent: AgentNode,
+	command: CommandNode,
+	error: ErrorNode,
 };
 
 export interface PipelineCanvasProps {
@@ -98,7 +103,10 @@ export interface PipelineCanvasProps {
 	incomingAgentEdgeCount: number;
 	incomingAgentEdges: IncomingAgentEdgeInfo[];
 	incomingTriggerEdges: IncomingTriggerEdgeInfo[];
-	onUpdateNode: (nodeId: string, data: Partial<TriggerNodeData | AgentNodeData>) => void;
+	onUpdateNode: (
+		nodeId: string,
+		data: Partial<TriggerNodeData | AgentNodeData | CommandNodeData>
+	) => void;
 	onUpdateEdgePrompt: (edgeId: string, prompt: string) => void;
 	onDeleteNode: (nodeId: string) => void;
 	onSwitchToSession: (id: string) => void;
@@ -294,6 +302,15 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 							const data = node.data as AgentNodeDataProps;
 							return data.pipelineColor ?? theme.colors.accent;
 						}
+						if (node.type === 'command') {
+							const data = node.data as CommandNodeDataProps;
+							return data.pipelineColor ?? theme.colors.accent;
+						}
+						// Error nodes (unresolved agent/source) stand out in the
+						// minimap so the user spots them when zoomed out.
+						if (node.type === 'error') {
+							return theme.colors.error ?? '#ef4444';
+						}
 						return theme.colors.accent;
 					}}
 				/>
@@ -397,6 +414,7 @@ export const PipelineCanvas = React.memo(function PipelineCanvas({
 							selectedNode={selectedNode}
 							theme={theme}
 							pipelines={pipelines}
+							sessions={sessions}
 							hasOutgoingEdge={selectedNodeHasOutgoingEdge}
 							hasIncomingAgentEdges={hasIncomingAgentEdges}
 							incomingAgentEdgeCount={incomingAgentEdgeCount}

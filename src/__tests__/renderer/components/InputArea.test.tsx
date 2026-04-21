@@ -3,8 +3,11 @@ import { render, screen, fireEvent, act, within, waitFor } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { InputArea } from '../../../renderer/components/InputArea';
 import { formatEnterToSend } from '../../../renderer/utils/shortcutFormatter';
-import type { Session, Theme } from '../../../renderer/types';
+import type { Session } from '../../../renderer/types';
+import type { Session } from '../../../renderer/types';
+import { createMockSession as baseCreateMockSession } from '../../helpers/mockSession';
 
+import { mockTheme } from '../../helpers/mockTheme';
 // Mock scrollIntoView since jsdom doesn't support it
 Element.prototype.scrollIntoView = vi.fn();
 
@@ -105,33 +108,13 @@ vi.mock('../../../renderer/components/NotificationPopover', () => ({
 }));
 
 // Default theme for tests
-const mockTheme: Theme = {
-	id: 'dracula',
-	name: 'Dracula',
-	mode: 'dark',
-	colors: {
-		bgMain: '#282a36',
-		bgSidebar: '#21222c',
-		bgActivity: '#343746',
-		textMain: '#f8f8f2',
-		textDim: '#6272a4',
-		accent: '#bd93f9',
-		accentForeground: '#282a36',
-		border: '#44475a',
-		success: '#50fa7b',
-		error: '#ff5555',
-		warning: '#f1fa8c',
-		info: '#8be9fd',
-	},
-};
 
-// Default session for tests
-// Note: wizardState is per-tab, so pass it separately or via aiTabs override
+// Thin wrapper: InputArea tests accept an ad-hoc `wizardState` override that
+// gets routed onto the first AI tab (wizard state is per-tab in the real
+// model). Builds that tab and delegates baseline fields to the shared factory.
 const createMockSession = (overrides: Partial<Session> & { wizardState?: any } = {}): Session => {
-	// Extract wizardState from overrides (it should go on the tab, not session)
 	const { wizardState, ...sessionOverrides } = overrides;
 
-	// Build aiTabs - if wizardState is provided, add it to the first tab
 	const defaultTab = {
 		id: 'tab-1',
 		logs: [],
@@ -149,34 +132,19 @@ const createMockSession = (overrides: Partial<Session> & { wizardState?: any } =
 		...(wizardState ? { wizardState } : {}),
 	};
 
-	return {
-		id: 'session-1',
-		name: 'Test Session',
-		toolType: 'claude-code',
-		state: 'idle',
-		inputMode: 'ai',
+	return baseCreateMockSession({
 		cwd: '/Users/test/project',
+		fullPath: '/Users/test/project',
 		projectRoot: '/Users/test/project',
-		aiPid: 0,
-		terminalPid: 0,
-		aiTabs: [defaultTab],
+		aiTabs: [defaultTab] as any,
 		activeTabId: 'tab-1',
-		shellLogs: [],
-		usageStats: { inputTokens: 0, outputTokens: 0, totalCost: 0 },
-		agentSessionId: null,
-		isGitRepo: false,
-		fileTree: [],
-		fileExplorerExpanded: [],
-		messageQueue: [],
+		usageStats: { inputTokens: 0, outputTokens: 0, totalCost: 0 } as any,
 		shellCommandHistory: [],
 		aiCommandHistory: [],
-		closedTabHistory: [],
 		shellCwd: '/Users/test/project',
-		busySource: null,
-		terminalTabs: [],
-		activeTerminalTabId: null,
+		busySource: undefined,
 		...sessionOverrides,
-	};
+	});
 };
 
 // Default props factory

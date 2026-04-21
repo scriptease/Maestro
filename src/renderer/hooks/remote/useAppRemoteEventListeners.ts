@@ -20,6 +20,7 @@ import {
 	addTerminalTab as addTerminalTabHelper,
 } from '../../utils/terminalTabHelpers';
 import type { Session, AITab, ToolType, Group, BatchRunConfig, BrowserTab } from '../../types';
+import { logger } from '../../utils/logger';
 
 // ============================================================================
 // Dependencies interface
@@ -79,7 +80,7 @@ export function useAppRemoteEventListeners(deps: UseAppRemoteEventListenersDeps)
 		const { sessionId, filePath } = (e as CustomEvent).detail;
 		const session = sessionsRef.current.find((s) => s.id === sessionId);
 		if (!session) {
-			console.error('[Remote] Session not found for openFileTab:', sessionId);
+			logger.error('[Remote] Session not found for openFileTab:', undefined, sessionId);
 			return;
 		}
 		const sshRemoteId =
@@ -106,7 +107,7 @@ export function useAppRemoteEventListeners(deps: UseAppRemoteEventListenersDeps)
 				);
 			}
 		} catch (error) {
-			console.error('[Remote] Failed to open file tab:', error);
+			logger.error('[Remote] Failed to open file tab:', undefined, error);
 		}
 	});
 
@@ -124,7 +125,7 @@ export function useAppRemoteEventListeners(deps: UseAppRemoteEventListenersDeps)
 		};
 		const session = sessionsRef.current.find((s) => s.id === sessionId);
 		if (!session) {
-			console.error('[Remote] Session not found for openBrowserTab:', sessionId);
+			logger.error('[Remote] Session not found for openBrowserTab:', undefined, sessionId);
 			return;
 		}
 		setActiveSessionId(sessionId);
@@ -167,7 +168,7 @@ export function useAppRemoteEventListeners(deps: UseAppRemoteEventListenersDeps)
 		};
 		const session = sessionsRef.current.find((s) => s.id === sessionId);
 		if (!session) {
-			console.error('[Remote] Session not found for openTerminalTab:', sessionId);
+			logger.error('[Remote] Session not found for openTerminalTab:', undefined, sessionId);
 			return;
 		}
 		setActiveSessionId(sessionId);
@@ -281,11 +282,26 @@ export function useAppRemoteEventListeners(deps: UseAppRemoteEventListenersDeps)
 					return;
 				}
 
-				const batchConfig = {
+				// Forward worktree configuration when the CLI requests it.
+				// startBatchRun handles worktree setup, branch checkout, and (optionally)
+				// PR creation on completion via the existing git IPC handlers.
+				const worktree: BatchRunConfig['worktree'] | undefined =
+					config.worktree && config.worktree.enabled
+						? {
+								enabled: true,
+								path: config.worktree.path,
+								branchName: config.worktree.branchName,
+								createPROnCompletion: Boolean(config.worktree.createPROnCompletion),
+								prTargetBranch: config.worktree.prTargetBranch || '',
+							}
+						: undefined;
+
+				const batchConfig: BatchRunConfig = {
 					documents,
 					prompt: config.prompt || '',
 					loopEnabled: config.loopEnabled || false,
 					maxLoops: config.maxLoops,
+					...(worktree ? { worktree } : {}),
 				};
 
 				// Send success response immediately - startBatchRun is long-running
@@ -294,7 +310,7 @@ export function useAppRemoteEventListeners(deps: UseAppRemoteEventListenersDeps)
 					success: true,
 				});
 				startBatchRun(sessionId, batchConfig, folderPath).catch((err) => {
-					console.error('[Remote] Failed to start auto-run:', err);
+					logger.error('[Remote] Failed to start auto-run:', undefined, err);
 				});
 				return;
 			}
@@ -307,7 +323,7 @@ export function useAppRemoteEventListeners(deps: UseAppRemoteEventListenersDeps)
 				error: 'Use --launch to start auto-run immediately, or --save-as to save as a playbook',
 			});
 		} catch (error) {
-			console.error('[Remote] Failed to configure auto-run:', error);
+			logger.error('[Remote] Failed to configure auto-run:', undefined, error);
 			window.maestro.process.sendRemoteConfigureAutoRunResponse(responseChannel, {
 				success: false,
 				error: String(error),
@@ -358,7 +374,7 @@ export function useAppRemoteEventListeners(deps: UseAppRemoteEventListenersDeps)
 			);
 			window.maestro.process.sendRemoteGetAutoRunDocsResponse(responseChannel, docs);
 		} catch (error) {
-			console.error('[Remote] Failed to get auto-run docs:', error);
+			logger.error('[Remote] Failed to get auto-run docs:', undefined, error);
 			window.maestro.process.sendRemoteGetAutoRunDocsResponse(responseChannel, []);
 		}
 	});
@@ -382,7 +398,7 @@ export function useAppRemoteEventListeners(deps: UseAppRemoteEventListenersDeps)
 			const content = contentResult.success ? contentResult.content || '' : '';
 			window.maestro.process.sendRemoteGetAutoRunDocContentResponse(responseChannel, content);
 		} catch (error) {
-			console.error('[Remote] Failed to get auto-run doc content:', error);
+			logger.error('[Remote] Failed to get auto-run doc content:', undefined, error);
 			window.maestro.process.sendRemoteGetAutoRunDocContentResponse(responseChannel, '');
 		}
 	});
@@ -409,7 +425,7 @@ export function useAppRemoteEventListeners(deps: UseAppRemoteEventListenersDeps)
 				writeResult.success ?? false
 			);
 		} catch (error) {
-			console.error('[Remote] Failed to save auto-run doc:', error);
+			logger.error('[Remote] Failed to save auto-run doc:', undefined, error);
 			window.maestro.process.sendRemoteSaveAutoRunDocResponse(responseChannel, false);
 		}
 	});
@@ -535,7 +551,7 @@ export function useAppRemoteEventListeners(deps: UseAppRemoteEventListenersDeps)
 				sessionId: newId,
 			});
 		} catch (error) {
-			console.error('[Remote] Failed to create session:', error);
+			logger.error('[Remote] Failed to create session:', undefined, error);
 			window.maestro.process.sendRemoteCreateSessionResponse(responseChannel, null);
 		}
 	});

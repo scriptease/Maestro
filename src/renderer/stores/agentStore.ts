@@ -29,11 +29,12 @@ import type {
 import { createTab, getActiveTab } from '../utils/tabHelpers';
 import { getStdinFlags, prepareMaestroSystemPrompt } from '../utils/spawnHelpers';
 import { generateId } from '../utils/ids';
-import { useSessionStore } from './sessionStore';
+import { useSessionStore, selectSessionById } from './sessionStore';
 import { DEFAULT_IMAGE_ONLY_PROMPT } from '../hooks/input/useInputProcessing';
 import { substituteTemplateVariables } from '../utils/templateVariables';
 import { gitService } from '../services/git';
 import { filterYoloArgs } from '../utils/agentArgs';
+import { logger } from '../utils/logger';
 
 // ============================================================================
 // Store Types
@@ -131,7 +132,7 @@ export type AgentStore = AgentStoreState & AgentStoreActions;
  * Find a session by ID from sessionStore.
  */
 function getSession(sessionId: string): Session | undefined {
-	return useSessionStore.getState().sessions.find((s) => s.id === sessionId);
+	return selectSessionById(sessionId)(useSessionStore.getState());
 }
 
 /**
@@ -180,7 +181,7 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 		});
 		// Close the agent error modal if open
 		window.maestro.agentError.clearError(sessionId).catch((err) => {
-			console.error('Failed to clear agent error:', err);
+			logger.error('Failed to clear agent error:', undefined, err);
 		});
 	},
 
@@ -235,7 +236,7 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 	processQueuedItem: async (sessionId, item, deps) => {
 		const session = getSession(sessionId);
 		if (!session) {
-			console.error('[processQueuedItem] Session not found:', sessionId);
+			logger.error('[processQueuedItem] Session not found:', undefined, sessionId);
 			return;
 		}
 
@@ -244,8 +245,9 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 		const tabByItemId = session.aiTabs.find((tab) => tab.id === item.tabId);
 
 		if (!tabByItemId && item.tabId) {
-			console.warn(
+			logger.warn(
 				'[processQueuedItem] Target tab was deleted after queueing. Aborting to prevent executing on wrong tab.',
+				undefined,
 				{ sessionId, itemTabId: item.tabId }
 			);
 			// Reset session to idle since we're aborting this queued item
@@ -266,8 +268,9 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 		const targetTab = tabByItemId || getActiveTab(session);
 
 		if (!targetTab) {
-			console.error(
+			logger.error(
 				'[processQueuedItem] No target tab found — session has no aiTabs. Aborting spawn.',
+				undefined,
 				{ sessionId, itemTabId: item.tabId }
 			);
 			return;
@@ -289,7 +292,7 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 				? filterYoloArgs(agent.args || [], agent)
 				: [...(agent.args || [])];
 
-			const commandToUse = agent.path ?? agent.command;
+			const commandToUse = agent.path ?? agent.command ?? '';
 
 			// Check if this is a message with images but no text
 			const hasImages = item.images && item.images.length > 0;
@@ -313,7 +316,7 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 					hasImages: !!hasImages,
 				});
 
-				console.log('[processQueuedItem] Spawning agent with queued message:', {
+				logger.info('[processQueuedItem] Spawning agent with queued message:', undefined, {
 					sessionId: targetSessionId,
 					toolType: session.toolType,
 					prompt: effectivePrompt,
@@ -475,7 +478,7 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 				}
 			}
 		} catch (error: any) {
-			console.error('[processQueuedItem] Failed to process queued item:', error);
+			logger.error('[processQueuedItem] Failed to process queued item:', undefined, error);
 			const errorLogEntry: LogEntry = {
 				id: generateId(),
 				timestamp: Date.now(),
@@ -501,7 +504,7 @@ export const useAgentStore = create<AgentStore>()((set, get) => ({
 							: s.aiTabs;
 
 					if (!activeTab) {
-						console.error(
+						logger.error(
 							'[processQueuedItem error] No active tab found - session has no aiTabs, this should not happen'
 						);
 					}

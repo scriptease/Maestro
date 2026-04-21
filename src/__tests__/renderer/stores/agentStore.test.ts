@@ -6,16 +6,22 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { logger } from '../../../renderer/utils/logger';
 import { renderHook, act } from '@testing-library/react';
 import { useAgentStore } from '../../../renderer/stores/agentStore';
 import type { ProcessQueuedItemDeps } from '../../../renderer/stores/agentStore';
 import { useSessionStore } from '../../../renderer/stores/sessionStore';
 import type { Session, AgentConfig, QueuedItem } from '../../../renderer/types';
+import { createMockSession as baseCreateMockSession } from '../../helpers/mockSession';
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
+// Thin wrapper: pre-populates an AI tab so store actions can operate on a
+// non-empty tabs array. Delegates to the shared factory for all other fields.
+// Note: uses cwd '/test' (not '/test/project') because agentStore spawn
+// assertions check against this literal value.
 function createMockSession(overrides: Partial<Session> = {}): Session {
 	const defaultTab = {
 		id: 'default-tab',
@@ -28,41 +34,15 @@ function createMockSession(overrides: Partial<Session> = {}): Session {
 		createdAt: Date.now(),
 		state: 'idle' as const,
 	};
-	return {
-		id: overrides.id ?? `session-${Math.random().toString(36).slice(2, 8)}`,
-		name: overrides.name ?? 'Test Session',
-		toolType: overrides.toolType ?? 'claude-code',
-		state: overrides.state ?? 'idle',
+	return baseCreateMockSession({
 		cwd: '/test',
 		fullPath: '/test',
 		projectRoot: '/test',
-		aiLogs: [],
-		shellLogs: [],
-		workLog: [],
-		contextUsage: 0,
-		inputMode: overrides.inputMode ?? 'ai',
-		aiPid: 0,
-		terminalPid: 0,
-		port: 0,
-		isLive: false,
-		changedFiles: [],
-		isGitRepo: false,
-		fileTree: [],
-		fileExplorerExpanded: [],
-		fileExplorerScrollPos: 0,
-		executionQueue: [],
-		activeTimeMs: 0,
-		aiTabs: overrides.aiTabs ?? [defaultTab],
-		activeTabId: overrides.activeTabId ?? defaultTab.id,
-		closedTabHistory: [],
-		filePreviewTabs: [],
-		activeFileTabId: null,
+		aiTabs: [defaultTab],
+		activeTabId: defaultTab.id,
 		unifiedTabOrder: [{ type: 'ai' as const, id: defaultTab.id }],
-		unifiedClosedTabHistory: [],
-		terminalTabs: [],
-		activeTerminalTabId: null,
 		...overrides,
-	} as Session;
+	} as Partial<Session>);
 }
 
 function createMockAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
@@ -450,7 +430,7 @@ describe('agentStore', () => {
 
 		it('handles IPC clearError rejection without throwing', () => {
 			mockClearError.mockRejectedValueOnce(new Error('IPC down'));
-			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
 
 			const session = createMockSession({ id: 'session-1', state: 'error' });
 			useSessionStore.getState().setSessions([session]);
@@ -1588,7 +1568,7 @@ describe('agentStore', () => {
 
 		it('handles spawn error gracefully', async () => {
 			mockSpawn.mockRejectedValueOnce(new Error('Spawn failed'));
-			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
 
 			const session = createMockSession({
 				id: 'session-1',
@@ -1623,7 +1603,7 @@ describe('agentStore', () => {
 		});
 
 		it('does nothing for nonexistent session', async () => {
-			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
 
 			const item = createQueuedItem({ text: 'Hello' });
 
@@ -1632,6 +1612,7 @@ describe('agentStore', () => {
 			expect(mockSpawn).not.toHaveBeenCalled();
 			expect(consoleSpy).toHaveBeenCalledWith(
 				expect.stringContaining('[processQueuedItem] Session not found'),
+				undefined,
 				'nonexistent'
 			);
 
@@ -1733,13 +1714,14 @@ describe('agentStore', () => {
 			useSessionStore.getState().setSessions([session]);
 
 			const item = createQueuedItem({ tabId: 'nonexistent-tab', text: 'Hello' });
-			const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+			const consoleSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
 
 			await useAgentStore.getState().processQueuedItem('session-1', item, defaultDeps);
 
 			expect(mockSpawn).not.toHaveBeenCalled();
 			expect(consoleSpy).toHaveBeenCalledWith(
 				expect.stringContaining('Target tab was deleted after queueing'),
+				undefined,
 				expect.objectContaining({ sessionId: 'session-1', itemTabId: 'nonexistent-tab' })
 			);
 
@@ -1760,13 +1742,14 @@ describe('agentStore', () => {
 			useSessionStore.getState().setSessions([session]);
 
 			const item = createQueuedItem({ tabId: '', text: 'Hello' });
-			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
 
 			await useAgentStore.getState().processQueuedItem('session-1', item, defaultDeps);
 
 			expect(mockSpawn).not.toHaveBeenCalled();
 			expect(consoleSpy).toHaveBeenCalledWith(
 				expect.stringContaining('No target tab found'),
+				undefined,
 				expect.objectContaining({ sessionId: 'session-1', itemTabId: '' })
 			);
 

@@ -12,6 +12,7 @@ interface SendOptions {
 	session?: string;
 	readOnly?: boolean;
 	tab?: boolean;
+	live?: boolean;
 }
 
 interface SendResponse {
@@ -75,6 +76,53 @@ export async function send(
 	message: string,
 	options: SendOptions
 ): Promise<void> {
+	// --live mode: route message through Maestro desktop tab
+	if (options.live) {
+		if (options.session || options.readOnly) {
+			emitErrorJson('--live cannot be combined with --session or --read-only', 'INVALID_OPTIONS');
+			process.exit(1);
+		}
+		try {
+			await withMaestroClient(async (client) => {
+				await client.sendCommand(
+					{ type: 'send_command', sessionId: agentIdArg, command: message, inputMode: 'ai' },
+					'command_result'
+				);
+			});
+			const response: SendResponse = {
+				agentId: agentIdArg,
+				agentName: 'live',
+				sessionId: null,
+				response: null,
+				success: true,
+				usage: null,
+			};
+			console.log(JSON.stringify(response, null, 2));
+		} catch (error) {
+			const msg = error instanceof Error ? error.message : String(error);
+			const lowerMsg = msg.toLowerCase();
+			if (
+				lowerMsg.includes('econnrefused') ||
+				lowerMsg.includes('connection refused') ||
+				lowerMsg.includes('websocket') ||
+				lowerMsg.includes('enotfound') ||
+				lowerMsg.includes('etimedout')
+			) {
+				emitErrorJson('Maestro desktop is not running or not reachable', 'MAESTRO_NOT_RUNNING');
+			} else if (
+				lowerMsg.includes('session not found') ||
+				lowerMsg.includes('no such session') ||
+				lowerMsg.includes('unknown session')
+			) {
+				emitErrorJson(`Session not found: ${agentIdArg}`, 'SESSION_NOT_FOUND');
+			} else {
+				emitErrorJson(`Command failed: ${msg}`, 'COMMAND_FAILED');
+			}
+			process.exit(1);
+		}
+		return;
+	}
+
 	// Resolve agent ID (supports partial IDs)
 	let agentId: string;
 	try {

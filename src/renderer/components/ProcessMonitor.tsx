@@ -18,8 +18,9 @@ import {
 	Tag,
 } from 'lucide-react';
 import type { Session, Group, Theme, GroupChat } from '../types';
-import { useLayerStack } from '../contexts/LayerStackContext';
+import { useModalLayer } from '../hooks/ui/useModalLayer';
 import { MODAL_PRIORITIES } from '../constants/modalPriorities';
+import { logger } from '../utils/logger';
 
 interface ProcessMonitorProps {
 	theme: Theme;
@@ -158,8 +159,6 @@ export function ProcessMonitor(props: ProcessMonitorProps) {
 	const selectedNodeRef = useRef<HTMLButtonElement | HTMLDivElement>(null);
 	const killConfirmRef = useRef<HTMLDivElement>(null);
 	const detailViewRef = useRef<HTMLDivElement>(null);
-	const { registerLayer, unregisterLayer, updateLayerHandler } = useLayerStack();
-	const layerIdRef = useRef<string>();
 
 	// Fetch active processes from ProcessManager
 	const fetchActiveProcesses = useCallback(async (showRefresh = false) => {
@@ -170,7 +169,7 @@ export function ProcessMonitor(props: ProcessMonitorProps) {
 			const processes = await window.maestro.process.getActiveProcesses();
 			setActiveProcesses(processes);
 		} catch (error) {
-			console.error('Failed to fetch active processes:', error);
+			logger.error('Failed to fetch active processes:', undefined, error);
 		} finally {
 			setIsLoading(false);
 			// Keep refresh spinner visible for at least 500ms for visual feedback
@@ -193,7 +192,7 @@ export function ProcessMonitor(props: ProcessMonitorProps) {
 				// Refresh the process list after killing
 				await fetchActiveProcesses(true);
 			} catch (error) {
-				console.error('Failed to kill process:', error);
+				logger.error('Failed to kill process:', undefined, error);
 			} finally {
 				setIsKilling(false);
 				setKillConfirmProcessId(null);
@@ -211,34 +210,14 @@ export function ProcessMonitor(props: ProcessMonitorProps) {
 	}, [killConfirmProcessId]);
 
 	// Register layer on mount
-	useEffect(() => {
-		const layerId = registerLayer({
-			type: 'modal',
-			priority: MODAL_PRIORITIES.PROCESS_MONITOR,
-			blocksLowerLayers: true,
-			capturesFocus: true,
-			focusTrap: 'strict',
-			ariaLabel: 'System Processes',
-			onEscape: () => {},
-		});
-		layerIdRef.current = layerId;
-		return () => unregisterLayer(layerId);
-	}, [registerLayer, unregisterLayer]);
-
-	// Update handler when onClose or detailView changes
 	// If in detail view, Escape goes back to list; otherwise closes the modal
-	useEffect(() => {
-		if (layerIdRef.current) {
-			const handleEscape = () => {
-				if (detailView) {
-					setDetailView(null);
-				} else {
-					onClose();
-				}
-			};
-			updateLayerHandler(layerIdRef.current, handleEscape);
+	useModalLayer(MODAL_PRIORITIES.PROCESS_MONITOR, 'System Processes', () => {
+		if (detailView) {
+			setDetailView(null);
+		} else {
+			onClose();
 		}
-	}, [onClose, detailView, updateLayerHandler]);
+	});
 
 	// Fetch processes on mount and poll for updates
 	useEffect(() => {

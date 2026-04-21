@@ -20,6 +20,7 @@ import {
 	deleteCueConfigFile,
 	readCueConfigFile,
 	pruneOrphanedPromptFiles,
+	removeEmptyPromptsDir,
 	writeCueConfigFile,
 	writeCuePromptFile,
 } from '../../cue/config/cue-config-repository';
@@ -144,8 +145,16 @@ export function registerCueHandlers(deps: CueHandlerDependencies): void {
 		'cue:triggerSubscription',
 		withIpcErrorLogging(
 			handlerOpts('triggerSubscription'),
-			async (options: { subscriptionName: string; prompt?: string }): Promise<boolean> => {
-				return requireEngine().triggerSubscription(options.subscriptionName, options.prompt);
+			async (options: {
+				subscriptionName: string;
+				prompt?: string;
+				sourceAgentId?: string;
+			}): Promise<boolean> => {
+				return requireEngine().triggerSubscription(
+					options.subscriptionName,
+					options.prompt,
+					options.sourceAgentId
+				);
 			}
 		)
 	);
@@ -223,12 +232,37 @@ export function registerCueHandlers(deps: CueHandlerDependencies): void {
 				if (options.promptFiles) {
 					const promptsBase = path.resolve(options.projectRoot, '.maestro/prompts');
 					for (const [relativePath, content] of Object.entries(options.promptFiles)) {
+						// Reject obviously malformed keys before path.resolve — empty
+						// strings would resolve to the project root itself, and
+						// pre-normalized `..` segments make the containment check
+						// harder to reason about even though resolve normalizes them.
+						if (typeof relativePath !== 'string' || relativePath.length === 0) {
+							throw new Error('cue:writeYaml: promptFiles key must be a non-empty string');
+						}
 						if (path.isAbsolute(relativePath)) {
 							throw new Error(
 								`cue:writeYaml: promptFiles key must be a relative path, got "${relativePath}"`
 							);
 						}
-						const target = path.resolve(options.projectRoot, relativePath);
+						// Normalize backslashes to forward-slashes BEFORE path.resolve on
+						// non-Windows. A Windows-authored YAML shipping with a key like
+						// `prompts\sub.md` would otherwise create a literal file called
+						// `prompts\sub.md` on macOS/Linux, silently orphaning the real
+						// prompts/ directory next save.
+						const normalizedKey =
+							path.sep === '/' ? relativePath.replace(/\\/g, '/') : relativePath;
+						// Reject both '..' (escapes the prompts dir) and '.' (harmless
+						// but ambiguous — `foo/.` and `foo` refer to the same file,
+						// so accepting both breaks the keep-set invariant that
+						// distinct keys map to distinct files on disk).
+						if (
+							normalizedKey.split(/[/\\]/).some((segment) => segment === '..' || segment === '.')
+						) {
+							throw new Error(
+								`cue:writeYaml: promptFiles key "${relativePath}" contains "." or ".." segment`
+							);
+						}
+						const target = path.resolve(options.projectRoot, normalizedKey);
 						// Must resolve strictly INSIDE .maestro/prompts/. The earlier
 						// check allowed `target === promptsBase` which would attempt
 						// to write to the directory path itself.
@@ -244,8 +278,8 @@ export function registerCueHandlers(deps: CueHandlerDependencies): void {
 						if (path.extname(target).toLowerCase() !== '.md') {
 							throw new Error(`cue:writeYaml: promptFiles key "${relativePath}" must end with .md`);
 						}
-						writeCuePromptFile(options.projectRoot, relativePath, content);
-						keepPaths.add(relativePath);
+						writeCuePromptFile(options.projectRoot, normalizedKey, content);
+						keepPaths.add(normalizedKey);
 					}
 				}
 
@@ -264,13 +298,25 @@ export function registerCueHandlers(deps: CueHandlerDependencies): void {
 					if (Array.isArray(subs)) {
 						for (const sub of subs) {
 							if (!sub || typeof sub !== 'object') continue;
-							const pf = (sub as Record<string, unknown>).prompt_file;
-							const opf = (sub as Record<string, unknown>).output_prompt_file;
+							const rec = sub as Record<string, unknown>;
+							const pf = rec.prompt_file;
+							const opf = rec.output_prompt_file;
 							if (typeof pf === 'string' && pf.length > 0 && !path.isAbsolute(pf)) {
 								keepPaths.add(pf);
 							}
 							if (typeof opf === 'string' && opf.length > 0 && !path.isAbsolute(opf)) {
 								keepPaths.add(opf);
+							}
+							// `fan_out_prompt_files` is a positional array of per-agent
+							// prompt files. Each entry must survive the prune or the
+							// next save would re-create it unnecessarily.
+							const fopf = rec.fan_out_prompt_files;
+							if (Array.isArray(fopf)) {
+								for (const entry of fopf) {
+									if (typeof entry === 'string' && entry.length > 0 && !path.isAbsolute(entry)) {
+										keepPaths.add(entry);
+									}
+								}
 							}
 						}
 					}
@@ -291,18 +337,35 @@ export function registerCueHandlers(deps: CueHandlerDependencies): void {
 				// (with valid YAML) will catch up.
 				if (parseSucceeded) {
 					pruneOrphanedPromptFiles(options.projectRoot, keepPaths);
+					// If the user saved an empty pipeline state (no prompts left)
+					// collapse `.maestro/prompts/` too so the on-disk footprint
+					// matches the empty UI. Non-empty dirs are left alone.
+					if (keepPaths.size === 0) {
+						removeEmptyPromptsDir(options.projectRoot);
+					}
 				}
 			}
 		)
 	);
 
-	// Delete a session's cue.yaml config file
+	// Delete a session's cue.yaml config file. Also prunes every `.md` file
+	// under `.maestro/prompts/` (keep-set is empty since there are no
+	// subscriptions left to reference any prompt) and removes the prompts
+	// directory if it ends up empty. Without this, "Remove Cue configuration"
+	// left orphaned prompt files behind and the `.maestro` footprint never
+	// shrank.
 	ipcMain.handle(
 		'cue:deleteYaml',
 		withIpcErrorLogging(
 			handlerOpts('deleteYaml'),
 			async (options: { projectRoot: string }): Promise<boolean> => {
-				return deleteCueConfigFile(options.projectRoot);
+				const deleted = deleteCueConfigFile(options.projectRoot);
+				// Run prompt cleanup regardless of whether the yaml file was
+				// present — if the user deleted cue.yaml by hand and then
+				// invokes this, we still want orphaned prompts cleaned up.
+				pruneOrphanedPromptFiles(options.projectRoot, []);
+				removeEmptyPromptsDir(options.projectRoot);
+				return deleted;
 			}
 		)
 	);

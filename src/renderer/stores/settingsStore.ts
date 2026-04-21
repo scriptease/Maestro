@@ -37,6 +37,8 @@ import { DEFAULT_SHORTCUTS, TAB_SHORTCUTS, FIXED_SHORTCUTS } from '../constants/
 import { getLevelIndex } from '../constants/keyboardMastery';
 import type { FileExplorerIconTheme } from '../utils/fileExplorerIcons/shared';
 import { isFileExplorerIconTheme } from '../utils/fileExplorerIcons/shared';
+import { logger } from '../utils/logger';
+
 // ============================================================================
 // Prompt cache (loaded via IPC at startup)
 // ============================================================================
@@ -814,7 +816,11 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 							try {
 								await window.maestro.live.clearPersistentToken();
 							} catch (clearError) {
-								console.error('[Settings] Failed to clear stale persistent web link:', clearError);
+								logger.error(
+									'[Settings] Failed to clear stale persistent web link:',
+									undefined,
+									clearError
+								);
 							}
 						}
 						return;
@@ -822,13 +828,13 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 					if (!result.success) {
 						// Rollback optimistic update on soft failure
 						set({ persistentWebLink: false });
-						console.warn('[Settings] Failed to persist web link token:', result.message);
+						logger.warn('[Settings] Failed to persist web link token:', undefined, result.message);
 					}
 				} catch (error) {
 					if (requestSeq === persistentWebLinkRequestSeq) {
 						// Rollback optimistic update on hard failure
 						set({ persistentWebLink: false });
-						console.error('[Settings] Failed to persist web link token:', error);
+						logger.error('[Settings] Failed to persist web link token:', undefined, error);
 					}
 				}
 			} else {
@@ -843,13 +849,17 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 					if (!result.success) {
 						// Rollback optimistic update on soft failure
 						set({ persistentWebLink: true });
-						console.warn('[Settings] Failed to clear persistent web link:', result.message);
+						logger.warn(
+							'[Settings] Failed to clear persistent web link:',
+							undefined,
+							result.message
+						);
 					}
 				} catch (error) {
 					if (requestSeq === persistentWebLinkRequestSeq) {
 						// Clear failed — rollback Zustand to match main-side state
 						set({ persistentWebLink: true });
-						console.error('[Settings] Failed to clear persistent web link:', error);
+						logger.error('[Settings] Failed to clear persistent web link:', undefined, error);
 					}
 					// else: stale — a newer call is in charge, nothing to do
 				}
@@ -1489,8 +1499,33 @@ const MAC_ALT_CHAR_MAP: Record<string, string> = {
 };
 
 /**
- * Migrate shortcuts: fix macOS Alt+key special characters and merge with defaults.
- * Returns the migrated+merged shortcuts and whether a migration write is needed.
+ * One-time default remaps: when we change a bundled DEFAULT_SHORTCUTS binding,
+ * users who still had the OLD default bound get migrated to the NEW default. If
+ * they had customized the binding themselves (any other key combo), we leave it
+ * alone.
+ *
+ * Each entry: `shortcut id` → `{ old keys we consider "the old default", new default keys }`.
+ */
+const SHORTCUT_DEFAULT_REMAPS: Record<string, { fromKeys: string[]; toKeys: string[] }> = {
+	// moveToGroup moved off Cmd+Shift+M to free that combo for openMemoryViewer.
+	moveToGroup: {
+		fromKeys: ['Meta', 'Shift', 'm'],
+		toKeys: ['Alt', 'Meta', 'm'],
+	},
+};
+
+function keysEqual(a: string[], b: string[]): boolean {
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) {
+		if (a[i] !== b[i]) return false;
+	}
+	return true;
+}
+
+/**
+ * Migrate shortcuts: fix macOS Alt+key special characters, apply one-time
+ * default remaps, and merge with current defaults. Returns the merged shortcuts
+ * and whether a migration write is needed.
  */
 function migrateShortcuts(
 	saved: Record<string, Shortcut>,
@@ -1508,6 +1543,16 @@ function migrateShortcuts(
 			return key;
 		});
 		migrated[id] = { ...shortcut, keys: migratedKeys };
+	}
+
+	// Apply one-time default remaps: if the user still has the OLD default keys
+	// for a remapped shortcut, bump them to the NEW default. Preserve custom bindings.
+	for (const [id, remap] of Object.entries(SHORTCUT_DEFAULT_REMAPS)) {
+		const current = migrated[id];
+		if (current && keysEqual(current.keys, remap.fromKeys)) {
+			migrated[id] = { ...current, keys: remap.toKeys };
+			needsMigration = true;
+		}
 	}
 
 	// Merge: use default labels (in case they changed) but preserve user's custom keys
@@ -1768,7 +1813,7 @@ export async function loadAllSettings(): Promise<void> {
 				};
 				window.maestro.settings.set('autoRunStats', stats);
 				window.maestro.settings.set('concurrentAutoRunTimeMigrationApplied', true);
-				console.log(
+				logger.info(
 					'[Settings] Applied concurrent Auto Run time migration: added 3 hours to cumulative time'
 				);
 			}
@@ -1981,7 +2026,7 @@ export async function loadAllSettings(): Promise<void> {
 		patch.settingsLoaded = true;
 		useSettingsStore.setState(patch);
 	} catch (error) {
-		console.error('[Settings] Failed to load settings:', error);
+		logger.error('[Settings] Failed to load settings:', undefined, error);
 		// Mark settings as loaded even if there was an error (use defaults)
 		useSettingsStore.setState({ settingsLoaded: true });
 	}

@@ -41,6 +41,12 @@ export interface WebServerFactoryDependencies {
 	getMainWindow: () => BrowserWindow | null;
 	/** Function to get the process manager reference */
 	getProcessManager: () => ProcessManager | null;
+	/** Direct CUE subscription trigger — bypasses renderer IPC round-trip */
+	triggerCueSubscription?: (
+		subscriptionName: string,
+		prompt?: string,
+		sourceAgentId?: string
+	) => boolean;
 }
 
 /**
@@ -1737,53 +1743,18 @@ export function createWebServerFactory(deps: WebServerFactoryDependencies) {
 			});
 		});
 
-		// Trigger a Cue subscription by name — uses IPC request-response pattern
-		server.setTriggerCueSubscriptionCallback(async (subscriptionName: string, prompt?: string) => {
-			const mainWindow = getMainWindow();
-			if (!mainWindow) {
-				logger.warn('mainWindow is null for triggerCueSubscription', 'WebServer');
-				return false;
-			}
-
-			return new Promise((resolve) => {
-				const responseChannel = `remote:triggerCueSubscription:response:${randomUUID()}`;
-				let resolved = false;
-				// eslint-disable-next-line prefer-const -- circular ref: handleResponse clears the timeout, timeout references resolved
-				let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-				const handleResponse = (_event: Electron.IpcMainEvent, result: any) => {
-					if (resolved) return;
-					resolved = true;
-					if (timeoutId) clearTimeout(timeoutId);
-					resolve(result ?? false);
-				};
-
-				ipcMain.once(responseChannel, handleResponse);
-				if (!isWebContentsAvailable(mainWindow)) {
-					logger.warn('webContents is not available for triggerCueSubscription', 'WebServer');
-					ipcMain.removeListener(responseChannel, handleResponse);
-					resolve(false);
-					return;
+		// Trigger a Cue subscription by name — calls engine directly in the main process.
+		// Previous implementation routed through the renderer via IPC round-trip, which
+		// caused sourceAgentId to be dropped during Electron IPC serialization.
+		server.setTriggerCueSubscriptionCallback(
+			async (subscriptionName: string, prompt?: string, sourceAgentId?: string) => {
+				if (!deps.triggerCueSubscription) {
+					logger.warn('triggerCueSubscription dependency not available', 'WebServer');
+					return false;
 				}
-				mainWindow.webContents.send(
-					'remote:triggerCueSubscription',
-					subscriptionName,
-					prompt,
-					responseChannel
-				);
-
-				timeoutId = setTimeout(() => {
-					if (resolved) return;
-					resolved = true;
-					ipcMain.removeListener(responseChannel, handleResponse);
-					logger.warn(
-						`triggerCueSubscription callback timed out for ${subscriptionName}`,
-						'WebServer'
-					);
-					resolve(false);
-				}, 10000);
-			});
-		});
+				return deps.triggerCueSubscription(subscriptionName, prompt, sourceAgentId);
+			}
+		);
 
 		// ============ Usage Dashboard & Achievements Callbacks ============
 

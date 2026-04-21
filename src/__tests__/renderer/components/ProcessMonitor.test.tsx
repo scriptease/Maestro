@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { logger } from '../../../renderer/utils/logger';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ProcessMonitor } from '../../../renderer/components/ProcessMonitor';
 import type { Session, Group, Theme } from '../../../renderer/types';
@@ -448,11 +449,9 @@ describe('ProcessMonitor', () => {
 			render(<ProcessMonitor theme={theme} sessions={[session]} groups={[]} onClose={onClose} />);
 
 			await waitFor(() => {
-				expect(screen.queryByText('Loading processes...')).not.toBeInTheDocument();
+				expect(screen.getByText('UNGROUPED AGENTS')).toBeInTheDocument();
+				expect(screen.getByText('Test Session')).toBeInTheDocument();
 			});
-
-			expect(screen.getByText('UNGROUPED AGENTS')).toBeInTheDocument();
-			expect(screen.getByText('Test Session')).toBeInTheDocument();
 		});
 
 		it('should display grouped sessions with processes', async () => {
@@ -467,11 +466,9 @@ describe('ProcessMonitor', () => {
 			);
 
 			await waitFor(() => {
-				expect(screen.queryByText('Loading processes...')).not.toBeInTheDocument();
+				expect(screen.getByText('Test Group')).toBeInTheDocument();
+				expect(screen.getByText('Test Session')).toBeInTheDocument();
 			});
-
-			expect(screen.getByText('Test Group')).toBeInTheDocument();
-			expect(screen.getByText('Test Session')).toBeInTheDocument();
 		});
 
 		it('should show session count in group', async () => {
@@ -1258,7 +1255,7 @@ describe('ProcessMonitor', () => {
 		});
 
 		it('should handle fetch error gracefully', async () => {
-			const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleError = vi.spyOn(logger, 'error').mockImplementation(() => {});
 			getActiveProcessesMock().mockRejectedValue(new Error('Network error'));
 
 			render(<ProcessMonitor theme={theme} sessions={[]} groups={[]} onClose={onClose} />);
@@ -1266,6 +1263,7 @@ describe('ProcessMonitor', () => {
 			await waitFor(() => {
 				expect(consoleError).toHaveBeenCalledWith(
 					'Failed to fetch active processes:',
+					undefined,
 					expect.any(Error)
 				);
 			});
@@ -1437,7 +1435,7 @@ describe('ProcessMonitor', () => {
 		});
 
 		it('should handle kill error gracefully', async () => {
-			const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleError = vi.spyOn(logger, 'error').mockImplementation(() => {});
 			killMock().mockRejectedValue(new Error('Kill failed'));
 
 			const process = createActiveProcess();
@@ -1460,7 +1458,11 @@ describe('ProcessMonitor', () => {
 			fireEvent.click(screen.getByText('Kill Process'));
 
 			await waitFor(() => {
-				expect(consoleError).toHaveBeenCalledWith('Failed to kill process:', expect.any(Error));
+				expect(consoleError).toHaveBeenCalledWith(
+					'Failed to kill process:',
+					undefined,
+					expect.any(Error)
+				);
 			});
 
 			consoleError.mockRestore();

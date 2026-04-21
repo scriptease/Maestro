@@ -2,7 +2,7 @@ import React, { memo, useState, useEffect, useRef, useCallback } from 'react';
 import { Search } from 'lucide-react';
 import type { Session, Group, Theme, Shortcut, RightPanelTab, SettingsTab } from '../types';
 import type { GroupChat } from '../../shared/group-chat-types';
-import { useLayerStack } from '../contexts/LayerStackContext';
+import { useModalLayer } from '../hooks/ui/useModalLayer';
 import { notifyToast } from '../stores/notificationStore';
 import { useModalStore } from '../stores/modalStore';
 import { QUICK_ACTION_PROMPTS } from '../../shared/promptDefinitions';
@@ -20,6 +20,7 @@ import { useFileExplorerStore } from '../stores/fileExplorerStore';
 import { buildMaestroUrl } from '../utils/buildMaestroUrl';
 import { buildSessionDeepLink } from '../../shared/deep-link-urls';
 import { openUrl } from '../utils/openUrl';
+import { logger } from '../utils/logger';
 
 interface QuickAction {
 	id: string;
@@ -62,6 +63,7 @@ interface QuickActionsModalProps {
 	setProcessMonitorOpen: (open: boolean) => void;
 	setUsageDashboardOpen?: (open: boolean) => void;
 	setAgentSessionsOpen: (open: boolean) => void;
+	setMemoryViewerOpen?: (open: boolean) => void;
 	setActiveAgentSessionId: (id: string | null) => void;
 	setGitDiffPreview: (diff: string | null) => void;
 	setGitLogOpen: (open: boolean) => void;
@@ -92,7 +94,11 @@ interface QuickActionsModalProps {
 	onDeleteGroupChat?: (id: string) => void;
 	activeGroupChatId?: string | null;
 	hasActiveSessionCapability?: (
-		capability: 'supportsSessionStorage' | 'supportsSlashCommands' | 'supportsContextMerge'
+		capability:
+			| 'supportsSessionStorage'
+			| 'supportsSlashCommands'
+			| 'supportsContextMerge'
+			| 'supportsProjectMemory'
 	) => boolean;
 	// Merge session
 	onOpenMergeSession?: () => void;
@@ -176,6 +182,7 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 		setProcessMonitorOpen,
 		setUsageDashboardOpen,
 		setAgentSessionsOpen,
+		setMemoryViewerOpen,
 		setActiveAgentSessionId,
 		setGitDiffPreview,
 		setGitLogOpen,
@@ -257,10 +264,7 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 	const inputRef = useRef<HTMLInputElement>(null);
 	const selectedItemRef = useRef<HTMLButtonElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
-	const layerIdRef = useRef<string>();
 	const modalRef = useRef<HTMLDivElement>(null);
-
-	const { registerLayer, unregisterLayer, updateLayerHandler } = useLayerStack();
 	const activeSession = sessions.find((s) => s.id === activeSessionId);
 
 	// Compute the active tab's position in the unified tab order for command palette conditions.
@@ -296,44 +300,15 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 	})();
 	const unifiedTabCount = activeSession?.unifiedTabOrder?.length ?? 0;
 
-	// Register layer on mount (handler will be updated by separate effect)
-	useEffect(() => {
-		layerIdRef.current = registerLayer({
-			type: 'modal',
-			priority: MODAL_PRIORITIES.QUICK_ACTION,
-			blocksLowerLayers: true,
-			capturesFocus: true,
-			focusTrap: 'strict',
-			ariaLabel: 'Quick Actions',
-			onEscape: () => setQuickActionOpen(false), // Initial handler, updated below
-		});
-
-		return () => {
-			if (layerIdRef.current) {
-				unregisterLayer(layerIdRef.current);
-			}
-		};
-	}, [registerLayer, unregisterLayer, setQuickActionOpen]);
-
-	// Update handler when mode changes - use a ref-based approach to avoid stale closure
-	const handleEscapeRef = useRef<() => void>(() => setQuickActionOpen(false));
-	useEffect(() => {
-		handleEscapeRef.current = () => {
-			// Handle escape based on current mode
-			if (mode === 'move-to-group') {
-				setMode('main');
-				// Note: Selection will be reset by the search/mode change useEffect
-			} else {
-				setQuickActionOpen(false);
-			}
-		};
-	}, [mode, setQuickActionOpen]);
-
-	useEffect(() => {
-		if (layerIdRef.current) {
-			updateLayerHandler(layerIdRef.current, () => handleEscapeRef.current());
+	// Register layer on mount - escape behavior depends on current mode
+	useModalLayer(MODAL_PRIORITIES.QUICK_ACTION, 'Quick Actions', () => {
+		if (mode === 'move-to-group') {
+			setMode('main');
+			// Note: Selection will be reset by the search/mode change useEffect
+		} else {
+			setQuickActionOpen(false);
 		}
-	}, [updateLayerHandler]);
+	});
 
 	// Focus input on mount
 	useEffect(() => {
@@ -1060,6 +1035,21 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 					},
 				]
 			: []),
+		...(activeSession &&
+		setMemoryViewerOpen &&
+		hasActiveSessionCapability?.('supportsProjectMemory')
+			? [
+					{
+						id: 'openMemoryViewer',
+						label: `View Agent Memories for ${activeSession.name}`,
+						shortcut: shortcuts.openMemoryViewer,
+						action: () => {
+							setMemoryViewerOpen(true);
+							setQuickActionOpen(false);
+						},
+					},
+				]
+			: []),
 		...(isAiMode && canSummarizeActiveTab && onSummarizeAndContinue
 			? [
 					{
@@ -1163,7 +1153,7 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 									});
 								}
 							} catch (error) {
-								console.error('Failed to open repository in browser:', error);
+								logger.error('Failed to open repository in browser:', undefined, error);
 								notifyToast({
 									type: 'error',
 									title: 'Error',
@@ -1604,7 +1594,7 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 						})),
 					}))
 				);
-				console.log('[Debug] Reset busy state for all sessions');
+				logger.info('[Debug] Reset busy state for all sessions');
 				setQuickActionOpen(false);
 			},
 		},
@@ -1633,7 +1623,7 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 									};
 								})
 							);
-							console.log('[Debug] Reset busy state for session:', activeSessionId);
+							logger.info('[Debug] Reset busy state for session:', undefined, activeSessionId);
 							setQuickActionOpen(false);
 						},
 					},
@@ -1644,8 +1634,9 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 			label: 'Debug: Log Session State',
 			subtext: 'Print session state to console',
 			action: () => {
-				console.log(
+				logger.info(
 					'[Debug] All sessions:',
+					undefined,
 					sessions.map((s) => ({
 						id: s.id,
 						name: s.name,
@@ -1712,10 +1703,14 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 					if (installationId) {
 						await safeClipboardWrite(installationId);
 						notifyToast({ type: 'success', title: 'Install GUID Copied', message: installationId });
-						console.log('[Debug] Installation GUID copied to clipboard:', installationId);
+						logger.info(
+							'[Debug] Installation GUID copied to clipboard:',
+							undefined,
+							installationId
+						);
 					} else {
 						notifyToast({ type: 'error', title: 'Error', message: 'No installation GUID found' });
-						console.warn('[Debug] No installation GUID found');
+						logger.warn('[Debug] No installation GUID found');
 					}
 				} catch (err) {
 					notifyToast({
@@ -1723,7 +1718,7 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 						title: 'Error',
 						message: 'Failed to copy installation GUID',
 					});
-					console.error('[Debug] Failed to copy installation GUID:', err);
+					logger.error('[Debug] Failed to copy installation GUID:', undefined, err);
 				}
 				setQuickActionOpen(false);
 			},

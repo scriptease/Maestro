@@ -137,6 +137,13 @@ export interface MessageHandlerCallbacks {
 			maxLoops?: number;
 			saveAsPlaybook?: string;
 			launch?: boolean;
+			worktree?: {
+				enabled: boolean;
+				path: string;
+				branchName: string;
+				createPROnCompletion: boolean;
+				prTargetBranch: string;
+			};
 		}
 	) => Promise<{ success: boolean; playbookId?: string; error?: string }>;
 	getSessions: () => Array<{
@@ -183,7 +190,11 @@ export interface MessageHandlerCallbacks {
 	getCueSubscriptions: (sessionId?: string) => Promise<CueSubscriptionInfo[]>;
 	toggleCueSubscription: (subscriptionId: string, enabled: boolean) => Promise<boolean>;
 	getCueActivity: (sessionId?: string, limit?: number) => Promise<CueActivityEntry[]>;
-	triggerCueSubscription: (subscriptionName: string, prompt?: string) => Promise<boolean>;
+	triggerCueSubscription: (
+		subscriptionName: string,
+		prompt?: string,
+		sourceAgentId?: string
+	) => Promise<boolean>;
 	getUsageDashboard: (timeRange: 'day' | 'week' | 'month' | 'all') => Promise<UsageDashboardData>;
 	getAchievements: () => Promise<AchievementData[]>;
 	generateDirectorNotesSynopsis: (
@@ -1272,6 +1283,52 @@ export class WebSocketMessageHandler {
 			return;
 		}
 
+		// Validate optional worktree config — desktop app uses this to create a
+		// git worktree, checkout the branch, and optionally open a PR on completion.
+		let worktree:
+			| {
+					enabled: boolean;
+					path: string;
+					branchName: string;
+					createPROnCompletion: boolean;
+					prTargetBranch: string;
+			  }
+			| undefined;
+		if (message.worktree !== undefined) {
+			const w = message.worktree as Record<string, unknown> | null;
+			if (typeof w !== 'object' || w === null) {
+				this.sendError(client, 'worktree must be an object');
+				return;
+			}
+			if (typeof w.enabled !== 'boolean') {
+				this.sendError(client, 'worktree.enabled must be a boolean');
+				return;
+			}
+			if (typeof w.path !== 'string' || w.path.trim() === '') {
+				this.sendError(client, 'worktree.path must be a non-empty string');
+				return;
+			}
+			if (typeof w.branchName !== 'string' || w.branchName.trim() === '') {
+				this.sendError(client, 'worktree.branchName must be a non-empty string');
+				return;
+			}
+			if (w.createPROnCompletion !== undefined && typeof w.createPROnCompletion !== 'boolean') {
+				this.sendError(client, 'worktree.createPROnCompletion must be a boolean');
+				return;
+			}
+			if (w.prTargetBranch !== undefined && typeof w.prTargetBranch !== 'string') {
+				this.sendError(client, 'worktree.prTargetBranch must be a string');
+				return;
+			}
+			worktree = {
+				enabled: w.enabled,
+				path: w.path,
+				branchName: w.branchName,
+				createPROnCompletion: Boolean(w.createPROnCompletion),
+				prTargetBranch: (w.prTargetBranch as string | undefined) ?? '',
+			};
+		}
+
 		const config = {
 			documents,
 			prompt: message.prompt as string | undefined,
@@ -1279,6 +1336,7 @@ export class WebSocketMessageHandler {
 			maxLoops: message.maxLoops !== undefined ? Number(message.maxLoops) : undefined,
 			saveAsPlaybook: message.saveAsPlaybook as string | undefined,
 			launch: message.launch as boolean | undefined,
+			worktree,
 		};
 
 		this.callbacks
@@ -2513,8 +2571,15 @@ export class WebSocketMessageHandler {
 			return;
 		}
 
+		const rawSourceAgentId = message.sourceAgentId;
+		if (rawSourceAgentId !== undefined && typeof rawSourceAgentId !== 'string') {
+			this.sendError(client, 'Invalid sourceAgentId: must be a string when provided');
+			return;
+		}
+		const sourceAgentId = rawSourceAgentId as string | undefined;
+
 		this.callbacks
-			.triggerCueSubscription(subscriptionName, prompt as string | undefined)
+			.triggerCueSubscription(subscriptionName, prompt as string | undefined, sourceAgentId)
 			.then((success) => {
 				this.send(client, {
 					type: 'trigger_cue_subscription_result',

@@ -13,7 +13,6 @@ import {
 	RefreshCw,
 	X,
 	Search,
-	Loader2,
 	Package,
 	ArrowLeft,
 	ChevronDown,
@@ -23,11 +22,14 @@ import {
 	HelpCircle,
 	Github,
 } from 'lucide-react';
+import { GhostIconButton } from './ui/GhostIconButton';
+import { Spinner } from './ui/Spinner';
 import type { Theme } from '../types';
 import type { MarketplacePlaybook } from '../../shared/marketplace-types';
-import { useLayerStack } from '../contexts/LayerStackContext';
+import { useModalLayer } from '../hooks/ui/useModalLayer';
 import { MODAL_PRIORITIES } from '../constants/modalPriorities';
 import { useMarketplace } from '../hooks/batch/useMarketplace';
+import { useEventListener } from '../hooks/utils/useEventListener';
 import {
 	REMARK_GFM_PLUGINS,
 	generateProseStyles,
@@ -36,6 +38,7 @@ import {
 import { formatShortcutKeys } from '../utils/shortcutFormatter';
 import { openUrl } from '../utils/openUrl';
 import { buildMaestroUrl } from '../utils/buildMaestroUrl';
+import { logger } from '../utils/logger';
 
 // ============================================================================
 // Types
@@ -246,43 +249,39 @@ function PlaybookDetailView({
 
 	// Keyboard shortcuts for scrolling the document preview
 	// OPT+Up/Down: page up/down, CMD+Up/Down: home/end
-	useEffect(() => {
-		const handleKeyDown = (e: KeyboardEvent) => {
-			const scrollContainer = previewScrollRef.current;
-			if (!scrollContainer) return;
+	useEventListener('keydown', (event: Event) => {
+		const e = event as KeyboardEvent;
+		const scrollContainer = previewScrollRef.current;
+		if (!scrollContainer) return;
 
-			// Don't handle if typing in an input
-			if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-				return;
+		// Don't handle if typing in an input
+		if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+			return;
+		}
+
+		const pageHeight = scrollContainer.clientHeight * 0.9; // 90% of visible height
+
+		// CMD+Up/Down: Home/End
+		if (e.metaKey && !e.altKey && !e.shiftKey) {
+			if (e.key === 'ArrowUp') {
+				e.preventDefault();
+				scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+			} else if (e.key === 'ArrowDown') {
+				e.preventDefault();
+				scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
 			}
-
-			const pageHeight = scrollContainer.clientHeight * 0.9; // 90% of visible height
-
-			// CMD+Up/Down: Home/End
-			if (e.metaKey && !e.altKey && !e.shiftKey) {
-				if (e.key === 'ArrowUp') {
-					e.preventDefault();
-					scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
-				} else if (e.key === 'ArrowDown') {
-					e.preventDefault();
-					scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
-				}
+		}
+		// OPT+Up/Down: Page up/down
+		else if (e.altKey && !e.metaKey && !e.shiftKey) {
+			if (e.key === 'ArrowUp') {
+				e.preventDefault();
+				scrollContainer.scrollBy({ top: -pageHeight, behavior: 'smooth' });
+			} else if (e.key === 'ArrowDown') {
+				e.preventDefault();
+				scrollContainer.scrollBy({ top: pageHeight, behavior: 'smooth' });
 			}
-			// OPT+Up/Down: Page up/down
-			else if (e.altKey && !e.metaKey && !e.shiftKey) {
-				if (e.key === 'ArrowUp') {
-					e.preventDefault();
-					scrollContainer.scrollBy({ top: -pageHeight, behavior: 'smooth' });
-				} else if (e.key === 'ArrowDown') {
-					e.preventDefault();
-					scrollContainer.scrollBy({ top: pageHeight, behavior: 'smooth' });
-				}
-			}
-		};
-
-		window.addEventListener('keydown', handleKeyDown);
-		return () => window.removeEventListener('keydown', handleKeyDown);
-	}, []);
+		}
+	});
 
 	// Generate prose styles scoped to marketplace panel
 	const proseStyles = useMemo(
@@ -338,13 +337,9 @@ function PlaybookDetailView({
 				style={{ borderColor: theme.colors.border }}
 			>
 				{/* Back button */}
-				<button
-					onClick={onBack}
-					className="p-1.5 rounded hover:bg-white/10 transition-colors"
-					title="Back to list (Esc)"
-				>
+				<GhostIconButton onClick={onBack} padding="p-1.5" title="Back to list (Esc)">
 					<ArrowLeft className="w-5 h-5" style={{ color: theme.colors.textDim }} />
-				</button>
+				</GhostIconButton>
 
 				{/* Playbook title and category */}
 				<div className="flex-1 min-w-0">
@@ -628,7 +623,7 @@ function PlaybookDetailView({
 						<style>{proseStyles}</style>
 						{isLoadingDocument ? (
 							<div className="flex items-center justify-center h-32">
-								<Loader2 className="w-6 h-6 animate-spin" style={{ color: theme.colors.accent }} />
+								<Spinner size={24} color={theme.colors.accent} />
 							</div>
 						) : (
 							<div className="prose prose-sm max-w-none" style={{ color: theme.colors.textMain }}>
@@ -702,7 +697,7 @@ function PlaybookDetailView({
 					>
 						{isImporting ? (
 							<span className="flex items-center gap-2">
-								<Loader2 className="w-4 h-4 animate-spin" />
+								<Spinner size={16} />
 								Importing...
 							</span>
 						) : (
@@ -732,7 +727,6 @@ export function MarketplaceModal({
 	onImportComplete,
 }: MarketplaceModalProps) {
 	// Layer stack for escape handling
-	const { registerLayer, unregisterLayer } = useLayerStack();
 	const onCloseRef = useRef(onClose);
 	onCloseRef.current = onClose;
 
@@ -821,28 +815,20 @@ export function MarketplaceModal({
 	handleBackToListRef.current = handleBackToList;
 
 	// Register with layer stack for escape handling
-	useEffect(() => {
-		if (isOpen) {
-			const id = registerLayer({
-				type: 'modal',
-				priority: MODAL_PRIORITIES.MARKETPLACE,
-				blocksLowerLayers: true,
-				capturesFocus: true,
-				focusTrap: 'strict',
-				ariaLabel: 'Playbook Exchange',
-				onEscape: () => {
-					if (showHelpRef.current) {
-						setShowHelp(false);
-					} else if (showDetailViewRef.current) {
-						handleBackToListRef.current();
-					} else {
-						onCloseRef.current();
-					}
-				},
-			});
-			return () => unregisterLayer(id);
-		}
-	}, [isOpen, registerLayer, unregisterLayer]);
+	useModalLayer(
+		MODAL_PRIORITIES.MARKETPLACE,
+		'Playbook Exchange',
+		() => {
+			if (showHelpRef.current) {
+				setShowHelp(false);
+			} else if (showDetailViewRef.current) {
+				handleBackToListRef.current();
+			} else {
+				onCloseRef.current();
+			}
+		},
+		{ enabled: isOpen }
+	);
 
 	// Focus search input when modal opens
 	useEffect(() => {
@@ -915,7 +901,7 @@ export function MarketplaceModal({
 			onClose();
 		} else {
 			// Could show an error toast here in future enhancement
-			console.error('Import failed:', result.error);
+			logger.error('Import failed:', undefined, result.error);
 		}
 	}, [
 		selectedPlaybook,
@@ -1249,14 +1235,14 @@ export function MarketplaceModal({
 									/>
 								</button>
 								{/* Close button */}
-								<button
+								<GhostIconButton
 									onClick={onClose}
-									className="p-1.5 rounded hover:bg-white/10 transition-colors"
+									padding="p-1.5"
 									title="Close (Esc)"
-									aria-label="Close marketplace"
+									ariaLabel="Close marketplace"
 								>
 									<X className="w-5 h-5" style={{ color: theme.colors.textDim }} />
-								</button>
+								</GhostIconButton>
 							</div>
 						</div>
 

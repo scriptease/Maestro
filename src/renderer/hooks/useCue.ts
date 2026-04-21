@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { CueRunResult, CueSessionStatus } from '../../shared/cue';
 export type { CueRunResult, CueSessionStatus } from '../../shared/cue';
 import { cueService } from '../services/cue';
+import { notifyToast } from '../stores/notificationStore';
 
 export interface UseCueReturn {
 	sessions: CueSessionStatus[];
@@ -14,7 +15,11 @@ export interface UseCueReturn {
 	disable: () => Promise<void>;
 	stopRun: (runId: string) => Promise<void>;
 	stopAll: () => Promise<void>;
-	triggerSubscription: (subscriptionName: string) => Promise<void>;
+	triggerSubscription: (
+		subscriptionName: string,
+		prompt?: string,
+		sourceAgentId?: string
+	) => Promise<void>;
 	refresh: () => Promise<void>;
 }
 
@@ -88,8 +93,24 @@ export function useCue(): UseCueReturn {
 	}, [refresh]);
 
 	const triggerSubscription = useCallback(
-		async (subscriptionName: string) => {
-			await cueService.triggerSubscription(subscriptionName);
+		async (subscriptionName: string, prompt?: string, sourceAgentId?: string) => {
+			// Engine returns false when the subscription wasn't found OR every
+			// dispatch was skipped (e.g. empty prompts on every fan-out target).
+			// Surface both as a toast so the user isn't left wondering why the
+			// manual trigger button did nothing.
+			const dispatched = await cueService.triggerSubscription(
+				subscriptionName,
+				prompt,
+				sourceAgentId
+			);
+			if (!dispatched) {
+				notifyToast({
+					type: 'warning',
+					title: `"${subscriptionName}" didn't run`,
+					message:
+						'No dispatch fired. Check that each agent on this trigger has a prompt configured.',
+				});
+			}
 			await refresh();
 		},
 		[refresh]

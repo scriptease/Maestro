@@ -18,7 +18,12 @@ export const DEFAULT_SHORTCUTS: Record<string, Shortcut> = {
 	newInstance: { id: 'newInstance', label: 'New Agent', keys: ['Meta', 'n'] },
 	newGroupChat: { id: 'newGroupChat', label: 'New Group Chat', keys: ['Alt', 'Meta', 'c'] },
 	killInstance: { id: 'killInstance', label: 'Remove', keys: ['Meta', 'Shift', 'Backspace'] },
-	moveToGroup: { id: 'moveToGroup', label: 'Move Session to Group', keys: ['Meta', 'Shift', 'm'] },
+	moveToGroup: { id: 'moveToGroup', label: 'Move Session to Group', keys: ['Alt', 'Meta', 'm'] },
+	openMemoryViewer: {
+		id: 'openMemoryViewer',
+		label: 'Open Memory Viewer',
+		keys: ['Meta', 'Shift', 'm'],
+	},
 	toggleMode: { id: 'toggleMode', label: 'Switch AI/Shell Mode', keys: ['Meta', 'j'] },
 	quickAction: { id: 'quickAction', label: 'Quick Actions', keys: ['Meta', 'k'] },
 	agentSwitcher: { id: 'agentSwitcher', label: 'Switch Agent', keys: ['Meta', 'o'] },
@@ -155,6 +160,11 @@ export const FIXED_SHORTCUTS: Record<string, Shortcut> = {
 		label: 'Decrease Font Size',
 		keys: ['Meta', '-'],
 	},
+	clearTerminal: {
+		id: 'clearTerminal',
+		label: 'Clear Terminal',
+		keys: ['Meta', 'Shift', 'k'],
+	},
 };
 
 // Terminal tab shortcuts
@@ -163,11 +173,6 @@ export const TERMINAL_SHORTCUTS: Record<string, Shortcut> = {
 		id: 'newTerminalTab',
 		label: 'New Terminal Tab',
 		keys: ['Control', 'Shift', '`'],
-	},
-	clearTerminal: {
-		id: 'clearTerminal',
-		label: 'Clear Terminal',
-		keys: ['Meta', 'Shift', 'k'],
 	},
 };
 

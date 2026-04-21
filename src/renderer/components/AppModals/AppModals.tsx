@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useSessionStore } from '../../stores/sessionStore';
+import { useSessionStore, selectActiveSession } from '../../stores/sessionStore';
 import { useGroupChatStore } from '../../stores/groupChatStore';
 import { useModalStore } from '../../stores/modalStore';
 import type {
@@ -192,6 +192,7 @@ export interface AppModalsProps {
 	setUsageDashboardOpen?: (open: boolean) => void;
 	setActiveRightTab: (tab: RightPanelTab) => void;
 	setAgentSessionsOpen: (open: boolean) => void;
+	setMemoryViewerOpen?: (open: boolean) => void;
 	setActiveAgentSessionId: (id: string | null) => void;
 	setGitDiffPreview: (diff: string | null) => void;
 	setGitLogOpen: (open: boolean) => void;
@@ -228,6 +229,7 @@ export interface AppModalsProps {
 			| 'supportsSlashCommands'
 			| 'supportsContextMerge'
 			| 'supportsThinkingDisplay'
+			| 'supportsProjectMemory'
 	) => boolean;
 	onOpenMergeSession: () => void;
 	onOpenSendToAgent: () => void;
@@ -415,10 +417,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 			setGroups: s.setGroups,
 		}))
 	);
-	const activeSession = useMemo(
-		() => sessions.find((s) => s.id === activeSessionId) ?? null,
-		[sessions, activeSessionId]
-	);
+	const activeSession = useSessionStore(selectActiveSession);
 	const { groupChats, activeGroupChatId } = useGroupChatStore(
 		useShallow((s) => ({
 			groupChats: s.groupChats,
@@ -599,6 +598,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 		setUsageDashboardOpen,
 		setActiveRightTab,
 		setAgentSessionsOpen,
+		setMemoryViewerOpen,
 		setActiveAgentSessionId,
 		setGitDiffPreview,
 		setGitLogOpen,
@@ -928,6 +928,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 				setUsageDashboardOpen={setUsageDashboardOpen}
 				setActiveRightTab={setActiveRightTab}
 				setAgentSessionsOpen={setAgentSessionsOpen}
+				setMemoryViewerOpen={setMemoryViewerOpen}
 				setActiveAgentSessionId={setActiveAgentSessionId}
 				setGitDiffPreview={setGitDiffPreview}
 				setGitLogOpen={setGitLogOpen}

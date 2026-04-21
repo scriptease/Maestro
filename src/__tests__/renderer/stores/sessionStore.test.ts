@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { logger } from '../../../renderer/utils/logger';
 import { renderHook, act } from '@testing-library/react';
 import {
 	useSessionStore,
@@ -6,52 +7,11 @@ import {
 	selectSessionById,
 } from '../../../renderer/stores/sessionStore';
 import type { Session, Group, FilePreviewTab } from '../../../renderer/types';
+import { createMockSession } from '../../helpers/mockSession';
 
 // ============================================================================
 // Test Helpers
 // ============================================================================
-
-/**
- * Create a minimal mock session for testing.
- * Only includes required fields — extend as needed per test.
- */
-function createMockSession(overrides: Partial<Session> = {}): Session {
-	return {
-		id: overrides.id ?? `session-${Math.random().toString(36).slice(2, 8)}`,
-		name: overrides.name ?? 'Test Session',
-		toolType: 'claude-code',
-		state: 'idle',
-		cwd: '/test',
-		fullPath: '/test',
-		projectRoot: '/test',
-		aiLogs: [],
-		shellLogs: [],
-		workLog: [],
-		contextUsage: 0,
-		inputMode: 'ai',
-		aiPid: 0,
-		terminalPid: 0,
-		port: 0,
-		isLive: false,
-		changedFiles: [],
-		isGitRepo: false,
-		fileTree: [],
-		fileExplorerExpanded: [],
-		fileExplorerScrollPos: 0,
-		executionQueue: [],
-		activeTimeMs: 0,
-		aiTabs: [],
-		activeTabId: '',
-		closedTabHistory: [],
-		filePreviewTabs: [],
-		activeFileTabId: null,
-		unifiedTabOrder: [],
-		unifiedClosedTabHistory: [],
-		terminalTabs: [],
-		activeTerminalTabId: null,
-		...overrides,
-	} as Session;
-}
 
 /**
  * Create a minimal mock FilePreviewTab for testing.
@@ -1482,7 +1442,7 @@ describe('sessionStore', () => {
 		});
 
 		it('logs error when no target tab found', () => {
-			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const consoleSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
 			const session = createMockSession({
 				id: 'session-1',
 				aiTabs: [], // No tabs!

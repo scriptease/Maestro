@@ -431,12 +431,10 @@ export function useMainKeyboardHandler(): UseMainKeyboardHandlerReturn {
 					trackShortcut('quickAction');
 				}
 			} else if (
-				(e.metaKey || e.ctrlKey) &&
-				e.shiftKey &&
-				e.key.toLowerCase() === 'k' &&
+				ctx.isShortcut(e, 'clearTerminal') &&
 				ctx.activeSession?.inputMode === 'terminal'
 			) {
-				// Cmd+Shift+K clears the active xterm buffer in terminal mode
+				// Clears the active xterm buffer in terminal mode
 				e.preventDefault();
 				ctx.mainPanelRef?.current?.clearActiveTerminal();
 				trackShortcut('clearTerminal');
@@ -567,6 +565,12 @@ export function useMainKeyboardHandler(): UseMainKeyboardHandlerReturn {
 					ctx.setActiveAgentSessionId(null);
 					ctx.setAgentSessionsOpen(true);
 					trackShortcut('agentSessions');
+				}
+			} else if (ctx.isShortcut(e, 'openMemoryViewer')) {
+				e.preventDefault();
+				if (ctx.hasActiveSessionCapability('supportsProjectMemory')) {
+					ctx.setMemoryViewerOpen(true);
+					trackShortcut('openMemoryViewer');
 				}
 			} else if (ctx.isShortcut(e, 'systemLogs')) {
 				e.preventDefault();
@@ -995,34 +999,33 @@ export function useMainKeyboardHandler(): UseMainKeyboardHandlerReturn {
 					});
 					trackShortcut('prevTab');
 				}
-				// Cmd+1-9, Cmd+0 — Jump to tab by index in unified order
-				// Disabled in unread-only mode (unread filter only applies to AI tabs)
-				if (!ctx.showUnreadOnly) {
-					for (let i = 1; i <= 9; i++) {
-						if (ctx.isTabShortcut(e, `goToTab${i}`)) {
-							e.preventDefault();
-							ctx.setSessions((prev: Session[]) => {
-								const current = prev.find((s: Session) => s.id === ctx.activeSessionId);
-								if (!current) return prev;
-								const result = ctx.navigateToUnifiedTabByIndex(current, i - 1);
-								if (!result) return prev;
-								return prev.map((s: Session) => (s.id === current.id ? result.session : s));
-							});
-							trackShortcut(`goToTab${i}`);
-							break;
-						}
-					}
-					if (ctx.isTabShortcut(e, 'goToLastTab')) {
+				// Cmd+1-9, Cmd+0 — Jump to tab by index in unified order.
+				// In unread-only mode, index into the filtered/visible tabs so Cmd+N matches
+				// the Nth tab currently shown in the tab bar (not the Nth tab overall).
+				for (let i = 1; i <= 9; i++) {
+					if (ctx.isTabShortcut(e, `goToTab${i}`)) {
 						e.preventDefault();
 						ctx.setSessions((prev: Session[]) => {
 							const current = prev.find((s: Session) => s.id === ctx.activeSessionId);
 							if (!current) return prev;
-							const result = ctx.navigateToLastUnifiedTab(current);
+							const result = ctx.navigateToUnifiedTabByIndex(current, i - 1, ctx.showUnreadOnly);
 							if (!result) return prev;
 							return prev.map((s: Session) => (s.id === current.id ? result.session : s));
 						});
-						trackShortcut('goToLastTab');
+						trackShortcut(`goToTab${i}`);
+						break;
 					}
+				}
+				if (ctx.isTabShortcut(e, 'goToLastTab')) {
+					e.preventDefault();
+					ctx.setSessions((prev: Session[]) => {
+						const current = prev.find((s: Session) => s.id === ctx.activeSessionId);
+						if (!current) return prev;
+						const result = ctx.navigateToLastUnifiedTab(current, ctx.showUnreadOnly);
+						if (!result) return prev;
+						return prev.map((s: Session) => (s.id === current.id ? result.session : s));
+					});
+					trackShortcut('goToLastTab');
 				}
 			}
 
@@ -1063,6 +1066,27 @@ export function useMainKeyboardHandler(): UseMainKeyboardHandlerReturn {
 			if (document.activeElement?.tagName === 'WEBVIEW') {
 				(document.activeElement as HTMLElement).blur();
 			}
+
+			// Handle browser address bar focus directly: build a synthetic event
+			// for isTabShortcut matching, then focus the address bar without
+			// re-dispatching through the main handler (which may be blocked
+			// by the overlay/modal shortcut guard).
+			const ctx = keyboardHandlerRef.current;
+			if (ctx?.activeSession?.activeBrowserTabId) {
+				const probe = new KeyboardEvent('keydown', {
+					key: input.key,
+					code: input.code,
+					metaKey: input.meta,
+					ctrlKey: input.control,
+					altKey: input.alt,
+					shiftKey: input.shift,
+				});
+				if (ctx.isTabShortcut(probe, 'focusBrowserAddress')) {
+					ctx.mainPanelRef?.current?.focusBrowserAddressBar();
+					return;
+				}
+			}
+
 			window.dispatchEvent(
 				new KeyboardEvent('keydown', {
 					key: input.key,

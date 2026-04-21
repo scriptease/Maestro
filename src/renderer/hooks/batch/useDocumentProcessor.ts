@@ -16,6 +16,7 @@ import { useCallback } from 'react';
 import type { Session, UsageStats } from '../../types';
 import { substituteTemplateVariables, TemplateContext } from '../../utils/templateVariables';
 import { countUnfinishedTasks, countCheckedTasks } from './batchUtils';
+import { logger } from '../../utils/logger';
 
 /**
  * Configuration for document processing
@@ -351,7 +352,7 @@ export function useDocumentProcessor(): UseDocumentProcessorReturn {
 				window.maestro.agentSessions
 					.registerSessionOrigin(effectiveCwd, result.agentSessionId, 'auto')
 					.catch((err) =>
-						console.error('[DocumentProcessor] Failed to register session origin:', err)
+						logger.error('[DocumentProcessor] Failed to register session origin:', undefined, err)
 					);
 			}
 

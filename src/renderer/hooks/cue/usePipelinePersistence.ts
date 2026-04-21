@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import type {
 	CuePipelineState,
 	CuePipeline,
@@ -25,6 +26,8 @@ import { cueService } from '../../services/cue';
 import { captureException } from '../../utils/sentry';
 import { notifyToast } from '../../stores/notificationStore';
 import type { CuePipelineSessionInfo as SessionInfo } from '../../../shared/cue-pipeline-types';
+import { computeCommonAncestorPath, isDescendantOrEqual } from '../../../shared/cue-path-utils';
+import { flushAllPendingEdits } from './pendingEditsRegistry';
 
 const SAVE_SUCCESS_IDLE_DELAY_MS = 2000;
 const SAVE_ERROR_IDLE_DELAY_MS = 3000;
@@ -34,6 +37,14 @@ export type SaveStatus = 'idle' | 'saving' | 'success' | 'error';
 export interface UsePipelinePersistenceParams {
 	state: {
 		pipelineState: CuePipelineState;
+		/**
+		 * Live mirror of pipelineState.pipelines updated during render by the
+		 * composition hook. handleSave reads through this ref AFTER yielding
+		 * to the microtask queue so it observes setState writes produced by
+		 * `flushAllPendingEdits()` — which are batched and invisible in a
+		 * closure-captured `pipelineState.pipelines`.
+		 */
+		pipelinesRef: React.MutableRefObject<CuePipelineState['pipelines']>;
 		savedStateRef: React.MutableRefObject<string>;
 		lastWrittenRootsRef: React.MutableRefObject<Set<string>>;
 	};
@@ -66,7 +77,7 @@ export function usePipelinePersistence({
 	deps,
 	actions,
 }: UsePipelinePersistenceParams): UsePipelinePersistenceReturn {
-	const { pipelineState, savedStateRef, lastWrittenRootsRef } = state;
+	const { pipelinesRef, savedStateRef, lastWrittenRootsRef } = state;
 	const { sessions, cueSettings, settingsLoaded } = deps;
 	const { setPipelineState, setIsDirty, persistLayout, onSaveSuccess } = actions;
 
@@ -110,8 +121,48 @@ export function usePipelinePersistence({
 			return;
 		}
 
+		// Flush pending debounced prompt edits from the config panels so the
+		// save reads up-to-date state. Clicking Save within the 300ms debounce
+		// window used to persist stale (often empty) prompts, which produced
+		// YAML that failed validation on next load — the user saw their
+		// pipeline "vanish" after a tab switch, plus a "make sure each agent
+		// has a prompt" error on the manual Play button. Wrapping the flush
+		// in `flushSync` forces React to process the setState writes produced
+		// by each panel's debounced callback synchronously, so the composition
+		// hook's render-time `pipelinesRef.current = …` assignment has run by
+		// the time we read it on the next line.
+		flushSync(() => {
+			flushAllPendingEdits();
+		});
+		const currentPipelines = pipelinesRef.current;
+
+		// Block save when any pipeline contains an unresolved-agent error node.
+		// These are emitted by yamlToPipeline when `agent_id` / `source_session_ids`
+		// reference deleted sessions. Persisting a pipeline in that state would
+		// let the heuristic fallback silently pick a wrong agent (the "two
+		// agents swapped" failure mode). Surface a toast and refuse to write.
+		const pipelinesWithErrors = currentPipelines.filter((p) =>
+			p.nodes.some((n) => n.type === 'error')
+		);
+		if (pipelinesWithErrors.length > 0) {
+			// Clear any stale validation errors from a previous save attempt so
+			// the banner doesn't keep showing rules the user has already fixed
+			// while the unresolved-agent toast is the actionable blocker.
+			setValidationErrors([]);
+			notifyToast({
+				type: 'warning',
+				title: 'Resolve unresolved agents before saving',
+				message: `Pipeline${pipelinesWithErrors.length > 1 ? 's' : ''} ${pipelinesWithErrors
+					.map((p) => `"${p.name}"`)
+					.join(
+						', '
+					)} contain${pipelinesWithErrors.length > 1 ? '' : 's'} an unresolved agent reference. Reassign or remove the affected subscription and try again.`,
+			});
+			return;
+		}
+
 		// Validate graph shape first
-		const errors = validatePipelines(pipelineState.pipelines);
+		const errors = validatePipelines(currentPipelines);
 
 		// Build session lookup maps. Prefer sessionId since agents can be
 		// renamed, but fall back to sessionName for pipelines loaded from older
@@ -138,7 +189,7 @@ export function usePipelinePersistence({
 		const pipelinesByRoot = new Map<string, CuePipeline[]>();
 		const unresolvedPipelines: string[] = [];
 
-		for (const pipeline of pipelineState.pipelines) {
+		for (const pipeline of currentPipelines) {
 			const agents = pipeline.nodes.filter((n) => n.type === 'agent');
 			if (agents.length === 0) continue; // validatePipelines already flagged this
 
@@ -158,10 +209,22 @@ export function usePipelinePersistence({
 				continue;
 			}
 			if (roots.size > 1) {
-				errors.push(
-					`"${pipeline.name}": agents span multiple project roots (${[...roots].join(', ')}) — a Cue pipeline must live in a single project.`
-				);
-				continue;
+				// When all roots are subdirectories of a common ancestor, the
+				// pipeline can live at that ancestor's .maestro/cue.yaml. This
+				// enables cross-directory pipelines (e.g. project/ + project/Digest)
+				// while preserving the single-owner invariant.
+				const commonRoot = computeCommonAncestorPath([...roots]);
+				const allDescendants =
+					commonRoot !== null && [...roots].every((r) => isDescendantOrEqual(r, commonRoot));
+				if (!allDescendants) {
+					errors.push(
+						`"${pipeline.name}": agents span unrelated project roots (${[...roots].join(', ')}) — a Cue pipeline must live in a single project.`
+					);
+					continue;
+				}
+				// Collapse to the common ancestor root for YAML output.
+				roots.clear();
+				roots.add(commonRoot);
 			}
 			if (missingRoot) {
 				errors.push(
@@ -185,7 +248,7 @@ export function usePipelinePersistence({
 		// Safety net: if the editor has pipelines but nothing will be written and
 		// no previously-saved root needs clearing, the save would silently succeed
 		// with no effect. Surface that rather than masking it as "Saved".
-		if (pipelineState.pipelines.length > 0 && pipelinesByRoot.size === 0 && errors.length === 0) {
+		if (currentPipelines.length > 0 && pipelinesByRoot.size === 0 && errors.length === 0) {
 			errors.push(
 				'Nothing to save — pipelines are empty. Add a trigger and an agent, then try again.'
 			);
@@ -254,10 +317,16 @@ export function usePipelinePersistence({
 				rootsCleared++;
 			}
 
-			// Refresh every session whose project root was touched so the engine
-			// reloads the freshly written YAML into its in-memory registry.
+			// Refresh every session whose project root was touched — or is a
+			// descendant of a touched root — so the engine reloads the freshly
+			// written YAML. Descendant sessions need refreshing because they
+			// inherit their config from the ancestor root via fallback.
 			for (const session of sessions) {
-				if (session.projectRoot && touchedRoots.has(session.projectRoot)) {
+				if (!session.projectRoot) continue;
+				const needsRefresh =
+					touchedRoots.has(session.projectRoot) ||
+					[...touchedRoots].some((root) => isDescendantOrEqual(session.projectRoot!, root));
+				if (needsRefresh) {
 					await cueService.refreshSession(session.id, session.projectRoot);
 				}
 			}
@@ -265,7 +334,7 @@ export function usePipelinePersistence({
 			// Refs MUST update before setIsDirty(false) — the dirty-tracking
 			// effect compares against savedStateRef.current, so flipping dirty
 			// false before the ref is fresh would immediately flip it back true.
-			savedStateRef.current = JSON.stringify(pipelineState.pipelines);
+			savedStateRef.current = JSON.stringify(currentPipelines);
 			lastWrittenRootsRef.current = new Set(currentRoots);
 			setIsDirty(false);
 			setSaveStatus('success');
@@ -302,7 +371,7 @@ export function usePipelinePersistence({
 			});
 		}
 	}, [
-		pipelineState.pipelines,
+		pipelinesRef,
 		sessions,
 		cueSettings,
 		settingsLoaded,

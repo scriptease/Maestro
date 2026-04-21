@@ -314,6 +314,13 @@ export type ConfigureAutoRunCallback = (
 		maxLoops?: number;
 		saveAsPlaybook?: string;
 		launch?: boolean;
+		worktree?: {
+			enabled: boolean;
+			path: string;
+			branchName: string;
+			createPROnCompletion: boolean;
+			prTargetBranch: string;
+		};
 	}
 ) => Promise<{ success: boolean; playbookId?: string; error?: string }>;
 
@@ -623,7 +630,8 @@ export type GetCueActivityCallback = (
 ) => Promise<CueActivityEntry[]>;
 export type TriggerCueSubscriptionCallback = (
 	subscriptionName: string,
-	prompt?: string
+	prompt?: string,
+	sourceAgentId?: string
 ) => Promise<boolean>;
 
 // =============================================================================

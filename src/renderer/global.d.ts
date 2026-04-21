@@ -78,109 +78,16 @@ interface ProcessConfig {
 	sendPromptViaStdinRaw?: boolean; // If true, send the prompt via stdin as raw text instead of command line
 }
 
-interface AgentConfigOption {
-	key: string;
-	type: 'checkbox' | 'text' | 'number' | 'select';
-	label: string;
-	description: string;
-	default: any;
-	options?: string[];
-}
+type AgentConfigOption = import('../shared/types').AgentConfigOption;
+type AgentCapabilities = import('../shared/types').AgentCapabilities;
+type AgentConfig = import('../shared/types').AgentConfig;
 
-interface AgentCapabilities {
-	supportsResume: boolean;
-	supportsReadOnlyMode: boolean;
-	supportsJsonOutput: boolean;
-	supportsSessionId: boolean;
-	supportsImageInput: boolean;
-	supportsImageInputOnResume: boolean;
-	supportsSlashCommands: boolean;
-	supportsSessionStorage: boolean;
-	supportsCostTracking: boolean;
-	supportsUsageStats: boolean;
-	supportsBatchMode: boolean;
-	requiresPromptToStart: boolean;
-	supportsStreaming: boolean;
-	supportsResultMessages: boolean;
-	supportsModelSelection: boolean;
-	supportsStreamJsonInput: boolean;
-	supportsThinkingDisplay: boolean;
-	supportsContextMerge: boolean;
-	supportsContextExport: boolean;
-	supportsWizard: boolean;
-	supportsGroupChatModeration: boolean;
-	usesJsonLineOutput: boolean;
-	usesCombinedContextWindow: boolean;
-	supportsAppendSystemPrompt: boolean;
-}
+type DirectoryEntry = import('../shared/types').DirectoryEntry;
+type ShellInfo = import('../shared/types').ShellInfo;
 
-interface AgentConfig {
-	id: string;
-	name: string;
-	binaryName?: string;
-	available: boolean;
-	path?: string;
-	customPath?: string;
-	command: string;
-	args?: string[];
-	hidden?: boolean;
-	configOptions?: AgentConfigOption[];
-	yoloModeArgs?: string[];
-	readOnlyCliEnforced?: boolean;
-	capabilities?: AgentCapabilities;
-}
+type UsageStats = import('../shared/types').UsageStats;
 
-interface AgentCapabilities {
-	supportsResume: boolean;
-	supportsReadOnlyMode: boolean;
-	supportsJsonOutput: boolean;
-	supportsSessionId: boolean;
-	supportsImageInput: boolean;
-	supportsImageInputOnResume: boolean;
-	supportsSlashCommands: boolean;
-	supportsSessionStorage: boolean;
-	supportsCostTracking: boolean;
-	supportsUsageStats: boolean;
-	supportsBatchMode: boolean;
-	requiresPromptToStart: boolean;
-	supportsStreaming: boolean;
-	supportsResultMessages: boolean;
-	supportsModelSelection: boolean;
-	supportsStreamJsonInput: boolean;
-	supportsContextMerge: boolean;
-	supportsContextExport: boolean;
-	supportsWizard: boolean;
-	supportsGroupChatModeration: boolean;
-	usesJsonLineOutput: boolean;
-	usesCombinedContextWindow: boolean;
-	supportsAppendSystemPrompt: boolean;
-}
-
-interface DirectoryEntry {
-	name: string;
-	isDirectory: boolean;
-	isFile: boolean;
-	path: string;
-}
-
-interface ShellInfo {
-	id: string;
-	name: string;
-	available: boolean;
-	path?: string;
-}
-
-interface UsageStats {
-	inputTokens: number;
-	outputTokens: number;
-	cacheReadInputTokens: number;
-	cacheCreationInputTokens: number;
-	totalCostUsd: number;
-	contextWindow: number;
-	reasoningTokens?: number; // Separate reasoning tokens (Codex o3/o4-mini)
-}
-
-type HistoryEntryType = 'AUTO' | 'USER' | 'CUE';
+type HistoryEntryType = import('../shared/types').HistoryEntryType;
 
 /**
  * Result type for reading session messages from agent storage.
@@ -243,6 +150,7 @@ type GroupChatData = {
 };
 
 import type { CueGraphSession, CueRunResult, CueSessionStatus, CueSettings } from '../shared/cue';
+import type { MaestroCliStatus, MaestroCliInstallResult } from '../shared/maestro-cli';
 
 interface MaestroAPI {
 	// Context merging API (for session context transfer and grooming)
@@ -480,7 +388,8 @@ interface MaestroAPI {
 			callback: (
 				subscriptionName: string,
 				prompt: string | undefined,
-				responseChannel: string
+				responseChannel: string,
+				sourceAgentId: string | undefined
 			) => void
 		) => () => void;
 		sendRemoteTriggerCueSubscriptionResponse: (responseChannel: string, result: unknown) => void;
@@ -3073,7 +2982,11 @@ interface MaestroAPI {
 		disable: () => Promise<void>;
 		stopRun: (runId: string) => Promise<boolean>;
 		stopAll: () => Promise<void>;
-		triggerSubscription: (subscriptionName: string, prompt?: string) => Promise<boolean>;
+		triggerSubscription: (
+			subscriptionName: string,
+			prompt?: string,
+			sourceAgentId?: string
+		) => Promise<boolean>;
 		getQueueStatus: () => Promise<Record<string, number>>;
 		refreshSession: (sessionId: string, projectRoot: string) => Promise<void>;
 		removeSession: (sessionId: string) => Promise<void>;
@@ -3095,6 +3008,13 @@ interface MaestroAPI {
 		checkCli: () => Promise<{ available: boolean; version?: string }>;
 		validateApiKey: (key: string) => Promise<{ valid: boolean }>;
 	};
+
+	// Maestro CLI API (status check + install/update)
+	maestroCli: {
+		checkStatus: () => Promise<MaestroCliStatus>;
+		installOrUpdate: () => Promise<MaestroCliInstallResult>;
+	};
+
 	prompts: {
 		get: (id: string) => Promise<{ success: boolean; content?: string; error?: string }>;
 		getAll: () => Promise<{
@@ -3118,6 +3038,57 @@ interface MaestroAPI {
 			files?: Array<{ name: string; filename: string; isCatalog: boolean }>;
 			error?: string;
 		}>;
+	};
+
+	// Per-project memory API (Claude Code memory viewer)
+	memory: {
+		list: (
+			projectPath: string,
+			agentId?: string
+		) => Promise<{
+			success: boolean;
+			directoryPath?: string;
+			exists?: boolean;
+			entries?: Array<{
+				name: string;
+				size: number;
+				createdAt: string;
+				modifiedAt: string;
+			}>;
+			stats?: {
+				fileCount: number;
+				firstCreatedAt: string | null;
+				lastModifiedAt: string | null;
+				totalBytes: number;
+			};
+			error?: string;
+		}>;
+		read: (
+			projectPath: string,
+			filename: string,
+			agentId?: string
+		) => Promise<{ success: boolean; content?: string; error?: string }>;
+		write: (
+			projectPath: string,
+			filename: string,
+			content: string,
+			agentId?: string
+		) => Promise<{ success: boolean; error?: string }>;
+		create: (
+			projectPath: string,
+			filename: string,
+			content: string,
+			agentId?: string
+		) => Promise<{ success: boolean; error?: string }>;
+		delete: (
+			projectPath: string,
+			filename: string,
+			agentId?: string
+		) => Promise<{ success: boolean; error?: string }>;
+		getPath: (
+			projectPath: string,
+			agentId?: string
+		) => Promise<{ success: boolean; path?: string; error?: string }>;
 	};
 }
 

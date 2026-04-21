@@ -359,6 +359,43 @@ describe('cue-process-lifecycle', () => {
 
 				expect(result.stdout).toBe('Parsed output');
 			});
+
+			it('falls back to assistant text when result text is empty', async () => {
+				mockGetOutputParser.mockReturnValue({
+					parseJsonLine: (line: string) => {
+						try {
+							const msg = JSON.parse(line);
+							if (msg.type === 'result') {
+								return { type: 'result', text: msg.result || '' };
+							}
+							if (msg.type === 'assistant') {
+								return { type: 'text', text: msg.text, isPartial: true };
+							}
+							return { type: 'system', raw: msg };
+						} catch {
+							return { type: 'text', text: line };
+						}
+					},
+				} as any);
+
+				const lines = [
+					JSON.stringify({ type: 'assistant', text: 'Hello from the agent' }),
+					JSON.stringify({ type: 'result', result: '' }),
+				].join('\n');
+
+				const resultPromise = runProcess(
+					'run-1',
+					createSpec(),
+					createOptions({ toolType: 'claude-code' })
+				);
+				await vi.advanceTimersByTimeAsync(0);
+
+				mockChild.stdout.emit('data', lines);
+				mockChild.emit('close', 0);
+				const result = await resultPromise;
+
+				expect(result.stdout).toBe('Hello from the agent');
+			});
 		});
 
 		describe('stderr cleaning (benign noise filter)', () => {

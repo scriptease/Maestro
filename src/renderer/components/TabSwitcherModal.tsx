@@ -10,7 +10,7 @@ import type {
 	ToolType,
 } from '../types';
 import { fuzzyMatchWithScore } from '../utils/search';
-import { useLayerStack } from '../contexts/LayerStackContext';
+import { useModalLayer } from '../hooks/ui/useModalLayer';
 import { useListNavigation } from '../hooks';
 import { MODAL_PRIORITIES } from '../constants/modalPriorities';
 import { getContextColor } from '../utils/theme';
@@ -19,6 +19,7 @@ import { formatTokensCompact, formatRelativeTime, formatCost } from '../utils/fo
 import { calculateContextDisplay } from '../utils/contextUsage';
 import { getExtensionColor } from '../utils/extensionColors';
 import { getTabDisplayName } from '../utils/tabHelpers';
+import { logger } from '../utils/logger';
 
 /** Normalize a project path for comparison (strip trailing slashes) */
 function normalizePath(p: string): string {
@@ -221,7 +222,6 @@ export function TabSwitcherModal({
 	const inputRef = useRef<HTMLInputElement>(null);
 	const selectedItemRef = useRef<HTMLButtonElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
-	const layerIdRef = useRef<string>();
 	const onCloseRef = useRef(onClose);
 
 	const handleSearchChange = useCallback((value: string) => {
@@ -241,35 +241,7 @@ export function TabSwitcherModal({
 		onCloseRef.current = onClose;
 	});
 
-	const { registerLayer, unregisterLayer, updateLayerHandler } = useLayerStack();
-
-	// Register layer on mount
-	useEffect(() => {
-		layerIdRef.current = registerLayer({
-			type: 'modal',
-			priority: MODAL_PRIORITIES.TAB_SWITCHER,
-			blocksLowerLayers: true,
-			capturesFocus: true,
-			focusTrap: 'strict',
-			ariaLabel: 'Tab Switcher',
-			onEscape: () => onCloseRef.current(),
-		});
-
-		return () => {
-			if (layerIdRef.current) {
-				unregisterLayer(layerIdRef.current);
-			}
-		};
-	}, [registerLayer, unregisterLayer]);
-
-	// Update handler when onClose changes
-	useEffect(() => {
-		if (layerIdRef.current) {
-			updateLayerHandler(layerIdRef.current, () => {
-				onCloseRef.current();
-			});
-		}
-	}, [updateLayerHandler]);
+	useModalLayer(MODAL_PRIORITIES.TAB_SWITCHER, 'Tab Switcher', () => onCloseRef.current());
 
 	// Focus input on mount
 	useEffect(() => {
@@ -289,11 +261,15 @@ export function TabSwitcherModal({
 					if (effectiveAgentId === 'claude-code') {
 						return window.maestro.claude
 							.updateSessionName(projectRoot, tab.agentSessionId!, tab.name!)
-							.catch((err) => console.warn('[TabSwitcher] Failed to sync tab name:', err));
+							.catch((err) =>
+								logger.warn('[TabSwitcher] Failed to sync tab name:', undefined, err)
+							);
 					} else {
 						return window.maestro.agentSessions
 							.setSessionName(effectiveAgentId, projectRoot, tab.agentSessionId!, tab.name!)
-							.catch((err) => console.warn('[TabSwitcher] Failed to sync tab name:', err));
+							.catch((err) =>
+								logger.warn('[TabSwitcher] Failed to sync tab name:', undefined, err)
+							);
 					}
 				})
 			);

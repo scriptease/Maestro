@@ -25,12 +25,28 @@ import {
 } from '../../../../../renderer/components/Wizard/services/wizardPrompts';
 import { getAllInitialQuestions } from '../../../../../renderer/components/Wizard/services/fillerPhrases';
 
-// Load actual prompt files from disk so generateSystemPrompt tests work with real content
+// Load actual prompt files from disk so generateSystemPrompt tests work with real content.
+// Mirror the {{INCLUDE:name}} resolution that src/main/prompt-manager.ts performs in
+// production — without it, included partials like _file-access-wizard remain unresolved
+// and the assertions below would never see their content.
 const promptsDir = path.resolve(__dirname, '..', '..', '..', '..', '..', '..', 'src', 'prompts');
-const wizardSystemContent = fs.readFileSync(path.join(promptsDir, 'wizard-system.md'), 'utf-8');
-const wizardContinuationContent = fs.readFileSync(
-	path.join(promptsDir, 'wizard-system-continuation.md'),
-	'utf-8'
+const INCLUDE_PATTERN = /\{\{INCLUDE:([a-zA-Z0-9_-]+)\}\}/g;
+function resolveIncludes(content: string, depth = 0): string {
+	if (depth >= 3) return content;
+	return content.replace(INCLUDE_PATTERN, (match, name: string) => {
+		try {
+			const included = fs.readFileSync(path.join(promptsDir, `${name}.md`), 'utf-8');
+			return resolveIncludes(included, depth + 1);
+		} catch {
+			return match;
+		}
+	});
+}
+const wizardSystemContent = resolveIncludes(
+	fs.readFileSync(path.join(promptsDir, 'wizard-system.md'), 'utf-8')
+);
+const wizardContinuationContent = resolveIncludes(
+	fs.readFileSync(path.join(promptsDir, 'wizard-system-continuation.md'), 'utf-8')
 );
 
 describe('wizardPrompts', () => {

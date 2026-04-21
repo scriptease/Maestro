@@ -4,7 +4,6 @@ import {
 	ExternalLink,
 	Columns,
 	Copy,
-	Loader2,
 	GitBranch,
 	ArrowUp,
 	ArrowDown,
@@ -14,7 +13,10 @@ import {
 	Settings2,
 	Server,
 	Bookmark,
+	Brain,
 } from 'lucide-react';
+import { GhostIconButton } from '../ui/GhostIconButton';
+import { Spinner } from '../ui/Spinner';
 import { formatShortcutKeys } from '../../utils/shortcutFormatter';
 import { remoteUrlToBrowserUrl } from '../../../shared/gitUtils';
 import { GitStatusWidget } from '../GitStatusWidget';
@@ -51,6 +53,7 @@ export interface MainPanelHeaderProps {
 	getContextColor: (usage: number, theme: Theme) => string;
 	setGitLogOpen?: (open: boolean) => void;
 	setAgentSessionsOpen: (open: boolean) => void;
+	setMemoryViewerOpen: (open: boolean) => void;
 	setActiveAgentSessionId: (id: string | null) => void;
 	onStopBatchRun?: (sessionId?: string) => void;
 	onOpenWorktreeConfig?: () => void;
@@ -78,6 +81,7 @@ export const MainPanelHeader = React.memo(function MainPanelHeader({
 	getContextColor,
 	setGitLogOpen,
 	setAgentSessionsOpen,
+	setMemoryViewerOpen,
 	setActiveAgentSessionId,
 	onStopBatchRun,
 	onOpenWorktreeConfig,
@@ -221,7 +225,7 @@ export const MainPanelHeader = React.memo(function MainPanelHeader({
 															{gitInfo.behind}
 														</span>
 													)}
-													<button
+													<GhostIconButton
 														onClick={(e) => {
 															e.stopPropagation();
 															copyToClipboard(
@@ -229,11 +233,11 @@ export const MainPanelHeader = React.memo(function MainPanelHeader({
 																`"${gitInfo.branch}" copied to clipboard`
 															);
 														}}
-														className="p-1 rounded hover:bg-white/10 transition-colors"
 														title="Copy branch name"
+														ariaLabel="Copy branch name"
 													>
 														<Copy className="w-3 h-3" style={{ color: theme.colors.textDim }} />
-													</button>
+													</GhostIconButton>
 												</div>
 											</div>
 
@@ -375,11 +379,7 @@ export const MainPanelHeader = React.memo(function MainPanelHeader({
 						isCurrentSessionStopping ? 'Stopping after current task...' : 'Click to stop auto-run'
 					}
 				>
-					{isCurrentSessionStopping ? (
-						<Loader2 className="w-4 h-4 animate-spin" />
-					) : (
-						<Wand2 className="w-4 h-4" />
-					)}
+					{isCurrentSessionStopping ? <Spinner size={16} /> : <Wand2 className="w-4 h-4" />}
 					<span className="uppercase tracking-wider">
 						{isCurrentSessionStopping ? 'Stopping' : 'Auto'}
 					</span>
@@ -628,6 +628,18 @@ export const MainPanelHeader = React.memo(function MainPanelHeader({
 							)}
 						</div>
 					)}
+
+				{/* Memory Viewer Button - only show if agent maintains per-project memory */}
+				{hasCapability('supportsProjectMemory') && (
+					<button
+						onClick={() => setMemoryViewerOpen(true)}
+						className="p-2 rounded hover:bg-white/5"
+						title={`Memory Viewer (${shortcuts.openMemoryViewer ? formatShortcutKeys(shortcuts.openMemoryViewer.keys) : formatShortcutKeys(['Meta', 'Shift', 'm'])})`}
+						data-tour="memory-viewer-button"
+					>
+						<Brain className="w-4 h-4" style={{ color: theme.colors.textDim }} />
+					</button>
+				)}
 
 				{/* Agent Sessions Button - only show if agent supports session storage */}
 				{hasCapability('supportsSessionStorage') && (

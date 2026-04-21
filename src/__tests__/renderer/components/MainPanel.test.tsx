@@ -385,6 +385,7 @@ describe('MainPanel', () => {
 		// State
 		logViewerOpen: false,
 		agentSessionsOpen: false,
+		memoryViewerOpen: false,
 		activeAgentSessionId: null,
 		activeSession: createSession(),
 		thinkingItems: [] as ThinkingItem[],
@@ -406,6 +407,7 @@ describe('MainPanel', () => {
 		setGitDiffPreview: vi.fn(),
 		setLogViewerOpen: vi.fn(),
 		setAgentSessionsOpen: vi.fn(),
+		setMemoryViewerOpen: vi.fn(),
 		setActiveAgentSessionId: vi.fn(),
 		onResumeAgentSession: vi.fn(),
 		onNewAgentSession: vi.fn(),
@@ -3491,7 +3493,7 @@ describe('MainPanel', () => {
 				resolveOpenCodeModels = resolve;
 			});
 
-			const claudeModels = ['sonnet', 'opus', 'haiku'];
+			const claudeModels = ['sonnet', 'opus', 'haiku', 'opus[1m]', 'sonnet[1m]'];
 			const openCodeModels = ['github-copilot/gpt-5-mini', 'ollama/llama3:8b'];
 
 			// Start with OpenCode session

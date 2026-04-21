@@ -1,5 +1,7 @@
 import { memo } from 'react';
-import { Play, Square, HelpCircle, Loader2, LayoutGrid, Wand2 } from 'lucide-react';
+import { Play, Square, HelpCircle, LayoutGrid, Wand2 } from 'lucide-react';
+import { Spinner } from '../ui/Spinner';
+import { useSettingsStore } from '../../stores/settingsStore';
 import type { Theme } from '../../types';
 
 export interface AutoRunToolbarProps {
@@ -37,6 +39,8 @@ export const AutoRunToolbar = memo(function AutoRunToolbar({
 	fileInputRef,
 	onFileSelect,
 }: AutoRunToolbarProps) {
+	const rightPanelWidth = useSettingsStore((s) => s.rightPanelWidth);
+	const compact = rightPanelWidth < 320;
 	const btnClass =
 		'flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded text-xs font-medium transition-colors hover:bg-white/10';
 
@@ -63,11 +67,7 @@ export const AutoRunToolbar = memo(function AutoRunToolbar({
 					}}
 					title={isStopping ? 'Stopping after current task...' : 'Stop auto-run'}
 				>
-					{isStopping ? (
-						<Loader2 className="w-3.5 h-3.5 animate-spin" />
-					) : (
-						<Square className="w-3.5 h-3.5" />
-					)}
+					{isStopping ? <Spinner size={14} /> : <Square className="w-3.5 h-3.5" />}
 					{isStopping ? 'Stopping' : 'Stop'}
 				</button>
 			) : (
@@ -92,7 +92,7 @@ export const AutoRunToolbar = memo(function AutoRunToolbar({
 					}}
 					title={isAgentBusy ? 'Cannot run while agent is thinking' : 'Run auto-run on tasks'}
 				>
-					<Play className="w-3.5 h-3.5" />
+					{!compact && <Play className="w-3.5 h-3.5" />}
 					Run
 				</button>
 			)}
@@ -108,7 +108,7 @@ export const AutoRunToolbar = memo(function AutoRunToolbar({
 					}}
 					title="Browse PlayBooks - discover and share community playbooks"
 				>
-					<LayoutGrid className="w-3.5 h-3.5" />
+					{!compact && <LayoutGrid className="w-3.5 h-3.5" />}
 					PlayBooks
 				</button>
 			)}
@@ -124,7 +124,7 @@ export const AutoRunToolbar = memo(function AutoRunToolbar({
 					}}
 					title="Launch In-Tab Wizard"
 				>
-					<Wand2 className="w-3.5 h-3.5" />
+					{!compact && <Wand2 className="w-3.5 h-3.5" />}
 					Wizard
 				</button>
 			)}
@@ -139,7 +139,7 @@ export const AutoRunToolbar = memo(function AutoRunToolbar({
 				}}
 				title="Learn about Auto Runner"
 			>
-				<HelpCircle className="w-3.5 h-3.5" />
+				{!compact && <HelpCircle className="w-3.5 h-3.5" />}
 				Help
 			</button>
 		</div>
