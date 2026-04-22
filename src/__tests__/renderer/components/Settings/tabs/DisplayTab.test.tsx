@@ -190,16 +190,41 @@ describe('DisplayTab', () => {
 	});
 
 	describe('Bionify Display Settings', () => {
-		it('renders intensity controls and algorithm input', () => {
+		it('renders the Reading Mode toggle and sub-options (ghosted when off)', () => {
 			render(<DisplayTab theme={mockTheme} />);
 
 			expect(screen.getByText('Reading Mode')).toBeInTheDocument();
+			const toggle = screen.getByRole('switch', { name: 'Bionify reading mode' });
+			expect(toggle).toHaveAttribute('aria-checked', 'false');
+			// Sub-options remain in the DOM but are ghosted via opacity/pointer-events
 			expect(screen.getByText('Intensity')).toBeInTheDocument();
+			expect(screen.getByLabelText('Bionify algorithm')).toBeInTheDocument();
+			const ghosted = screen.getByText('Intensity').closest('.space-y-4') as HTMLElement;
+			expect(ghosted.style.opacity).toBe('0.4');
+			expect(ghosted.style.pointerEvents).toBe('none');
+		});
+
+		it('enables Bionify when the toggle is clicked', () => {
+			render(<DisplayTab theme={mockTheme} />);
+
+			fireEvent.click(screen.getByRole('switch', { name: 'Bionify reading mode' }));
+
+			expect(mockSetBionifyReadingMode).toHaveBeenCalledWith(true);
+		});
+
+		it('un-ghosts sub-options when enabled', () => {
+			mockUseSettingsOverrides = { bionifyReadingMode: true };
+			render(<DisplayTab theme={mockTheme} />);
+
 			expect(screen.getByLabelText('Bionify algorithm')).toHaveValue('- 0 1 1 2 0.4');
 			expect(screen.getByRole('button', { name: 'Info' })).toBeInTheDocument();
+			const panel = screen.getByText('Intensity').closest('.space-y-4') as HTMLElement;
+			expect(panel.style.opacity).toBe('1');
+			expect(panel.style.pointerEvents).toBe('auto');
 		});
 
 		it('updates Bionify intensity when a new value is chosen', async () => {
+			mockUseSettingsOverrides = { bionifyReadingMode: true };
 			render(<DisplayTab theme={mockTheme} />);
 
 			fireEvent.click(screen.getByRole('button', { name: 'Strong' }));
@@ -208,6 +233,7 @@ describe('DisplayTab', () => {
 		});
 
 		it('updates the algorithm string when edited', () => {
+			mockUseSettingsOverrides = { bionifyReadingMode: true };
 			render(<DisplayTab theme={mockTheme} />);
 
 			const input = screen.getByLabelText('Bionify algorithm');
@@ -218,6 +244,7 @@ describe('DisplayTab', () => {
 		});
 
 		it('shows validation feedback and avoids persisting invalid algorithm input', () => {
+			mockUseSettingsOverrides = { bionifyReadingMode: true };
 			render(<DisplayTab theme={mockTheme} />);
 
 			const input = screen.getByLabelText('Bionify algorithm');
@@ -229,6 +256,7 @@ describe('DisplayTab', () => {
 		});
 
 		it('opens an info modal with the upstream algorithm breakdown', () => {
+			mockUseSettingsOverrides = { bionifyReadingMode: true };
 			render(<DisplayTab theme={mockTheme} />);
 
 			fireEvent.click(screen.getByRole('button', { name: 'Info' }));

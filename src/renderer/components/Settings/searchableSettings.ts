@@ -234,6 +234,24 @@ export const DISPLAY_SETTINGS: SearchableSetting[] = [
 		keywords: ['alignment', 'left', 'right', 'message', 'chat', 'position'],
 	},
 	{
+		id: 'display-bionify-reading-mode',
+		tab: 'display',
+		tabLabel: 'Display',
+		label: 'Reading Mode (Bionify)',
+		description:
+			'Apply Bionify-style emphasis to long-form readers like File Preview and Auto Run. Includes intensity and algorithm controls.',
+		keywords: [
+			'bionify',
+			'bionic',
+			'reading',
+			'emphasis',
+			'bold',
+			'fixation',
+			'intensity',
+			'algorithm',
+		],
+	},
+	{
 		id: 'display-icon-theme',
 		tab: 'display',
 		tabLabel: 'Display',

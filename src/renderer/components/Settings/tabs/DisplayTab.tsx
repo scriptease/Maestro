@@ -219,93 +219,141 @@ export function DisplayTab({ theme }: DisplayTabProps) {
 				</p>
 			</div>
 
-			<div>
+			<div data-setting-id="display-bionify-reading-mode">
 				<div className="block text-xs font-bold opacity-70 uppercase mb-2">Reading Mode</div>
-				<ToggleButtonGroup
-					options={[
-						{ value: 'off', label: 'Off' },
-						{ value: 'on', label: 'Bionify' },
-					]}
-					value={bionifyReadingMode ? 'on' : 'off'}
-					onChange={(value) => setBionifyReadingMode(value === 'on')}
-					theme={theme}
-				/>
-				<p className="text-xs opacity-50 mt-2">
-					Applies Bionify-style emphasis only to opted-in long-form readers like File Preview and
-					Auto Run. Terminals, logs, and chat input stay unchanged.
-				</p>
-			</div>
-
-			<div>
 				<div
-					className="block text-xs font-bold opacity-70 uppercase mb-2 flex items-center gap-2"
-					style={{ color: theme.colors.textDim }}
+					className="p-3 rounded border space-y-3"
+					style={{ borderColor: theme.colors.border, backgroundColor: theme.colors.bgMain }}
 				>
-					<span>Intensity</span>
-					<button
-						type="button"
-						onClick={() => setShowBionifyInfoModal(true)}
-						className="inline-flex items-center justify-center rounded transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
-						style={{ width: '20px', height: '20px', color: theme.colors.textDim }}
-						aria-label="Info"
-						title="Bionify algorithm info"
+					<div
+						className="flex items-center justify-between cursor-pointer"
+						onClick={() => setBionifyReadingMode(!bionifyReadingMode)}
+						role="button"
+						tabIndex={0}
+						onKeyDown={(e) => {
+							if (e.key === 'Enter' || e.key === ' ') {
+								e.preventDefault();
+								setBionifyReadingMode(!bionifyReadingMode);
+							}
+						}}
 					>
-						<HelpCircle className="w-3.5 h-3.5" />
-					</button>
-				</div>
-				<ToggleButtonGroup
-					options={[
-						{ value: 0.85, label: 'Soft' },
-						{ value: 1, label: 'Default' },
-						{ value: 1.35, label: 'Strong' },
-					]}
-					value={bionifyIntensity}
-					onChange={setBionifyIntensity}
-					theme={theme}
-				/>
-				<p className="text-xs opacity-50 mt-2">
-					Controls how hard the emphasis hits. Strong increases emphasis weight and fades the
-					remaining characters more aggressively.
-				</p>
-			</div>
+						<div className="flex-1 pr-3">
+							<div
+								className="font-medium flex items-center gap-2"
+								style={{ color: theme.colors.textMain }}
+							>
+								<span>Bionify Emphasis</span>
+								<button
+									type="button"
+									onClick={(e) => {
+										e.stopPropagation();
+										setShowBionifyInfoModal(true);
+									}}
+									className="inline-flex items-center justify-center rounded transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+									style={{ width: '20px', height: '20px', color: theme.colors.textDim }}
+									aria-label="Info"
+									title="Bionify algorithm info"
+								>
+									<HelpCircle className="w-3.5 h-3.5" />
+								</button>
+							</div>
+							<div className="text-xs opacity-50 mt-0.5" style={{ color: theme.colors.textDim }}>
+								Applies Bionify-style emphasis only to opted-in long-form readers like File Preview
+								and Auto Run. Terminals, logs, and chat input stay unchanged.
+							</div>
+						</div>
+						<button
+							onClick={(e) => {
+								e.stopPropagation();
+								setBionifyReadingMode(!bionifyReadingMode);
+							}}
+							className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0"
+							style={{
+								backgroundColor: bionifyReadingMode ? theme.colors.accent : theme.colors.bgActivity,
+							}}
+							role="switch"
+							aria-checked={bionifyReadingMode}
+							aria-label="Bionify reading mode"
+						>
+							<span
+								className={`absolute left-0 top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+									bionifyReadingMode ? 'translate-x-5' : 'translate-x-0.5'
+								}`}
+							/>
+						</button>
+					</div>
 
-			<div>
-				<label
-					htmlFor="bionify-algorithm-input"
-					className="block text-xs font-bold opacity-70 uppercase mb-2"
-				>
-					Bionify Algorithm
-				</label>
-				<input
-					id="bionify-algorithm-input"
-					aria-label="Bionify algorithm"
-					type="text"
-					value={bionifyAlgorithmDraft}
-					onChange={(event) => setBionifyAlgorithmDraft(event.target.value)}
-					onBlur={commitBionifyAlgorithmDraft}
-					onKeyDown={(event) => {
-						if (event.key === 'Enter') {
-							event.currentTarget.blur();
-						}
-					}}
-					className="w-full px-3 py-2 rounded text-sm outline-none focus-visible:ring-1 focus-visible:ring-white/30"
-					style={{
-						backgroundColor: theme.colors.bgMain,
-						color: theme.colors.textMain,
-						border: `1px solid ${isBionifyAlgorithmValid ? theme.colors.border : theme.colors.warning}`,
-					}}
-					placeholder="- 0 1 1 2 0.4"
-					spellCheck={false}
-				/>
-				<p className="text-xs opacity-50 mt-2">
-					Format: sign, four fixed word-length rules, then a fallback fraction. Example: `- 0 1 1 2
-					0.4`
-				</p>
-				{!isBionifyAlgorithmValid && (
-					<p className="text-xs mt-2" style={{ color: theme.colors.warning }}>
-						Enter `+|- len1 len2 len3 len4 fraction`, for example `- 0 1 1 2 0.4`.
-					</p>
-				)}
+					<div
+						className="space-y-4 pt-3 border-t"
+						style={{
+							borderColor: theme.colors.border,
+							opacity: bionifyReadingMode ? 1 : 0.4,
+							pointerEvents: bionifyReadingMode ? 'auto' : 'none',
+						}}
+					>
+						<div>
+							<div
+								className="block text-xs font-bold opacity-70 uppercase mb-2"
+								style={{ color: theme.colors.textDim }}
+							>
+								Intensity
+							</div>
+							<ToggleButtonGroup
+								options={[
+									{ value: 0.85, label: 'Soft' },
+									{ value: 1, label: 'Default' },
+									{ value: 1.35, label: 'Strong' },
+								]}
+								value={bionifyIntensity}
+								onChange={setBionifyIntensity}
+								theme={theme}
+							/>
+							<p className="text-xs opacity-50 mt-2">
+								Controls how hard the emphasis hits. Strong increases emphasis weight and fades the
+								remaining characters more aggressively.
+							</p>
+						</div>
+
+						<div>
+							<label
+								htmlFor="bionify-algorithm-input"
+								className="block text-xs font-bold opacity-70 uppercase mb-2"
+							>
+								Bionify Algorithm
+							</label>
+							<input
+								id="bionify-algorithm-input"
+								aria-label="Bionify algorithm"
+								type="text"
+								value={bionifyAlgorithmDraft}
+								onChange={(event) => setBionifyAlgorithmDraft(event.target.value)}
+								onBlur={commitBionifyAlgorithmDraft}
+								onKeyDown={(event) => {
+									if (event.key === 'Enter') {
+										event.currentTarget.blur();
+									}
+								}}
+								className="w-full px-3 py-2 rounded text-sm outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+								style={{
+									backgroundColor: theme.colors.bgMain,
+									color: theme.colors.textMain,
+									border: `1px solid ${isBionifyAlgorithmValid ? theme.colors.border : theme.colors.warning}`,
+								}}
+								placeholder="- 0 1 1 2 0.4"
+								spellCheck={false}
+							/>
+							<p className="text-xs opacity-50 mt-2">
+								Format: sign, four fixed word-length rules, then a fallback fraction. Example: `- 0
+								1 1 2 0.4`
+							</p>
+							{!isBionifyAlgorithmValid && (
+								<p className="text-xs mt-2" style={{ color: theme.colors.warning }}>
+									Enter `+|- len1 len2 len3 len4 fraction`, for example `- 0 1 1 2 0.4`.
+								</p>
+							)}
+						</div>
+					</div>
+				</div>
 			</div>
 
 			<div data-setting-id="display-icon-theme">
