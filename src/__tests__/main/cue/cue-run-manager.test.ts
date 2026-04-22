@@ -1457,5 +1457,27 @@ describe('createCueRunManager', () => {
 			// No throw, normal continuation.
 			expect(() => manager.execute('session-1', 'p3', createEvent(), 'sub-3')).not.toThrow();
 		});
+
+		it('drops the incoming event (not queue[0]) when queue_size is 0', () => {
+			const onQueueOverflow = vi.fn();
+			const deps = createDeps({
+				onCueRun: vi.fn(() => new Promise(() => {})),
+				getSessionSettings: vi.fn(() => ({
+					...defaultSettings,
+					max_concurrent: 1,
+					queue_size: 0,
+				})),
+				onQueueOverflow,
+			});
+			const manager = createCueRunManager(deps);
+			manager.execute('session-1', 'p1', createEvent(), 'sub-active'); // dispatched
+			// Second call would crash pre-guard because queue[0] is undefined.
+			expect(() => manager.execute('session-1', 'p2', createEvent(), 'sub-incoming')).not.toThrow();
+			// Overflow fires for the INCOMING subscription, not a non-existent oldest.
+			expect(onQueueOverflow).toHaveBeenCalledWith(
+				expect.objectContaining({ subscriptionName: 'sub-incoming' })
+			);
+			expect(manager.getQueueStatus().size).toBe(0);
+		});
 	});
 });

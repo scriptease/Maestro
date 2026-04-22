@@ -565,6 +565,25 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 			if (currentCount >= maxConcurrent) {
 				// At concurrency limit — queue the event
 				const sessionName = getSessionName(sessionId);
+
+				// Guard: queue_size <= 0 means "no buffering allowed". Without
+				// this, the overflow branch below dereferences queue[0] on an
+				// empty queue and crashes. Treat the incoming event itself as
+				// dropped (not the non-existent oldest) and return early.
+				if (queueSize <= 0) {
+					deps.onQueueOverflow?.({
+						sessionId,
+						sessionName,
+						subscriptionName,
+						queuedAt: queuedAtOverride ?? Date.now(),
+					});
+					deps.onLog(
+						'cue',
+						`[CUE] Queue disabled for "${sessionName}" (queue_size=${queueSize}), dropping incoming event`
+					);
+					return;
+				}
+
 				if (!eventQueue.has(sessionId)) {
 					eventQueue.set(sessionId, []);
 				}

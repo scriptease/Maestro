@@ -153,11 +153,15 @@ describe('cue-queue-persistence', () => {
 			const restored = p.restoreAll();
 			expect(restored.size).toBe(1);
 			expect(restored.has('s-ghost')).toBe(false);
-			// Warn was logged with queueDropped payload
+			// Warn was logged with queueDropped payload (no sessionId for aggregate)
 			const dropped = onLog.mock.calls.find(
 				(c) => c[2] && (c[2] as { type?: string }).type === 'queueDropped'
 			);
 			expect(dropped?.[2]).toMatchObject({ reason: 'session-missing' });
+			expect((dropped?.[2] as { sessionId?: unknown }).sessionId).toBeUndefined();
+			// Missing-session drops ALSO get recorded in cue_events for audit.
+			const events = getSharedDb().getRecentCueEvents(0);
+			expect(events.some((e) => e.id === 'ghost' && e.status === 'missing-session')).toBe(true);
 		});
 
 		it('drops stale rows whose age exceeds session timeout, records timeout event', () => {
@@ -193,11 +197,18 @@ describe('cue-queue-persistence', () => {
 			});
 			const restored = p.restoreAll();
 			expect(restored.size).toBe(0);
-			expect(getSharedDb().getQueuedEvents()).toHaveLength(0); // row removed
+			// Live queue row removed; cue_events audit row recorded.
+			expect(
+				getSharedDb()
+					.getQueuedEvents()
+					.filter((r) => r.id === 'bad')
+			).toHaveLength(0);
 			const dropped = onLog.mock.calls.find(
 				(c) => c[2] && (c[2] as { type?: string }).type === 'queueDropped'
 			);
 			expect(dropped?.[2]).toMatchObject({ reason: 'malformed' });
+			const events = getSharedDb().getRecentCueEvents(0);
+			expect(events.some((e) => e.id === 'bad' && e.status === 'malformed')).toBe(true);
 		});
 
 		it('emits queueRestored per session with correct count', () => {

@@ -72,7 +72,7 @@ export function createCueApi() {
 		// Get queue status per session
 		getQueueStatus: (): Promise<Record<string, number>> => ipcRenderer.invoke('cue:getQueueStatus'),
 
-		// Get engine metrics snapshot (runsStarted, queuePersisted, etc.)
+		// Get engine metrics snapshot (runsStarted, eventsDropped, etc.)
 		getMetrics: (): Promise<CueMetrics | null> => ipcRenderer.invoke('cue:getMetrics'),
 
 		// Get stalled fan-in subscriptions (> 50% timeout). Empty = healthy.

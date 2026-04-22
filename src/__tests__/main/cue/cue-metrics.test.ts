@@ -23,9 +23,7 @@ describe('cue-metrics', () => {
 			expect(snap.runsFailed).toBe(0);
 			expect(snap.runsTimedOut).toBe(0);
 			expect(snap.runsStopped).toBe(0);
-			expect(snap.eventsQueued).toBe(0);
 			expect(snap.eventsDropped).toBe(0);
-			expect(snap.queuePersisted).toBe(0);
 			expect(snap.queueRestored).toBe(0);
 			expect(snap.fanInTimeouts).toBe(0);
 			expect(snap.fanInCompletions).toBe(0);
@@ -56,8 +54,8 @@ describe('cue-metrics', () => {
 		});
 
 		it('bumps the targeted key by an explicit amount', () => {
-			metrics.increment('eventsQueued', 5);
-			expect(metrics.snapshot().eventsQueued).toBe(5);
+			metrics.increment('eventsDropped', 5);
+			expect(metrics.snapshot().eventsDropped).toBe(5);
 		});
 
 		it('accumulates across multiple calls', () => {
@@ -87,11 +85,11 @@ describe('cue-metrics', () => {
 	describe('reset', () => {
 		it('returns all counters to zero', () => {
 			metrics.increment('runsStarted', 10);
-			metrics.increment('eventsQueued', 5);
+			metrics.increment('eventsDropped', 5);
 			metrics.reset();
 			const snap = metrics.snapshot();
 			expect(snap.runsStarted).toBe(0);
-			expect(snap.eventsQueued).toBe(0);
+			expect(snap.eventsDropped).toBe(0);
 		});
 
 		it('updates startedAt to the reset time', () => {

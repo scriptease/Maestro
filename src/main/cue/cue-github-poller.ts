@@ -322,7 +322,11 @@ export function createCueGitHubPoller(config: CueGitHubPollerConfig): () => void
 					payload
 				);
 			} else {
-				onLog('error', `[CUE] GitHub poll error for "${triggerName}": ${message}`);
+				// Emit typed payload so the metric interceptor bumps the
+				// githubPollErrors counter; the engine narrows on `type` rather
+				// than log level.
+				const payload: CueLogPayload = { type: 'githubPollError', triggerName };
+				onLog('error', `[CUE] GitHub poll error for "${triggerName}": ${message}`, payload);
 				void captureException(err, { operation: 'cue:github:doPoll', triggerName });
 			}
 

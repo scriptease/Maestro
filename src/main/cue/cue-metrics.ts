@@ -14,9 +14,7 @@ export interface CueMetrics {
 	runsFailed: number;
 	runsTimedOut: number;
 	runsStopped: number;
-	eventsQueued: number;
 	eventsDropped: number;
-	queuePersisted: number;
 	queueRestored: number;
 	fanInTimeouts: number;
 	fanInCompletions: number;
@@ -45,9 +43,7 @@ function zero(): CueMetrics {
 		runsFailed: 0,
 		runsTimedOut: 0,
 		runsStopped: 0,
-		eventsQueued: 0,
 		eventsDropped: 0,
-		queuePersisted: 0,
 		queueRestored: 0,
 		fanInTimeouts: 0,
 		fanInCompletions: 0,

@@ -175,7 +175,7 @@ export function registerCueHandlers(deps: CueHandlerDependencies): void {
 		)
 	);
 
-	// Get engine metrics snapshot (runsStarted, queuePersisted, etc.)
+	// Get engine metrics snapshot (runsStarted, eventsDropped, etc.)
 	ipcMain.handle(
 		'cue:getMetrics',
 		withIpcErrorLogging(handlerOpts('getMetrics'), async () => {

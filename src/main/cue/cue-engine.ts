@@ -332,7 +332,15 @@ export class CueEngine {
 			},
 			onLog: meteredOnLog,
 		});
-		this.heartbeat = createCueHeartbeat(() => this.cleanupService.onTick());
+		this.heartbeat = createCueHeartbeat({
+			onTick: () => this.cleanupService.onTick(),
+			// Route heartbeat-failure notifications through the metered log
+			// channel so the engine's recordMetricFromPayload bumps the
+			// heartbeatFailures counter exactly once per failure run.
+			onFailure: (payload) => {
+				this.meteredOnLog('warn', '[CUE] Heartbeat write failing', payload);
+			},
+		});
 		this.recoveryService = createCueRecoveryService({
 			onLog: meteredOnLog,
 			getSessions: () => {
@@ -615,6 +623,12 @@ export class CueEngine {
 				break;
 			case 'rateLimitBackoff':
 				this.metrics.increment('rateLimitBackoffs');
+				break;
+			case 'githubPollError':
+				this.metrics.increment('githubPollErrors');
+				break;
+			case 'heartbeatFailure':
+				this.metrics.increment('heartbeatFailures');
 				break;
 			case 'configReloaded':
 				this.metrics.increment('configReloads');

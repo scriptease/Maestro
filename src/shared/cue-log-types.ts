@@ -46,7 +46,8 @@ export type CueLogPayload =
 	| { type: 'queueRestored'; sessionId: string; count: number }
 	| {
 			type: 'queueDropped';
-			sessionId: string;
+			/** Omitted for aggregate restore-path drops that span multiple sessions. */
+			sessionId?: string;
 			count: number;
 			reason: 'stale' | 'malformed' | 'session-missing';
 	  }
@@ -63,6 +64,8 @@ export type CueLogPayload =
 			sourceCount: number;
 	  }
 	| { type: 'rateLimitBackoff'; triggerName: string; backoffMs: number }
+	| { type: 'githubPollError'; triggerName: string }
+	| { type: 'heartbeatFailure'; consecutiveFailures: number }
 	| { type: 'zombieProcess'; pid: number; runId: string }
 	| {
 			type: 'pathTraversalBlocked';

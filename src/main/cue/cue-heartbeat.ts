@@ -9,6 +9,7 @@
 
 import { updateHeartbeat } from './cue-db';
 import { captureException } from '../utils/sentry';
+import type { CueLogPayload } from '../../shared/cue-log-types';
 
 export const HEARTBEAT_INTERVAL_MS = 30_000; // 30 seconds
 
@@ -27,7 +28,21 @@ export interface CueHeartbeat {
 	stop(): void;
 }
 
-export function createCueHeartbeat(onTick?: () => void): CueHeartbeat {
+/**
+ * Optional hooks for heartbeat events. `onFailure` fires at the threshold
+ * (same trigger point as the existing Sentry call) so the engine's metric
+ * interceptor can bump `heartbeatFailures` without the heartbeat module
+ * taking a direct dependency on the metrics collector.
+ */
+export interface CueHeartbeatHooks {
+	onTick?: () => void;
+	onFailure?: (payload: CueLogPayload & { type: 'heartbeatFailure' }) => void;
+}
+
+export function createCueHeartbeat(hooksOrOnTick?: CueHeartbeatHooks | (() => void)): CueHeartbeat {
+	// Back-compat: early wiring passed a bare onTick callback. Accept either.
+	const hooks: CueHeartbeatHooks =
+		typeof hooksOrOnTick === 'function' ? { onTick: hooksOrOnTick } : (hooksOrOnTick ?? {});
 	let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 	let consecutiveFailures = 0;
 
@@ -45,6 +60,7 @@ export function createCueHeartbeat(onTick?: () => void): CueHeartbeat {
 					operation: 'cue:heartbeat',
 					consecutiveFailures,
 				});
+				hooks.onFailure?.({ type: 'heartbeatFailure', consecutiveFailures });
 			}
 		}
 	}
@@ -54,7 +70,7 @@ export function createCueHeartbeat(onTick?: () => void): CueHeartbeat {
 		attempt();
 		heartbeatInterval = setInterval(() => {
 			attempt();
-			onTick?.();
+			hooks.onTick?.();
 		}, HEARTBEAT_INTERVAL_MS);
 	}
 
