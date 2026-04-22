@@ -25,12 +25,23 @@ export interface UseCueReturn {
 
 const POLL_INTERVAL_MS = 10_000;
 
+export interface UseCueOptions {
+	/** Override the default 10s polling interval (e.g. 30s on the pipeline tab). */
+	pollIntervalMs?: number;
+}
+
 /**
  * Hook that manages Cue state for the renderer.
  * Fetches status, active runs, and activity log from the Cue IPC API.
  * Auto-refreshes on mount, listens for activity updates, and polls periodically.
+ *
+ * Polling is gated on `document.visibilityState === 'visible'` — hidden tabs
+ * skip their polls so a minimized app (or a tab behind another window) doesn't
+ * burn IPC/DB cycles on state nobody is watching. The activity-update listener
+ * stays active regardless, because it only fires when runs actually change.
  */
-export function useCue(): UseCueReturn {
+export function useCue(options?: UseCueOptions): UseCueReturn {
+	const pollIntervalMs = options?.pollIntervalMs ?? POLL_INTERVAL_MS;
 	const [sessions, setSessions] = useState<CueSessionStatus[]>([]);
 	const [activeRuns, setActiveRuns] = useState<CueRunResult[]>([]);
 	const [activityLog, setActivityLog] = useState<CueRunResult[]>([]);
@@ -121,20 +132,47 @@ export function useCue(): UseCueReturn {
 		mountedRef.current = true;
 		refresh();
 
-		// Subscribe to real-time activity updates
-		const unsubscribe = cueService.onActivityUpdate(() => {
+		// Subscribe to real-time activity updates. Payload may be a full
+		// CueRunResult (legacy shape, dispatched for run lifecycle events) OR a
+		// structured CueLogPayload the main process emits for non-run signals
+		// (12B queueOverflow, 12C rateLimitBackoff, etc.). We narrow by the
+		// `type` discriminator and surface user-facing ones as toasts.
+		const unsubscribe = cueService.onActivityUpdate((payload: unknown) => {
+			if (payload && typeof payload === 'object' && 'type' in payload) {
+				const tag = (payload as { type: string }).type;
+				if (tag === 'queueOverflow') {
+					const p = payload as unknown as {
+						sessionName: string;
+						subscriptionName: string;
+					};
+					// Intentionally unique title each time (timestamp suffix) so
+					// consecutive drops produce distinct toasts rather than
+					// collapsing into one — the user needs to see every drop.
+					notifyToast({
+						type: 'warning',
+						title: `Cue queue overflow: ${p.sessionName}`,
+						message: `Oldest queued "${p.subscriptionName}" event was dropped — raise queue_size or max_concurrent to avoid loss.`,
+					});
+				}
+			}
 			refresh();
 		});
 
-		// Periodic polling for status updates (timer counts, next trigger estimates)
-		const intervalId = setInterval(refresh, POLL_INTERVAL_MS);
+		// Periodic polling for status updates (timer counts, next trigger estimates).
+		// Skip the tick entirely if the window/tab is hidden — minimized or
+		// background renderers produce no user-visible benefit from the poll
+		// and running it just generates churn on the main-process IPC handlers.
+		const intervalId = setInterval(() => {
+			if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+			refresh();
+		}, pollIntervalMs);
 
 		return () => {
 			mountedRef.current = false;
 			unsubscribe();
 			clearInterval(intervalId);
 		};
-	}, [refresh]);
+	}, [refresh, pollIntervalMs]);
 
 	return {
 		sessions,

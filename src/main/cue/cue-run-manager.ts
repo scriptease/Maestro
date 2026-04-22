@@ -12,8 +12,10 @@
 
 import * as crypto from 'crypto';
 import type { MainLogLevel } from '../../shared/logger-types';
+import type { CueLogPayload } from '../../shared/cue-log-types';
 import type { CueCommand, CueEvent, CueRunResult, CueSettings, CueSubscription } from './cue-types';
 import { updateCueEventStatus, safeRecordCueEvent, safeUpdateCueEventStatus } from './cue-db';
+import type { CueQueuePersistence } from './cue-queue-persistence';
 import { SOURCE_OUTPUT_MAX_CHARS } from './cue-fan-in-tracker';
 import { sliceHeadByChars } from './cue-text-utils';
 import { captureException } from '../utils/sentry';
@@ -45,6 +47,8 @@ export interface QueuedEvent {
 	cliOutput?: { target: string };
 	action?: CueSubscription['action'];
 	command?: CueCommand;
+	/** Phase 12A — DB row id for the persisted copy, when persistence is enabled. */
+	persistId?: string;
 }
 
 export interface CueRunManagerDeps {
@@ -75,6 +79,25 @@ export interface CueRunManagerDeps {
 	onPreventSleep?: (reason: string) => void;
 	/** Called to allow system sleep (e.g., when a Cue run ends) */
 	onAllowSleep?: (reason: string) => void;
+	/**
+	 * Phase 12B — called when an event is dropped from the queue due to
+	 * overflow (queue already at `queue_size`). The caller is expected to
+	 * surface this to the user (toast, log banner) so the drop is visible.
+	 */
+	onQueueOverflow?: (payload: {
+		sessionId: string;
+		sessionName: string;
+		subscriptionName: string;
+		queuedAt: number;
+	}) => void;
+	/**
+	 * Phase 12A — optional queue persistence façade. When provided, every
+	 * enqueue writes a row to disk and every drain/drop/clear removes it,
+	 * allowing the queue to survive engine shutdown or a hard app crash. Omit
+	 * to run entirely in-memory (preserves back-compat for tests and for the
+	 * main process if persistence ever needs to be disabled).
+	 */
+	queuePersistence?: CueQueuePersistence;
 }
 
 export interface CueRunManager {
@@ -140,6 +163,9 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 			// Check for stale events
 			if (ageMs > timeoutMs) {
 				const ageMinutes = Math.round(ageMs / 60000);
+				// Remove the persisted copy — this runtime drain path is the
+				// second half of the stale-drop handling (restore has its own).
+				if (entry.persistId) deps.queuePersistence?.remove(entry.persistId);
 				// Record the dropped event to the activity log so users can see
 				// *why* their queued run never fired — previously these events
 				// disappeared with only a log line, making it look like a bug.
@@ -169,12 +195,15 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 						sessionId,
 						subscriptionName: entry.subscriptionName,
 						status: 'timeout',
-					}
+					} satisfies CueLogPayload
 				);
 				continue;
 			}
 
-			// Dispatch the queued event
+			// Dispatch the queued event. Remove persisted row first — the
+			// dispatch promise may outlive another drain/reset cycle and we
+			// must not leave a ghost row referencing an in-flight run.
+			if (entry.persistId) deps.queuePersistence?.remove(entry.persistId);
 			activeRunCount.set(sessionId, currentCount + 1);
 			doExecuteCueRun(
 				sessionId,
@@ -243,7 +272,7 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 			runId,
 			sessionId,
 			subscriptionName,
-		});
+		} satisfies CueLogPayload);
 
 		try {
 			const runResult = await deps.onCueRun({
@@ -275,7 +304,7 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 						sessionId,
 						subscriptionName,
 						status: runResult.status,
-					}
+					} satisfies CueLogPayload
 				);
 				return;
 			}
@@ -378,7 +407,7 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 							sessionId,
 							subscriptionName,
 							status: result.status,
-						}
+						} satisfies CueLogPayload
 					);
 					return;
 				}
@@ -492,7 +521,7 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 					sessionId,
 					subscriptionName,
 					status: result.status,
-				});
+				} satisfies CueLogPayload);
 
 				// Notify engine of completion (for activity log + chain propagation)
 				deps.onRunCompleted(sessionId, result, subscriptionName, chainDepth);
@@ -526,23 +555,56 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 				const queue = eventQueue.get(sessionId)!;
 
 				if (queue.length >= queueSize) {
-					// Drop the oldest entry
+					// Drop the oldest entry. Surface this to the user via the
+					// onQueueOverflow callback (12B) — without it the drop is
+					// invisible except to someone scraping logs.
+					const dropped = queue[0];
+					deps.onQueueOverflow?.({
+						sessionId,
+						sessionName,
+						subscriptionName: dropped.subscriptionName,
+						queuedAt: dropped.queuedAt,
+					});
+					// Remove the persisted row before shifting from memory so
+					// persistence and in-memory stay in lockstep.
+					if (dropped.persistId) deps.queuePersistence?.remove(dropped.persistId);
 					queue.shift();
 					deps.onLog('cue', `[CUE] Queue full for "${sessionName}", dropping oldest event`);
 				}
 
-				queue.push({
+				const persistId = deps.queuePersistence ? crypto.randomUUID() : undefined;
+				const queuedAt = Date.now();
+				const queuedEntry: QueuedEvent = {
 					event,
 					subscription: { name: subscriptionName, event: event.type, enabled: true, prompt },
 					prompt,
 					outputPrompt,
 					subscriptionName,
-					queuedAt: Date.now(),
+					queuedAt,
 					chainDepth,
 					cliOutput,
 					action,
 					command,
-				});
+					persistId,
+				};
+				queue.push(queuedEntry);
+
+				// Persist AFTER the in-memory push so the row appears only for
+				// entries that actually made it into the live queue. Safe
+				// wrappers mean a persist failure cannot break the live queue.
+				if (deps.queuePersistence && persistId) {
+					deps.queuePersistence.persist(sessionId, persistId, {
+						event,
+						subscriptionName,
+						prompt,
+						outputPrompt,
+						cliOutput,
+						action,
+						command,
+						chainDepth,
+						queuedAt,
+					});
+				}
 
 				deps.onLog(
 					'cue',
@@ -609,7 +671,7 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 				runId,
 				sessionId: run.result.sessionId,
 				subscriptionName: run.result.subscriptionName,
-			});
+			} satisfies CueLogPayload);
 			return true;
 		},
 
@@ -623,6 +685,7 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 			// events — the contract callers (engine shutdown / Cue toggle
 			// off) actually need.
 			eventQueue.clear();
+			deps.queuePersistence?.clearAll();
 			for (const runId of [...activeRuns.keys()]) {
 				this.stopRun(runId);
 			}
@@ -652,12 +715,26 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 
 		clearQueue(sessionId: string, preserveStartup = false): void {
 			if (!preserveStartup) {
+				// Mirror the in-memory clear on disk so persisted rows don't
+				// outlive the live queue they represent.
+				const queue = eventQueue.get(sessionId);
+				if (queue) {
+					for (const entry of queue) {
+						if (entry.persistId) deps.queuePersistence?.remove(entry.persistId);
+					}
+				}
 				eventQueue.delete(sessionId);
 				return;
 			}
 			const queue = eventQueue.get(sessionId);
 			if (!queue) return;
 			const kept = queue.filter((e) => e.event.type === 'app.startup');
+			// Remove persisted rows for entries we are dropping (non-startup).
+			for (const entry of queue) {
+				if (entry.event.type !== 'app.startup' && entry.persistId) {
+					deps.queuePersistence?.remove(entry.persistId);
+				}
+			}
 			if (kept.length === 0) {
 				eventQueue.delete(sessionId);
 			} else {
@@ -672,6 +749,9 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 			activeRuns.clear();
 			activeRunCount.clear();
 			eventQueue.clear();
+			// Reset tears down everything — persisted copies too. Any re-enqueue
+			// after reset() will generate fresh persist IDs.
+			deps.queuePersistence?.clearAll();
 		},
 	};
 }

@@ -16,6 +16,8 @@ import type {
 	CueSessionStatus,
 	CueSettings,
 } from '../../shared/cue';
+import type { CueMetrics } from '../cue/cue-metrics';
+import type { FanInHealthEntry } from '../cue/cue-fan-in-tracker';
 export type {
 	CueEvent,
 	CueEventType,
@@ -69,6 +71,12 @@ export function createCueApi() {
 
 		// Get queue status per session
 		getQueueStatus: (): Promise<Record<string, number>> => ipcRenderer.invoke('cue:getQueueStatus'),
+
+		// Get engine metrics snapshot (runsStarted, queuePersisted, etc.)
+		getMetrics: (): Promise<CueMetrics | null> => ipcRenderer.invoke('cue:getMetrics'),
+
+		// Get stalled fan-in subscriptions (> 50% timeout). Empty = healthy.
+		getFanInHealth: (): Promise<FanInHealthEntry[]> => ipcRenderer.invoke('cue:getFanInHealth'),
 
 		// Refresh a session's Cue configuration
 		refreshSession: (sessionId: string, projectRoot: string): Promise<void> =>

@@ -65,6 +65,22 @@ export const cueService = {
 		});
 	},
 
+	async getMetrics(): Promise<import('../../main/cue/cue-metrics').CueMetrics | null> {
+		return createIpcMethod({
+			call: () => window.maestro.cue.getMetrics(),
+			errorContext: 'Cue getMetrics',
+			defaultValue: null,
+		});
+	},
+
+	async getFanInHealth(): Promise<import('../../main/cue/cue-fan-in-tracker').FanInHealthEntry[]> {
+		return createIpcMethod({
+			call: () => window.maestro.cue.getFanInHealth(),
+			errorContext: 'Cue getFanInHealth',
+			defaultValue: [],
+		});
+	},
+
 	async readYaml(projectRoot: string): Promise<string | null> {
 		// rethrow (instead of swallow + null) so callers can distinguish two
 		// outcomes that the IPC handler models distinctly:

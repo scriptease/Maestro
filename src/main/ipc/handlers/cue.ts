@@ -175,6 +175,22 @@ export function registerCueHandlers(deps: CueHandlerDependencies): void {
 		)
 	);
 
+	// Get engine metrics snapshot (runsStarted, queuePersisted, etc.)
+	ipcMain.handle(
+		'cue:getMetrics',
+		withIpcErrorLogging(handlerOpts('getMetrics'), async () => {
+			return requireEngine().getMetrics();
+		})
+	);
+
+	// Get fan-in health — stalled trackers > 50% timeout (empty = healthy).
+	ipcMain.handle(
+		'cue:getFanInHealth',
+		withIpcErrorLogging(handlerOpts('getFanInHealth'), async () => {
+			return requireEngine().getFanInHealth();
+		})
+	);
+
 	// Refresh a session's Cue configuration
 	ipcMain.handle(
 		'cue:refreshSession',
