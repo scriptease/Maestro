@@ -226,6 +226,7 @@ export type ModalId =
 	// Debug & Dev
 	| 'debugWizard'
 	| 'debugPackage'
+	| 'debugApplicationStats'
 	| 'playground'
 	| 'logViewer'
 	| 'processMonitor'
@@ -595,6 +596,10 @@ export function getModalActions() {
 		setDebugPackageModalOpen: (open: boolean) =>
 			open ? openModal('debugPackage') : closeModal('debugPackage'),
 
+		// Debug Application Stats Modal
+		setDebugApplicationStatsOpen: (open: boolean) =>
+			open ? openModal('debugApplicationStats') : closeModal('debugApplicationStats'),
+
 		// Confirmation Modal
 		setConfirmModalOpen: (open: boolean) => (open ? openModal('confirm') : closeModal('confirm')),
 		setConfirmModalMessage: (message: string) => updateModalData('confirm', { message }),
@@ -859,6 +864,7 @@ export function useModalActions() {
 	const playgroundOpen = useModalStore(selectModalOpen('playground'));
 	const debugWizardModalOpen = useModalStore(selectModalOpen('debugWizard'));
 	const debugPackageModalOpen = useModalStore(selectModalOpen('debugPackage'));
+	const debugApplicationStatsOpen = useModalStore(selectModalOpen('debugApplicationStats'));
 	const confirmModalOpen = useModalStore(selectModalOpen('confirm'));
 	const confirmData = useModalStore(selectModalData('confirm'));
 	const quitConfirmModalOpen = useModalStore(selectModalOpen('quitConfirm'));
@@ -976,6 +982,9 @@ export function useModalActions() {
 
 		// Debug Package Modal
 		debugPackageModalOpen,
+
+		// Debug Application Stats Modal
+		debugApplicationStatsOpen,
 
 		// Confirmation Modal
 		confirmModalOpen,

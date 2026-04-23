@@ -9,6 +9,7 @@ import { notifyToast } from '../stores/notificationStore';
 import { safeClipboardWrite } from '../utils/clipboard';
 import { THEMES } from '../constants/themes';
 import { DebugPackageModal } from './DebugPackageModal';
+import { DebugApplicationStatsModal } from './DebugApplicationStatsModal';
 import { WindowsWarningModal } from './WindowsWarningModal';
 import { AppOverlays } from './AppOverlays';
 import { PlaygroundPanel } from './PlaygroundPanel';
@@ -225,6 +226,8 @@ function AppStandaloneModalsInner({
 		windowsWarningModalOpen,
 		setWindowsWarningModalOpen,
 		setDebugPackageModalOpen,
+		debugApplicationStatsOpen,
+		setDebugApplicationStatsOpen,
 		playgroundOpen,
 		setPlaygroundOpen,
 		debugWizardModalOpen,
@@ -309,6 +312,14 @@ function AppStandaloneModalsInner({
 				isOpen={debugWizardModalOpen}
 				onClose={() => setDebugWizardModalOpen(false)}
 			/>
+
+			{/* --- DEBUG: VIEW APPLICATION STATS --- */}
+			{debugApplicationStatsOpen && (
+				<DebugApplicationStatsModal
+					theme={theme}
+					onClose={() => setDebugApplicationStatsOpen(false)}
+				/>
+			)}
 
 			{/* --- MARKETPLACE MODAL (lazy-loaded) --- */}
 			{activeSession && activeSession.autoRunFolderPath && marketplaceModalOpen && (

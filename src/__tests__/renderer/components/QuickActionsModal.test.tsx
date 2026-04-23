@@ -893,6 +893,19 @@ describe('QuickActionsModal', () => {
 			expect(props.setQuickActionOpen).toHaveBeenCalledWith(false);
 		});
 
+		it('handles Debug: View Application Stats action', () => {
+			const setDebugApplicationStatsOpen = vi.fn();
+			const props = createDefaultProps({ setDebugApplicationStatsOpen });
+			render(<QuickActionsModal {...props} />);
+
+			const input = screen.getByPlaceholderText('Type a command or jump to agent...');
+			fireEvent.change(input, { target: { value: 'debug' } });
+			fireEvent.click(screen.getByText('Debug: View Application Stats'));
+
+			expect(setDebugApplicationStatsOpen).toHaveBeenCalledWith(true);
+			expect(props.setQuickActionOpen).toHaveBeenCalledWith(false);
+		});
+
 		it('shows Debug: Release Next Queued Item when queue has items', () => {
 			const onDebugReleaseQueuedItem = vi.fn();
 			const props = createDefaultProps({

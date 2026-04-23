@@ -83,6 +83,7 @@ interface QuickActionsModalProps {
 	wizardGoToStep?: (step: WizardStep) => void;
 	setDebugWizardModalOpen?: (open: boolean) => void;
 	setDebugPackageModalOpen?: (open: boolean) => void;
+	setDebugApplicationStatsOpen?: (open: boolean) => void;
 	startTour?: () => void;
 	setFuzzyFileSearchOpen?: (open: boolean) => void;
 	onEditAgent?: (session: Session) => void;
@@ -202,6 +203,7 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 		wizardGoToStep: _wizardGoToStep,
 		setDebugWizardModalOpen,
 		setDebugPackageModalOpen,
+		setDebugApplicationStatsOpen,
 		startTour,
 		setFuzzyFileSearchOpen,
 		onEditAgent,
@@ -1676,6 +1678,19 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 						subtext: 'Open the developer playground',
 						action: () => {
 							setPlaygroundOpen(true);
+							setQuickActionOpen(false);
+						},
+					},
+				]
+			: []),
+		...(setDebugApplicationStatsOpen
+			? [
+					{
+						id: 'debugApplicationStats',
+						label: 'Debug: View Application Stats',
+						subtext: 'Memory and data footprint per loaded agent',
+						action: () => {
+							setDebugApplicationStatsOpen(true);
 							setQuickActionOpen(false);
 						},
 					},

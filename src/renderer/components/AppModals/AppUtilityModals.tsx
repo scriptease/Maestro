@@ -101,6 +101,7 @@ export interface AppUtilityModalsProps {
 	wizardGoToStep: (step: WizardStep) => void;
 	setDebugWizardModalOpen?: (open: boolean) => void;
 	setDebugPackageModalOpen?: (open: boolean) => void;
+	setDebugApplicationStatsOpen?: (open: boolean) => void;
 	startTour: () => void;
 	setFuzzyFileSearchOpen: (open: boolean) => void;
 	onEditAgent: (session: Session) => void;
@@ -329,6 +330,7 @@ export const AppUtilityModals = memo(function AppUtilityModals({
 	wizardGoToStep,
 	setDebugWizardModalOpen,
 	setDebugPackageModalOpen,
+	setDebugApplicationStatsOpen,
 	startTour,
 	setFuzzyFileSearchOpen,
 	onEditAgent,
@@ -504,6 +506,7 @@ export const AppUtilityModals = memo(function AppUtilityModals({
 					wizardGoToStep={wizardGoToStep}
 					setDebugWizardModalOpen={setDebugWizardModalOpen}
 					setDebugPackageModalOpen={setDebugPackageModalOpen}
+					setDebugApplicationStatsOpen={setDebugApplicationStatsOpen}
 					startTour={startTour}
 					setFuzzyFileSearchOpen={setFuzzyFileSearchOpen}
 					onEditAgent={onEditAgent}
