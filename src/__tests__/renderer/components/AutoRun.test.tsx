@@ -3647,13 +3647,18 @@ describe('Document Selector Task Count Sync', () => {
 	});
 
 	it('does not write a stale zero entry while savedContent is empty', async () => {
-		const props = createDefaultProps({ selectedFile: 'my-doc', content: '' });
-		renderWithProvider(<AutoRun {...props} />);
+		vi.useFakeTimers();
+		try {
+			const props = createDefaultProps({ selectedFile: 'my-doc', content: '' });
+			renderWithProvider(<AutoRun {...props} />);
 
-		await act(async () => {
-			vi.advanceTimersByTime(100);
-		});
+			await act(async () => {
+				vi.advanceTimersByTime(100);
+			});
 
-		expect(useBatchStore.getState().documentTaskCounts.has('my-doc')).toBe(false);
+			expect(useBatchStore.getState().documentTaskCounts.has('my-doc')).toBe(false);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
