@@ -596,7 +596,7 @@ export function MaestroPromptsTab({
 	const renderEditorBody = useCallback(() => {
 		return isPreviewMode ? (
 			<textarea
-				className="prompt-textarea prompt-textarea-preview"
+				className="dual-pane-textarea dual-pane-textarea-preview"
 				value={previewContent}
 				readOnly
 				spellCheck={false}
@@ -610,7 +610,7 @@ export function MaestroPromptsTab({
 			<>
 				<textarea
 					ref={textareaRef}
-					className="prompt-textarea"
+					className="dual-pane-textarea"
 					value={editedContent}
 					onChange={autocomplete.handleChange}
 					onKeyDown={(e) => {

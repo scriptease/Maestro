@@ -1148,7 +1148,11 @@ describe('QuickActionsModal', () => {
 			const props = createDefaultProps({ initialMode: 'move-to-group' });
 			render(<QuickActionsModal {...props} />);
 
-			expect(screen.getByText('← Back to main menu')).toBeInTheDocument();
+			// When initialMode is 'move-to-group' the "Back to main menu" action is
+			// suppressed (the user never saw the main menu), so assert on group-mode
+			// specific entries instead.
+			expect(screen.getByText('📁 No Group (Root)')).toBeInTheDocument();
+			expect(screen.getByText('+ Create New Group')).toBeInTheDocument();
 		});
 	});
 

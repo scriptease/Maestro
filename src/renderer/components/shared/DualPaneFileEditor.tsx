@@ -15,7 +15,7 @@
  * this component owns the chrome and common styling.
  */
 
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ExternalLink, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Theme } from '../../constants/themes';
 import { getOpenInLabel } from '../../utils/platformUtils';
@@ -110,6 +110,25 @@ export interface DualPaneFileEditorProps {
 
 	/** Message when no item is selected. */
 	emptyStateMessage?: string;
+
+	/**
+	 * Optional localStorage key for persisting the list pane width across reloads.
+	 * When omitted, the width resets to the default on every mount.
+	 */
+	listWidthStorageKey?: string;
+}
+
+const DEFAULT_LIST_WIDTH = 220;
+const MIN_LIST_WIDTH = 120;
+const MAX_LIST_WIDTH = 600;
+
+function readStoredWidth(key: string | undefined): number {
+	if (!key || typeof window === 'undefined') return DEFAULT_LIST_WIDTH;
+	const raw = window.localStorage.getItem(key);
+	if (!raw) return DEFAULT_LIST_WIDTH;
+	const parsed = Number.parseInt(raw, 10);
+	if (!Number.isFinite(parsed)) return DEFAULT_LIST_WIDTH;
+	return Math.min(MAX_LIST_WIDTH, Math.max(MIN_LIST_WIDTH, parsed));
 }
 
 export function DualPaneFileEditor({
@@ -137,8 +156,38 @@ export function DualPaneFileEditor({
 	showHelp,
 	isExpanded,
 	emptyStateMessage = 'Select a file to edit',
+	listWidthStorageKey,
 }: DualPaneFileEditorProps): JSX.Element {
 	const selectedItem = items.find((i) => i.id === selectedId) ?? null;
+
+	const splitViewRef = useRef<HTMLDivElement | null>(null);
+	const [listWidth, setListWidth] = useState<number>(() => readStoredWidth(listWidthStorageKey));
+	const [isResizing, setIsResizing] = useState(false);
+
+	// Persist width whenever it settles.
+	useEffect(() => {
+		if (!listWidthStorageKey || typeof window === 'undefined' || isResizing) return;
+		window.localStorage.setItem(listWidthStorageKey, String(listWidth));
+	}, [listWidth, listWidthStorageKey, isResizing]);
+
+	const handleResizeStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+		e.preventDefault();
+		setIsResizing(true);
+		const container = splitViewRef.current;
+		if (!container) return;
+		const onMove = (ev: MouseEvent) => {
+			const rect = container.getBoundingClientRect();
+			const next = Math.min(MAX_LIST_WIDTH, Math.max(MIN_LIST_WIDTH, ev.clientX - rect.left));
+			setListWidth(next);
+		};
+		const onUp = () => {
+			setIsResizing(false);
+			window.removeEventListener('mousemove', onMove);
+			window.removeEventListener('mouseup', onUp);
+		};
+		window.addEventListener('mousemove', onMove);
+		window.addEventListener('mouseup', onUp);
+	}, []);
 
 	// Scroll the selected item into view on first reveal (initial mount or
 	// when the list re-appears after being hidden by isExpanded/showHelp).
@@ -215,13 +264,22 @@ export function DualPaneFileEditor({
 		<div className="dual-pane-file-editor">
 			{header}
 
-			<div className="dual-pane-split-view" style={{ borderColor: theme.colors.border }}>
+			<div
+				ref={splitViewRef}
+				className="dual-pane-split-view"
+				style={{ borderColor: theme.colors.border }}
+			>
 				{/* Left: list */}
 				{!isExpanded && !showHelp && (
 					<div
 						ref={listRef}
 						className="dual-pane-list"
-						style={{ borderColor: theme.colors.border }}
+						style={{
+							borderColor: theme.colors.border,
+							width: `${listWidth}px`,
+							minWidth: `${MIN_LIST_WIDTH}px`,
+							maxWidth: `${MAX_LIST_WIDTH}px`,
+						}}
 					>
 						{onCreateNewItem && (
 							<button
@@ -260,6 +318,18 @@ export function DualPaneFileEditor({
 								})
 							: items.map((item) => renderListItem(item))}
 					</div>
+				)}
+
+				{/* Drag handle for resizing the list pane. Hidden in expanded/help views. */}
+				{!isExpanded && !showHelp && (
+					<div
+						className={`dual-pane-resizer${isResizing ? ' dragging' : ''}`}
+						onMouseDown={handleResizeStart}
+						role="separator"
+						aria-orientation="vertical"
+						aria-label="Resize list pane"
+						style={{ color: theme.colors.textDim }}
+					/>
 				)}
 
 				{/* Help panel (full-width overlay) */}

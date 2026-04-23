@@ -277,6 +277,12 @@ export interface UseSettingsReturn {
 	localHonorGitignore: boolean;
 	setLocalHonorGitignore: (value: boolean) => void;
 
+	// File explorer indexing limits (global)
+	fileExplorerMaxDepth: number;
+	setFileExplorerMaxDepth: (value: number) => void;
+	fileExplorerMaxEntries: number;
+	setFileExplorerMaxEntries: (value: number) => void;
+
 	// SSH Remote file indexing settings
 	sshRemoteIgnorePatterns: string[];
 	setSshRemoteIgnorePatterns: (value: string[]) => void;

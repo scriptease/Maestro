@@ -251,6 +251,11 @@ vi.mock('../../../renderer/hooks/settings/useSettings', () => ({
 		setLocalIgnorePatterns: vi.fn(),
 		localHonorGitignore: true,
 		setLocalHonorGitignore: vi.fn(),
+		// File explorer indexing limits
+		fileExplorerMaxDepth: 5,
+		setFileExplorerMaxDepth: vi.fn(),
+		fileExplorerMaxEntries: 100_000,
+		setFileExplorerMaxEntries: vi.fn(),
 		// Automatic tab naming
 		automaticTabNamingEnabled: true,
 		setAutomaticTabNamingEnabled: vi.fn(),
@@ -2545,11 +2550,13 @@ describe('SettingsModal', () => {
 				await vi.advanceTimersByTimeAsync(50);
 			});
 
-			// Text may be split by highlight spans, so use a function matcher
+			// The Display-tab "Local Ignore Patterns" entry was merged into the broader
+			// "File Indexing" section (still tagged with the ignore/gitignore keywords).
+			// The SSH-remote entry kept its original label.
 			expect(
 				screen.getByText(
 					(_content, element) =>
-						element?.textContent === 'Local Ignore Patterns' && element.tagName === 'DIV'
+						element?.textContent === 'File Indexing' && element.tagName === 'DIV'
 				)
 			).toBeInTheDocument();
 			expect(

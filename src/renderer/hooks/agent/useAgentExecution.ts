@@ -37,7 +37,6 @@ export type AgentSpawnErrorKind =
 	| 'process-exit-unknown'
 	| 'spawn-failed';
 
-const BATCH_HARD_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes wall clock per task
 const BATCH_WATCHDOG_CHECK_MS = 15 * 1000; // Check every 15 seconds
 
 /**
@@ -244,7 +243,6 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 					let lastOutputAt = Date.now();
 					let settled = false;
 					let inactivityTimer: ReturnType<typeof setInterval> | null = null;
-					let hardTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
 
 					// Array to collect cleanup functions as listeners are registered
 					const cleanupFns: (() => void)[] = [];
@@ -254,10 +252,6 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 						if (inactivityTimer) {
 							clearInterval(inactivityTimer);
 							inactivityTimer = null;
-						}
-						if (hardTimeoutTimer) {
-							clearTimeout(hardTimeoutTimer);
-							hardTimeoutTimer = null;
 						}
 					};
 
@@ -487,38 +481,27 @@ export function useAgentExecution(deps: UseAgentExecutionDeps): UseAgentExecutio
 						})
 					);
 
-					// Watchdog for hung Auto Run batch tasks:
-					// detect long silence or excessive wall-clock runtime and force-kill.
+					// Watchdog for hung Auto Run batch tasks: detect long silence and force-kill.
+					// A value of 0 means "unlimited" — skip the watchdog entirely.
 					if (isBatchProcess) {
 						const inactivityTimeoutMin = useSettingsStore.getState().autoRunInactivityTimeoutMin;
-						const inactivityTimeoutMs = inactivityTimeoutMin * 60 * 1000;
+						if (inactivityTimeoutMin > 0) {
+							const inactivityTimeoutMs = inactivityTimeoutMin * 60 * 1000;
 
-						inactivityTimer = setInterval(() => {
-							if (settled) return;
-							if (Date.now() - lastOutputAt <= inactivityTimeoutMs) return;
-							window.maestro.process.kill(targetSessionId).catch(() => {});
-							resolveOnce({
-								success: false,
-								error: `Agent task stalled: no output for ${inactivityTimeoutMin} minutes`,
-								errorKind: 'watchdog-stalled',
-								response: responseText,
-								agentSessionId,
-								usageStats: taskUsageStats,
-							});
-						}, BATCH_WATCHDOG_CHECK_MS);
-
-						hardTimeoutTimer = setTimeout(() => {
-							if (settled) return;
-							window.maestro.process.kill(targetSessionId).catch(() => {});
-							resolveOnce({
-								success: false,
-								error: `Agent task timed out after ${Math.floor(BATCH_HARD_TIMEOUT_MS / 60000)} minutes`,
-								errorKind: 'watchdog-timeout',
-								response: responseText,
-								agentSessionId,
-								usageStats: taskUsageStats,
-							});
-						}, BATCH_HARD_TIMEOUT_MS);
+							inactivityTimer = setInterval(() => {
+								if (settled) return;
+								if (Date.now() - lastOutputAt <= inactivityTimeoutMs) return;
+								window.maestro.process.kill(targetSessionId).catch(() => {});
+								resolveOnce({
+									success: false,
+									error: `Agent task stalled: no output for ${inactivityTimeoutMin} minutes`,
+									errorKind: 'watchdog-stalled',
+									response: responseText,
+									agentSessionId,
+									usageStats: taskUsageStats,
+								});
+							}, BATCH_WATCHDOG_CHECK_MS);
+						}
 					}
 
 					// Spawn the agent for batch processing

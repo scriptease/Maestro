@@ -1799,6 +1799,8 @@ function MaestroConsoleInner() {
 		sshRemoteHonorGitignore: settings.sshRemoteHonorGitignore,
 		localIgnorePatterns: settings.localIgnorePatterns,
 		localHonorGitignore: settings.localHonorGitignore,
+		fileExplorerMaxDepth: settings.fileExplorerMaxDepth,
+		fileExplorerMaxEntries: settings.fileExplorerMaxEntries,
 	});
 
 	// --- FILE EXPLORER EFFECTS ---

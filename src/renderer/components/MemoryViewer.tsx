@@ -6,7 +6,7 @@
  * `supportsProjectMemory` capability on the active agent; today only Claude Code qualifies.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Brain, Plus, X, Database, FileText, Clock, Zap } from 'lucide-react';
 import type { Session, Theme } from '../types';
 import { formatSize, formatRelativeTime, formatNumber } from '../utils/formatters';
@@ -14,6 +14,8 @@ import { getAgentDisplayName } from '../../shared/agentMetadata';
 import { useLayerStack } from '../contexts/LayerStackContext';
 import { MODAL_PRIORITIES } from '../constants/modalPriorities';
 import { DualPaneFileEditor, type DualPaneFileEditorItem } from './shared/DualPaneFileEditor';
+import { Modal, ModalFooter } from './ui/Modal';
+import { FormInput } from './ui/FormInput';
 
 interface MemoryViewerProps {
 	theme: Theme;
@@ -35,7 +37,14 @@ interface MemoryStats {
 	totalBytes: number;
 }
 
-const STARTER_CONTENT = `---
+const INDEX_STARTER_CONTENT = `# Memory index
+
+Pointers to individual memory files. One line per entry, under ~150 chars:
+
+- [Title](filename.md) — one-line hook
+`;
+
+const ENTRY_STARTER_CONTENT = `---
 name: new memory
 description: one-line description
 type: user
@@ -44,7 +53,13 @@ type: user
 Write the memory body here.
 `;
 
+function starterContentFor(filename: string): string {
+	return filename === 'MEMORY.md' ? INDEX_STARTER_CONTENT : ENTRY_STARTER_CONTENT;
+}
+
 function suggestNewFilename(existing: Set<string>): string {
+	// First file should always be MEMORY.md (the index that points at every other entry).
+	if (existing.size === 0) return 'MEMORY.md';
 	const base = 'new-memory';
 	let candidate = `${base}.md`;
 	let n = 2;
@@ -79,6 +94,12 @@ export function MemoryViewer({ theme, activeSession, onClose }: MemoryViewerProp
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [actionError, setActionError] = useState<string | null>(null);
 	const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+	const [createModalOpen, setCreateModalOpen] = useState(false);
+	const [createName, setCreateName] = useState('');
+	const [createError, setCreateError] = useState<string | null>(null);
+	const [isCreating, setIsCreating] = useState(false);
+	const createInputRef = useRef<HTMLInputElement>(null);
 
 	const layerIdRef = useRef<string>();
 	const onCloseRef = useRef(onClose);
@@ -247,37 +268,58 @@ export function MemoryViewer({ theme, activeSession, onClose }: MemoryViewerProp
 		}
 	}, [selectedName, projectPath, agentId, reloadList]);
 
-	const handleCreate = useCallback(async () => {
+	const handleCreate = useCallback(() => {
 		if (!projectPath) return;
-		const existing = new Set(entries.map((e) => e.name));
-		const initial = suggestNewFilename(existing);
-		const rawInput = window.prompt('New memory filename (.md):', initial);
-		if (!rawInput) return;
-		let filename = rawInput.trim();
-		if (!filename) return;
-		if (!filename.toLowerCase().endsWith('.md')) filename += '.md';
-		if (existing.has(filename)) {
-			setActionError(`A memory file named "${filename}" already exists`);
-			return;
-		}
 		if (hasUnsavedChanges) {
 			const discard = window.confirm('You have unsaved changes on the current file. Discard them?');
 			if (!discard) return;
 		}
-		setActionError(null);
-		const result = await window.maestro.memory.create(
-			projectPath,
-			filename,
-			STARTER_CONTENT,
-			agentId
-		);
-		if (!result.success) {
-			setActionError(result.error || `Failed to create ${filename}`);
+		const existing = new Set(entries.map((e) => e.name));
+		setCreateName(suggestNewFilename(existing));
+		setCreateError(null);
+		setCreateModalOpen(true);
+	}, [projectPath, entries, hasUnsavedChanges]);
+
+	const closeCreateModal = useCallback(() => {
+		setCreateModalOpen(false);
+		setCreateName('');
+		setCreateError(null);
+		setIsCreating(false);
+	}, []);
+
+	const handleConfirmCreate = useCallback(async () => {
+		if (!projectPath) return;
+		let filename = createName.trim();
+		if (!filename) {
+			setCreateError('Filename is required');
 			return;
 		}
-		setSuccessMessage(`Created ${filename}`);
-		await reloadList(filename);
-	}, [projectPath, entries, hasUnsavedChanges, agentId, reloadList]);
+		if (!filename.toLowerCase().endsWith('.md')) filename += '.md';
+		const existing = new Set(entries.map((e) => e.name));
+		if (existing.has(filename)) {
+			setCreateError(`A memory file named "${filename}" already exists`);
+			return;
+		}
+		setIsCreating(true);
+		setCreateError(null);
+		try {
+			const result = await window.maestro.memory.create(
+				projectPath,
+				filename,
+				starterContentFor(filename),
+				agentId
+			);
+			if (!result.success) {
+				setCreateError(result.error || `Failed to create ${filename}`);
+				return;
+			}
+			setSuccessMessage(`Created ${filename}`);
+			closeCreateModal();
+			await reloadList(filename);
+		} finally {
+			setIsCreating(false);
+		}
+	}, [projectPath, createName, entries, agentId, reloadList, closeCreateModal]);
 
 	const items = useMemo<DualPaneFileEditorItem[]>(
 		() =>
@@ -293,7 +335,7 @@ export function MemoryViewer({ theme, activeSession, onClose }: MemoryViewerProp
 	const renderEditorBody = useCallback(() => {
 		return (
 			<textarea
-				className="prompt-textarea"
+				className="dual-pane-textarea"
 				value={editedContent}
 				onChange={(e) => {
 					setEditedContent(e.target.value);
@@ -434,6 +476,7 @@ export function MemoryViewer({ theme, activeSession, onClose }: MemoryViewerProp
 						renderEditorBody={renderEditorBody}
 						successMessage={successMessage}
 						errorMessage={actionError}
+						listWidthStorageKey="maestro.memoryViewer.listWidth"
 						primaryAction={{
 							label: isSaving ? 'Saving…' : 'Save',
 							loading: isSaving,
@@ -455,6 +498,42 @@ export function MemoryViewer({ theme, activeSession, onClose }: MemoryViewerProp
 					/>
 				)}
 			</div>
+
+			{createModalOpen && (
+				<Modal
+					theme={theme}
+					title="New Memory"
+					priority={MODAL_PRIORITIES.MEMORY_CREATE}
+					onClose={closeCreateModal}
+					width={420}
+					initialFocusRef={createInputRef as React.RefObject<HTMLElement>}
+					footer={
+						<ModalFooter
+							theme={theme}
+							onCancel={closeCreateModal}
+							onConfirm={handleConfirmCreate}
+							confirmLabel={isCreating ? 'Creating…' : 'Create'}
+							confirmDisabled={isCreating || !createName.trim()}
+						/>
+					}
+				>
+					<FormInput
+						ref={createInputRef}
+						theme={theme}
+						value={createName}
+						onChange={(v) => {
+							setCreateName(v);
+							if (createError) setCreateError(null);
+						}}
+						onSubmit={handleConfirmCreate}
+						placeholder="memory-name.md"
+						label="Filename"
+						helperText="The .md extension is added automatically if omitted."
+						error={createError ?? undefined}
+						monospace
+					/>
+				</Modal>
+			)}
 		</div>
 	);
 }

@@ -14,6 +14,7 @@ import {
 	AppWindow,
 	BookOpen,
 	Database,
+	FolderSearch,
 	HelpCircle,
 	WrapText,
 	ListFilter,
@@ -25,6 +26,7 @@ import type { Theme } from '../../../types';
 import { ToggleButtonGroup } from '../../ToggleButtonGroup';
 import { FontConfigurationPanel } from '../../FontConfigurationPanel';
 import { IgnorePatternsSection } from '../IgnorePatternsSection';
+import { FilePanelSettingsSection } from '../FilePanelSettingsSection';
 import { SettingsSectionHeading } from '../SettingsSectionHeading';
 import { DEFAULT_LOCAL_IGNORE_PATTERNS } from '../../../stores/settingsStore';
 import { logger } from '../../../utils/logger';
@@ -76,6 +78,10 @@ export function DisplayTab({ theme }: DisplayTabProps) {
 		setLocalIgnorePatterns,
 		localHonorGitignore,
 		setLocalHonorGitignore,
+		fileExplorerMaxDepth,
+		setFileExplorerMaxDepth,
+		fileExplorerMaxEntries,
+		setFileExplorerMaxEntries,
 	} = useSettings();
 
 	const [systemFonts, setSystemFonts] = useState<string[]>([]);
@@ -770,20 +776,31 @@ export function DisplayTab({ theme }: DisplayTabProps) {
 				</div>
 			</div>
 
-			{/* Local File Indexing Ignore Patterns */}
-			<div data-setting-id="display-ignore-patterns">
-				<IgnorePatternsSection
-					theme={theme}
-					title="Local Ignore Patterns"
-					description="Configure glob patterns for folders to exclude when indexing local files in the file explorer. Excluding large directories (like .git) reduces memory usage and speeds up file tree loading."
-					ignorePatterns={localIgnorePatterns}
-					onIgnorePatternsChange={setLocalIgnorePatterns}
-					defaultPatterns={DEFAULT_LOCAL_IGNORE_PATTERNS}
-					showHonorGitignore
-					honorGitignore={localHonorGitignore}
-					onHonorGitignoreChange={setLocalHonorGitignore}
-					onReset={() => setLocalHonorGitignore(true)}
-				/>
+			{/* File Indexing — groups ignore patterns + file panel limits */}
+			<div data-setting-id="display-file-indexing">
+				<SettingsSectionHeading icon={FolderSearch}>File Indexing</SettingsSectionHeading>
+				<div className="space-y-3">
+					<IgnorePatternsSection
+						theme={theme}
+						title="Local Ignore Patterns"
+						description="Configure glob patterns for folders to exclude when indexing local files in the file explorer. Excluding large directories (like .git) reduces memory usage and speeds up file tree loading."
+						ignorePatterns={localIgnorePatterns}
+						onIgnorePatternsChange={setLocalIgnorePatterns}
+						defaultPatterns={DEFAULT_LOCAL_IGNORE_PATTERNS}
+						showHonorGitignore
+						honorGitignore={localHonorGitignore}
+						onHonorGitignoreChange={setLocalHonorGitignore}
+						onReset={() => setLocalHonorGitignore(true)}
+						hideEyebrow
+					/>
+					<FilePanelSettingsSection
+						theme={theme}
+						maxDepth={fileExplorerMaxDepth}
+						onMaxDepthChange={setFileExplorerMaxDepth}
+						maxEntries={fileExplorerMaxEntries}
+						onMaxEntriesChange={setFileExplorerMaxEntries}
+					/>
+				</div>
 			</div>
 
 			{showBionifyInfoModal && (

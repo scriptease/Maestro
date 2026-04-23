@@ -491,9 +491,9 @@ export const SETTINGS_METADATA: Record<string, SettingMetadata> = {
 	},
 	autoRunInactivityTimeoutMin: {
 		description:
-			'Minutes of no agent output before the Auto Run watchdog considers a task stalled and force-kills it.',
+			'Minutes of no agent output before the Auto Run watchdog considers a task stalled and force-kills it. Set to 0 to disable the watchdog (unlimited).',
 		type: 'number',
-		default: 30,
+		default: 240,
 		category: 'advanced',
 	},
 

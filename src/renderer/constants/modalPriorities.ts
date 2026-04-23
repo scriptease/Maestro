@@ -176,6 +176,9 @@ export const MODAL_PRIORITIES = {
 	/** Agent sessions browser (Cmd+Shift+L) */
 	AGENT_SESSIONS: 680,
 
+	/** New memory filename modal (appears above Memory Viewer) */
+	MEMORY_CREATE: 695,
+
 	/** Execution queue browser modal */
 	EXECUTION_QUEUE_BROWSER: 670,
 

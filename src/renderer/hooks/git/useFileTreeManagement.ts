@@ -106,6 +106,10 @@ export interface UseFileTreeManagementDeps {
 	localIgnorePatterns?: string[];
 	/** Whether to honor local .gitignore files */
 	localHonorGitignore?: boolean;
+	/** Max recursion depth for the file tree scan (applies to local + remote) */
+	fileExplorerMaxDepth?: number;
+	/** Max file entries per scan before truncating (applies to local + remote) */
+	fileExplorerMaxEntries?: number;
 }
 
 /**
@@ -113,7 +117,10 @@ export interface UseFileTreeManagementDeps {
  */
 export interface UseFileTreeManagementReturn {
 	/** Refresh file tree for a session and return detected changes */
-	refreshFileTree: (sessionId: string) => Promise<FileTreeChanges | undefined>;
+	refreshFileTree: (
+		sessionId: string,
+		options?: { maxEntriesOverride?: number }
+	) => Promise<FileTreeChanges | undefined>;
 	/** Refresh both file tree and git state for a session */
 	refreshGitFileState: (sessionId: string) => Promise<void>;
 	/** Filtered file tree based on current filter */
@@ -146,7 +153,14 @@ export function useFileTreeManagement(
 		sshRemoteHonorGitignore,
 		localIgnorePatterns,
 		localHonorGitignore,
+		fileExplorerMaxDepth,
+		fileExplorerMaxEntries,
 	} = deps;
+
+	// Fall back to the canonical defaults from settingsStore when deps omit these values
+	// (e.g. in tests that don't wire the full settings state through).
+	const effectiveMaxDepth = fileExplorerMaxDepth ?? 5;
+	const effectiveMaxEntries = fileExplorerMaxEntries ?? 100_000;
 
 	const fileTreeFilter = useFileExplorerStore((s) => s.fileTreeFilter);
 
@@ -229,7 +243,10 @@ export function useFileTreeManagement(
 	 * Passes SSH context for remote sessions to enable remote file operations (Phase 2+).
 	 */
 	const refreshFileTree = useCallback(
-		async (sessionId: string): Promise<FileTreeChanges | undefined> => {
+		async (
+			sessionId: string,
+			options?: { maxEntriesOverride?: number }
+		): Promise<FileTreeChanges | undefined> => {
 			const seq = nextSeq(sessionId);
 			// Use sessionsRef to avoid dependency on sessions state (prevents timer reset on every session change)
 			const session = sessionsRef.current.find((s) => s.id === sessionId);
@@ -241,6 +258,8 @@ export function useFileTreeManagement(
 			// Use projectRoot for file tree (consistent with Files tab header)
 			// This ensures the file tree always shows the agent's working directory, not wherever cd'd to
 			const treeRoot = session.projectRoot || session.cwd;
+
+			const maxEntriesForRefresh = options?.maxEntriesOverride ?? effectiveMaxEntries;
 
 			try {
 				// Fire stats independently — update asynchronously without blocking tree refresh.
@@ -274,21 +293,31 @@ export function useFileTreeManagement(
 						});
 					});
 
-				const newTree = await loadFileTree(treeRoot, 10, 0, sshContext, undefined, localOptions);
+				const loadResult = await loadFileTree(
+					treeRoot,
+					effectiveMaxDepth,
+					0,
+					sshContext,
+					undefined,
+					localOptions,
+					maxEntriesForRefresh
+				);
 
 				// Discard if a newer load started for this session while we were awaiting
 				if (isStale(sessionId, seq)) return undefined;
 
 				const oldTree = session.fileTree || [];
-				const changes = compareFileTrees(oldTree, newTree);
+				const changes = compareFileTrees(oldTree, loadResult.tree);
 
 				setSessions((prev) =>
 					prev.map((s) =>
 						s.id === sessionId
 							? {
 									...s,
-									fileTree: newTree,
+									fileTree: loadResult.tree,
 									fileTreeError: undefined,
+									fileTreeTruncated: loadResult.truncated,
+									fileTreeLoadedCap: maxEntriesForRefresh,
 								}
 							: s
 					)
@@ -304,7 +333,16 @@ export function useFileTreeManagement(
 				return undefined;
 			}
 		},
-		[sessionsRef, setSessions, sshContextOptions, localOptions, nextSeq, isStale]
+		[
+			sessionsRef,
+			setSessions,
+			sshContextOptions,
+			localOptions,
+			nextSeq,
+			isStale,
+			effectiveMaxDepth,
+			effectiveMaxEntries,
+		]
 	);
 
 	/**
@@ -364,8 +402,16 @@ export function useFileTreeManagement(
 					});
 
 				// Refresh file tree and git repo status in parallel
-				const [tree, isGitRepo] = await Promise.all([
-					loadFileTree(treeRoot, 10, 0, sshContext, undefined, localOptions),
+				const [loadResult, isGitRepo] = await Promise.all([
+					loadFileTree(
+						treeRoot,
+						effectiveMaxDepth,
+						0,
+						sshContext,
+						undefined,
+						localOptions,
+						effectiveMaxEntries
+					),
 					gitService.isRepo(gitRoot, sshContext?.sshRemoteId),
 				]);
 
@@ -392,8 +438,10 @@ export function useFileTreeManagement(
 						s.id === sessionId
 							? {
 									...s,
-									fileTree: tree,
+									fileTree: loadResult.tree,
 									fileTreeError: undefined,
+									fileTreeTruncated: loadResult.truncated,
+									fileTreeLoadedCap: effectiveMaxEntries,
 									isGitRepo,
 									gitBranches,
 									gitTags,
@@ -414,7 +462,17 @@ export function useFileTreeManagement(
 				});
 			}
 		},
-		[sessions, setSessions, rightPanelRef, sshContextOptions, localOptions, nextSeq, isStale]
+		[
+			sessions,
+			setSessions,
+			rightPanelRef,
+			sshContextOptions,
+			localOptions,
+			nextSeq,
+			isStale,
+			effectiveMaxDepth,
+			effectiveMaxEntries,
+		]
 	);
 
 	// Ref to track pending retry timers per session
@@ -506,15 +564,17 @@ export function useFileTreeManagement(
 			// the full recursive walk. Local sessions skip the shallow pass since
 			// local readdir is fast enough that the overhead isn't worth it.
 			if (sshContext) {
+				// Shallow pass ignores the entry cap — the whole point is to render
+				// the top-level dir fast. The full pass below honors the cap.
 				loadFileTree(treeRoot, 1, 0, sshContext, undefined, localOptions)
-					.then((shallowTree) => {
+					.then((shallowResult) => {
 						if (isStale(sessionId, seq)) return;
 						setSessions((prev) =>
 							prev.map((s) =>
 								s.id === sessionId && s.fileTreeLoading
 									? {
 											...s,
-											fileTree: shallowTree,
+											fileTree: shallowResult.tree,
 											fileTreeError: undefined,
 											fileTreeRetryAt: undefined,
 										}
@@ -530,8 +590,24 @@ export function useFileTreeManagement(
 
 			// Full recursive tree load (with progress callback for SSH)
 			const treePromise = sshContext
-				? loadFileTree(treeRoot, 10, 0, sshContext, onProgress, localOptions)
-				: loadFileTree(treeRoot, 10, 0, sshContext, undefined, localOptions);
+				? loadFileTree(
+						treeRoot,
+						effectiveMaxDepth,
+						0,
+						sshContext,
+						onProgress,
+						localOptions,
+						effectiveMaxEntries
+					)
+				: loadFileTree(
+						treeRoot,
+						effectiveMaxDepth,
+						0,
+						sshContext,
+						undefined,
+						localOptions,
+						effectiveMaxEntries
+					);
 
 			// Fetch stats independently — a directorySize failure (e.g., `du` timeout
 			// on large repos over SSH) should not prevent the file tree from loading.
@@ -567,7 +643,7 @@ export function useFileTreeManagement(
 				});
 
 			treePromise
-				.then((tree) => {
+				.then((loadResult) => {
 					// Discard if a newer load started for this session while we were awaiting
 					if (isStale(sessionId, seq)) {
 						// Reset loading state so this session can retry later
@@ -586,7 +662,9 @@ export function useFileTreeManagement(
 							s.id === sessionId
 								? {
 										...s,
-										fileTree: tree,
+										fileTree: loadResult.tree,
+										fileTreeTruncated: loadResult.truncated,
+										fileTreeLoadedCap: effectiveMaxEntries,
 										fileTreeError: undefined,
 										fileTreeRetryAt: undefined,
 										fileTreeLoading: false,
@@ -634,7 +712,17 @@ export function useFileTreeManagement(
 					signalInitialFileTreeReady();
 				});
 		}
-	}, [activeSession, setSessions, sshContextOptions, localOptions, nextSeq, isStale]);
+	}, [
+		activeSession,
+		setSessions,
+		sshContextOptions,
+		localOptions,
+		nextSeq,
+		isStale,
+		effectiveMaxDepth,
+		effectiveMaxEntries,
+		signalInitialFileTreeReady,
+	]);
 
 	// Cleanup retry timers on unmount
 	useEffect(() => {

@@ -27,6 +27,13 @@ vi.mock('../../../renderer/utils/fileExplorer', () => ({
 	compareFileTrees: vi.fn(),
 }));
 
+/** Wrap a tree array into the shape loadFileTree now returns. */
+const asResult = (tree: FileNode[], truncated = false) => ({
+	tree,
+	truncated,
+	filesFound: tree.length,
+});
+
 vi.mock('../../../renderer/services/git', () => ({
 	gitService: {
 		isRepo: vi.fn(),
@@ -110,7 +117,7 @@ describe('useFileTreeManagement', () => {
 			removedFolders: 0,
 		};
 
-		vi.mocked(loadFileTree).mockResolvedValue(nextTree);
+		vi.mocked(loadFileTree).mockResolvedValue(asResult(nextTree));
 		vi.mocked(compareFileTrees).mockReturnValue(changes);
 
 		const state = createSessionsState([createMockSession({ fileTree: initialTree })]);
@@ -125,11 +132,12 @@ describe('useFileTreeManagement', () => {
 		// For local sessions (no sshRemoteId), sshContext and localOptions are undefined
 		expect(loadFileTree).toHaveBeenCalledWith(
 			'/test/project',
-			10,
+			5,
 			0,
 			undefined,
 			undefined,
-			undefined
+			undefined,
+			100_000
 		);
 		expect(compareFileTrees).toHaveBeenCalledWith(initialTree, nextTree);
 		expect(returnedChanges).toEqual(changes);
@@ -159,7 +167,7 @@ describe('useFileTreeManagement', () => {
 	it('refreshGitFileState refreshes git metadata and history', async () => {
 		const nextTree: FileNode[] = [{ name: 'src', type: 'folder', children: [] }];
 
-		vi.mocked(loadFileTree).mockResolvedValue(nextTree);
+		vi.mocked(loadFileTree).mockResolvedValue(asResult(nextTree));
 		vi.mocked(gitService.isRepo).mockResolvedValue(true);
 		vi.mocked(gitService.getBranches).mockResolvedValue(['main']);
 		vi.mocked(gitService.getTags).mockResolvedValue(['v1.0.0']);
@@ -184,11 +192,12 @@ describe('useFileTreeManagement', () => {
 		// Git operations use shellCwd when inputMode is 'terminal'
 		expect(loadFileTree).toHaveBeenCalledWith(
 			'/test/project',
-			10,
+			5,
 			0,
 			undefined,
 			undefined,
-			undefined
+			undefined,
+			100_000
 		);
 		expect(gitService.isRepo).toHaveBeenCalledWith('/test/shell', undefined);
 		expect(gitService.getBranches).toHaveBeenCalledWith('/test/shell', undefined);
@@ -239,21 +248,22 @@ describe('useFileTreeManagement', () => {
 	it('loads file tree on mount when active session tree is empty', async () => {
 		const nextTree: FileNode[] = [{ name: 'loaded.txt', type: 'file' }];
 
-		vi.mocked(loadFileTree).mockResolvedValue(nextTree);
+		vi.mocked(loadFileTree).mockResolvedValue(asResult(nextTree));
 
 		const state = createSessionsState([createMockSession({ fileTree: [] })]);
 		const deps = createDeps(state);
 		renderHook(() => useFileTreeManagement(deps));
 
 		await waitFor(() => {
-			// loadFileTree is now called with (path, maxDepth, currentDepth, sshContext)
+			// loadFileTree is now called with (path, maxDepth, currentDepth, sshContext, onProgress, localOptions, maxEntries)
 			expect(loadFileTree).toHaveBeenCalledWith(
 				'/test/project',
-				10,
+				5,
 				0,
 				undefined,
 				undefined,
-				undefined
+				undefined,
+				100_000
 			);
 			expect(state.getSessions()[0].fileTree).toEqual(nextTree);
 		});
@@ -269,7 +279,7 @@ describe('useFileTreeManagement', () => {
 			removedFolders: 0,
 		};
 
-		vi.mocked(loadFileTree).mockResolvedValue(nextTree);
+		vi.mocked(loadFileTree).mockResolvedValue(asResult(nextTree));
 		vi.mocked(compareFileTrees).mockReturnValue(changes);
 
 		// Create session with SSH context
@@ -289,7 +299,7 @@ describe('useFileTreeManagement', () => {
 		// Verify SSH context is passed to loadFileTree
 		expect(loadFileTree).toHaveBeenCalledWith(
 			'/test/project',
-			10,
+			5,
 			0,
 			{
 				sshRemoteId: 'my-ssh-remote',
@@ -298,7 +308,8 @@ describe('useFileTreeManagement', () => {
 				ignorePatterns: undefined,
 			},
 			undefined,
-			undefined
+			undefined,
+			100_000
 		);
 	});
 
@@ -317,7 +328,9 @@ describe('useFileTreeManagement', () => {
 		];
 
 		// First call (shallow, depth=1) returns quickly, second call (full, depth=10) returns later
-		vi.mocked(loadFileTree).mockResolvedValueOnce(shallowTree).mockResolvedValueOnce(fullTree);
+		vi.mocked(loadFileTree)
+			.mockResolvedValueOnce(asResult(shallowTree))
+			.mockResolvedValueOnce(asResult(fullTree));
 
 		const mockDirectorySize = vi.fn().mockResolvedValue({
 			fileCount: 2,
@@ -345,7 +358,7 @@ describe('useFileTreeManagement', () => {
 		renderHook(() => useFileTreeManagement(deps));
 
 		await waitFor(() => {
-			// Shallow load should be called with depth=1
+			// Shallow load should be called with depth=1 (no entry cap on the shallow pass)
 			expect(loadFileTree).toHaveBeenCalledWith(
 				'/test/project',
 				1,
@@ -354,14 +367,15 @@ describe('useFileTreeManagement', () => {
 				undefined,
 				undefined
 			);
-			// Full load should be called with depth=10
+			// Full load should be called with the configured maxDepth (default 5) + entry cap
 			expect(loadFileTree).toHaveBeenCalledWith(
 				'/test/project',
-				10,
+				5,
 				0,
 				expect.objectContaining({ sshRemoteId: 'my-ssh-remote' }),
 				expect.any(Function),
-				undefined
+				undefined,
+				100_000
 			);
 		});
 
@@ -378,7 +392,7 @@ describe('useFileTreeManagement', () => {
 
 	it('does not fire shallow load for local sessions on initial mount', async () => {
 		const fullTree: FileNode[] = [{ name: 'loaded.txt', type: 'file' }];
-		vi.mocked(loadFileTree).mockResolvedValue(fullTree);
+		vi.mocked(loadFileTree).mockResolvedValue(asResult(fullTree));
 
 		const state = createSessionsState([createMockSession({ fileTree: [] })]);
 		const deps = createDeps(state);
@@ -393,11 +407,12 @@ describe('useFileTreeManagement', () => {
 		expect(loadFileTree).toHaveBeenCalledTimes(1);
 		expect(loadFileTree).toHaveBeenCalledWith(
 			'/test/project',
-			10,
+			5,
 			0,
 			undefined,
 			undefined,
-			undefined
+			undefined,
+			100_000
 		);
 	});
 
@@ -405,7 +420,7 @@ describe('useFileTreeManagement', () => {
 		const fullTree: FileNode[] = [{ name: 'file.txt', type: 'file' }];
 
 		// Tree resolves immediately
-		vi.mocked(loadFileTree).mockResolvedValue(fullTree);
+		vi.mocked(loadFileTree).mockResolvedValue(asResult(fullTree));
 
 		// Stats resolve after a delay
 		let resolveStats: (value: {

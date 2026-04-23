@@ -108,6 +108,20 @@ const DOCUMENT_GRAPH_LAYOUT_TYPES: DocumentGraphLayoutType[] = ['mindmap', 'radi
 /** Default local ignore patterns for new installations (includes .git, node_modules, __pycache__) */
 export const DEFAULT_LOCAL_IGNORE_PATTERNS = ['.git', 'node_modules', '__pycache__'];
 
+/** Default maximum recursion depth when indexing the file tree. */
+export const DEFAULT_FILE_EXPLORER_MAX_DEPTH = 5;
+/** Minimum allowed maximum recursion depth. */
+export const FILE_EXPLORER_MIN_DEPTH = 1;
+/** Maximum allowed maximum recursion depth. */
+export const FILE_EXPLORER_MAX_DEPTH_CAP = 20;
+
+/** Default cap on number of file entries loaded into the file tree. */
+export const DEFAULT_FILE_EXPLORER_MAX_ENTRIES = 100_000;
+/** Minimum allowed file-entry cap. */
+export const FILE_EXPLORER_MIN_ENTRIES = 1_000;
+/** Maximum allowed file-entry cap (soft ceiling; "Load all" bypasses this). */
+export const FILE_EXPLORER_MAX_ENTRIES_CAP = 1_000_000;
+
 const DEFAULT_CONTEXT_MANAGEMENT_SETTINGS: ContextManagementSettings = {
 	autoGroomContexts: true,
 	maxContextTokens: 100000,
@@ -310,6 +324,8 @@ export interface SettingsStoreState {
 	disableConfetti: boolean;
 	localIgnorePatterns: string[];
 	localHonorGitignore: boolean;
+	fileExplorerMaxDepth: number;
+	fileExplorerMaxEntries: number;
 	sshRemoteIgnorePatterns: string[];
 	sshRemoteHonorGitignore: boolean;
 	useSystemBrowser: boolean;
@@ -398,6 +414,8 @@ export interface SettingsStoreActions {
 	setDisableConfetti: (value: boolean) => void;
 	setLocalIgnorePatterns: (value: string[]) => void;
 	setLocalHonorGitignore: (value: boolean) => void;
+	setFileExplorerMaxDepth: (value: number) => void;
+	setFileExplorerMaxEntries: (value: number) => void;
 	setSshRemoteIgnorePatterns: (value: string[]) => void;
 	setSshRemoteHonorGitignore: (value: boolean) => void;
 	setUseSystemBrowser: (value: boolean) => void;
@@ -566,6 +584,8 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 		disableConfetti: false,
 		localIgnorePatterns: [...DEFAULT_LOCAL_IGNORE_PATTERNS],
 		localHonorGitignore: true,
+		fileExplorerMaxDepth: DEFAULT_FILE_EXPLORER_MAX_DEPTH,
+		fileExplorerMaxEntries: DEFAULT_FILE_EXPLORER_MAX_ENTRIES,
 		sshRemoteIgnorePatterns: ['.git', '*cache*'],
 		sshRemoteHonorGitignore: true,
 		useSystemBrowser: false,
@@ -584,7 +604,7 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 		autoHideMenuBar: false,
 		moderatorStandingInstructions: '',
 		autoRunDisabled: false,
-		autoRunInactivityTimeoutMin: 30,
+		autoRunInactivityTimeoutMin: 240,
 		lastSelectedPromptId: null,
 
 		// ============================================================================
@@ -990,6 +1010,24 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 			window.maestro.settings.set('localHonorGitignore', value);
 		},
 
+		setFileExplorerMaxDepth: (value) => {
+			const clamped = Math.max(
+				FILE_EXPLORER_MIN_DEPTH,
+				Math.min(FILE_EXPLORER_MAX_DEPTH_CAP, Math.floor(value))
+			);
+			set({ fileExplorerMaxDepth: clamped });
+			window.maestro.settings.set('fileExplorerMaxDepth', clamped);
+		},
+
+		setFileExplorerMaxEntries: (value) => {
+			const clamped = Math.max(
+				FILE_EXPLORER_MIN_ENTRIES,
+				Math.min(FILE_EXPLORER_MAX_ENTRIES_CAP, Math.floor(value))
+			);
+			set({ fileExplorerMaxEntries: clamped });
+			window.maestro.settings.set('fileExplorerMaxEntries', clamped);
+		},
+
 		setSshRemoteIgnorePatterns: (value) => {
 			set({ sshRemoteIgnorePatterns: value });
 			window.maestro.settings.set('sshRemoteIgnorePatterns', value);
@@ -1082,7 +1120,9 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
 		},
 
 		setAutoRunInactivityTimeoutMin: (value) => {
-			const clamped = Math.max(1, Math.min(600, Math.round(value)));
+			// 0 is a sentinel for "unlimited" (no watchdog). Any positive value is clamped to a sane range.
+			const rounded = Math.round(value);
+			const clamped = rounded <= 0 ? 0 : Math.max(1, Math.min(1440, rounded));
 			set({ autoRunInactivityTimeoutMin: clamped });
 			window.maestro.settings.set('autoRunInactivityTimeoutMin', clamped);
 		},
@@ -2007,6 +2047,30 @@ export async function loadAllSettings(): Promise<void> {
 
 		if (allSettings['localHonorGitignore'] !== undefined)
 			patch.localHonorGitignore = allSettings['localHonorGitignore'] as boolean;
+
+		if (
+			allSettings['fileExplorerMaxDepth'] !== undefined &&
+			typeof allSettings['fileExplorerMaxDepth'] === 'number' &&
+			Number.isFinite(allSettings['fileExplorerMaxDepth'])
+		) {
+			const raw = allSettings['fileExplorerMaxDepth'] as number;
+			patch.fileExplorerMaxDepth = Math.max(
+				FILE_EXPLORER_MIN_DEPTH,
+				Math.min(FILE_EXPLORER_MAX_DEPTH_CAP, Math.floor(raw))
+			);
+		}
+
+		if (
+			allSettings['fileExplorerMaxEntries'] !== undefined &&
+			typeof allSettings['fileExplorerMaxEntries'] === 'number' &&
+			Number.isFinite(allSettings['fileExplorerMaxEntries'])
+		) {
+			const raw = allSettings['fileExplorerMaxEntries'] as number;
+			patch.fileExplorerMaxEntries = Math.max(
+				FILE_EXPLORER_MIN_ENTRIES,
+				Math.min(FILE_EXPLORER_MAX_ENTRIES_CAP, Math.floor(raw))
+			);
+		}
 
 		// SSH Remote settings (with array validation)
 		if (

@@ -64,28 +64,6 @@
 	opacity: 0.7;
 }
 
-/* Prompt editor textarea */
-.prompt-textarea {
-	flex: 1;
-	width: 100%;
-	padding: 12px;
-	border: 1px solid;
-	border-radius: 4px;
-	font-family: Monaco, Menlo, Consolas, monospace;
-	font-size: 12px;
-	line-height: 1.5;
-	resize: none;
-	min-height: 0;
-}
-
-.prompt-textarea:focus {
-	outline: none;
-}
-
-.prompt-textarea-preview {
-	cursor: default;
-}
-
 /* Help Panel */
 .prompts-help-close-row {
 	display: flex;

@@ -43,6 +43,8 @@ const mockSetDocumentGraphMaxNodes = vi.fn();
 const mockUpdateContextManagementSettings = vi.fn();
 const mockSetLocalIgnorePatterns = vi.fn();
 const mockSetLocalHonorGitignore = vi.fn();
+const mockSetFileExplorerMaxDepth = vi.fn();
+const mockSetFileExplorerMaxEntries = vi.fn();
 const mockSetShowStarredInUnreadFilter = vi.fn();
 const mockSetShowFilePreviewsInUnreadFilter = vi.fn();
 
@@ -92,6 +94,10 @@ vi.mock('../../../../../renderer/hooks/settings/useSettings', () => ({
 		setLocalIgnorePatterns: mockSetLocalIgnorePatterns,
 		localHonorGitignore: true,
 		setLocalHonorGitignore: mockSetLocalHonorGitignore,
+		fileExplorerMaxDepth: 5,
+		setFileExplorerMaxDepth: mockSetFileExplorerMaxDepth,
+		fileExplorerMaxEntries: 100_000,
+		setFileExplorerMaxEntries: mockSetFileExplorerMaxEntries,
 		showStarredInUnreadFilter: false,
 		setShowStarredInUnreadFilter: mockSetShowStarredInUnreadFilter,
 		showFilePreviewsInUnreadFilter: false,

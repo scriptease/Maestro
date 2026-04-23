@@ -69,6 +69,7 @@ import {
 	registerFeedbackHandlers,
 	registerMaestroCliHandlers,
 	registerPromptsHandlers,
+	registerMemoryHandlers,
 	setupLoggerEventForwarding,
 	cleanupAllGroomingSessions,
 	getActiveGroomingSessionCount,
@@ -988,6 +989,9 @@ function setupIpcHandlers() {
 
 	// Register Core Prompts handlers (no dependencies needed)
 	registerPromptsHandlers();
+
+	// Register project Memory handlers (Claude Code per-project memory viewer)
+	registerMemoryHandlers();
 
 	// Register Context Merge handlers for session context transfer and grooming
 	registerContextHandlers({

@@ -681,8 +681,11 @@ describe('ThinkingStatusPill', () => {
 			expect(screen.getByText('0m 0s')).toBeInTheDocument();
 		});
 
-		it('prioritizes AutoRun over thinking items from the same session', () => {
-			const item = createThinkingItem({ id: 'active-session', name: 'Thinking Session' });
+		it('surfaces a same-session thinking item as concurrent work during AutoRun', () => {
+			// AutoRun spawns its agent in isolation and does NOT set any tab to state='busy',
+			// so any busy tab in the active session (e.g. a plan-mode / read-only tab) is
+			// legitimate concurrent work and must appear on the +N badge.
+			const item = createThinkingItem({ id: 'active-session', name: 'Plan Mode Tab' });
 			const autoRunState: BatchRunState = {
 				isRunning: true,
 				isPaused: false,
@@ -703,12 +706,11 @@ describe('ThinkingStatusPill', () => {
 				/>
 			);
 			expect(screen.getByText('AutoRun')).toBeInTheDocument();
-			// Same-session thinking items are filtered out (represented by AutoRun itself)
-			expect(screen.queryByText('Thinking Session')).not.toBeInTheDocument();
+			expect(screen.getByText('+1')).toBeInTheDocument();
+			expect(screen.getByTitle('+1 more running')).toBeInTheDocument();
 		});
 
 		it('shows +N badge when concurrent thinking items exist from other sessions', () => {
-			const activeItem = createThinkingItem({ id: 'active-session', name: 'AutoRun Session' });
 			const concurrentItem1 = createThinkingItem({
 				id: 'other-session-1',
 				name: 'Parallel Agent 1',
@@ -730,7 +732,7 @@ describe('ThinkingStatusPill', () => {
 			};
 			render(
 				<ThinkingStatusPill
-					thinkingItems={[activeItem, concurrentItem1, concurrentItem2]}
+					thinkingItems={[concurrentItem1, concurrentItem2]}
 					theme={mockTheme}
 					autoRunState={autoRunState}
 					activeSessionId="active-session"
@@ -741,8 +743,7 @@ describe('ThinkingStatusPill', () => {
 			expect(screen.getByTitle('+2 more running')).toBeInTheDocument();
 		});
 
-		it('does not show +N badge when all thinking items are from the active session', () => {
-			const activeItem = createThinkingItem({ id: 'active-session', name: 'AutoRun Session' });
+		it('does not show +N badge when there are no concurrent thinking items', () => {
 			const autoRunState: BatchRunState = {
 				isRunning: true,
 				isPaused: false,
@@ -756,7 +757,7 @@ describe('ThinkingStatusPill', () => {
 			};
 			render(
 				<ThinkingStatusPill
-					thinkingItems={[activeItem]}
+					thinkingItems={[]}
 					theme={mockTheme}
 					autoRunState={autoRunState}
 					activeSessionId="active-session"
@@ -766,15 +767,17 @@ describe('ThinkingStatusPill', () => {
 			expect(screen.queryByText(/\+\d/)).not.toBeInTheDocument();
 		});
 
-		it('shows +N badge for force-parallel tabs on the same session during AutoRun', () => {
-			// AutoRun runs on one tab; force-parallel creates a second busy tab on the same session
-			const autoRunTab = createThinkingItemWithTab(
-				{ id: 'active-session', name: 'SANS AI Pentesting' },
-				{ id: 'tab-autorun', name: 'AutoRun Tab' }
-			);
+		it('shows +N badge for force-parallel / plan-mode tabs on the same session during AutoRun', () => {
+			// AutoRun does NOT put its own tab into thinkingItems (it never sets state='busy'),
+			// so the only entries are the real concurrent tabs — e.g. a force-parallel write tab
+			// and a plan-mode read-only tab running alongside AutoRun on the same session.
 			const parallelTab = createThinkingItemWithTab(
 				{ id: 'active-session', name: 'SANS AI Pentesting' },
 				{ id: 'tab-parallel', name: 'Proposal vs Outline' }
+			);
+			const planModeTab = createThinkingItemWithTab(
+				{ id: 'active-session', name: 'SANS AI Pentesting' },
+				{ id: 'tab-plan', name: 'Plan Review' }
 			);
 			const autoRunState: BatchRunState = {
 				isRunning: true,
@@ -789,19 +792,18 @@ describe('ThinkingStatusPill', () => {
 			};
 			render(
 				<ThinkingStatusPill
-					thinkingItems={[autoRunTab, parallelTab]}
+					thinkingItems={[parallelTab, planModeTab]}
 					theme={mockTheme}
 					autoRunState={autoRunState}
 					activeSessionId="active-session"
 				/>
 			);
 			expect(screen.getByText('AutoRun')).toBeInTheDocument();
-			expect(screen.getByText('+1')).toBeInTheDocument();
-			expect(screen.getByTitle('+1 more running')).toBeInTheDocument();
+			expect(screen.getByText('+2')).toBeInTheDocument();
+			expect(screen.getByTitle('+2 more running')).toBeInTheDocument();
 		});
 
 		it('shows expanded dropdown with all running processes on hover', () => {
-			const activeItem = createThinkingItem({ id: 'active-session', name: 'AutoRun Session' });
 			const concurrentItem = createThinkingItem({ id: 'other-session', name: 'Parallel Read' });
 			const autoRunState: BatchRunState = {
 				isRunning: true,
@@ -816,7 +818,7 @@ describe('ThinkingStatusPill', () => {
 			};
 			render(
 				<ThinkingStatusPill
-					thinkingItems={[activeItem, concurrentItem]}
+					thinkingItems={[concurrentItem]}
 					theme={mockTheme}
 					autoRunState={autoRunState}
 					activeSessionId="active-session"
@@ -834,7 +836,6 @@ describe('ThinkingStatusPill', () => {
 		});
 
 		it('closes expanded dropdown on mouse leave', () => {
-			const activeItem = createThinkingItem({ id: 'active-session', name: 'AutoRun Session' });
 			const concurrentItem = createThinkingItem({ id: 'other-session', name: 'Parallel Read' });
 			const autoRunState: BatchRunState = {
 				isRunning: true,
@@ -849,7 +850,7 @@ describe('ThinkingStatusPill', () => {
 			};
 			render(
 				<ThinkingStatusPill
-					thinkingItems={[activeItem, concurrentItem]}
+					thinkingItems={[concurrentItem]}
 					theme={mockTheme}
 					autoRunState={autoRunState}
 					activeSessionId="active-session"
@@ -867,7 +868,6 @@ describe('ThinkingStatusPill', () => {
 
 		it('calls onSessionClick from concurrent item in AutoRun dropdown', () => {
 			const onSessionClick = vi.fn();
-			const activeItem = createThinkingItem({ id: 'active-session', name: 'AutoRun Session' });
 			const concurrentItem = createThinkingItemWithTab(
 				{ id: 'other-session', name: 'Parallel Agent' },
 				{ id: 'tab-parallel', name: 'Read Tab' }
@@ -885,7 +885,7 @@ describe('ThinkingStatusPill', () => {
 			};
 			render(
 				<ThinkingStatusPill
-					thinkingItems={[activeItem, concurrentItem]}
+					thinkingItems={[concurrentItem]}
 					theme={mockTheme}
 					autoRunState={autoRunState}
 					activeSessionId="active-session"
@@ -1057,7 +1057,8 @@ describe('ThinkingStatusPill', () => {
 		});
 
 		it('re-renders when concurrent thinking items change during AutoRun', () => {
-			const activeItem = createThinkingItem({ id: 'active-session', name: 'AutoRun Session' });
+			// AutoRun does NOT mark its own tab as busy, so every thinkingItem is a
+			// concurrent tab and contributes to the +N badge.
 			const autoRunState: BatchRunState = {
 				isRunning: true,
 				isStopping: false,
@@ -1069,7 +1070,7 @@ describe('ThinkingStatusPill', () => {
 
 			const { rerender } = render(
 				<ThinkingStatusPill
-					thinkingItems={[activeItem]}
+					thinkingItems={[]}
 					theme={mockTheme}
 					autoRunState={autoRunState}
 					activeSessionId="active-session"
@@ -1081,7 +1082,7 @@ describe('ThinkingStatusPill', () => {
 			const concurrentItem = createThinkingItem({ id: 'other-session', name: 'Parallel Agent' });
 			rerender(
 				<ThinkingStatusPill
-					thinkingItems={[activeItem, concurrentItem]}
+					thinkingItems={[concurrentItem]}
 					theme={mockTheme}
 					autoRunState={autoRunState}
 					activeSessionId="active-session"

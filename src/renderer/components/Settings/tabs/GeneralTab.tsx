@@ -835,19 +835,20 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 				</div>
 				<ToggleButtonGroup
 					options={[
-						{ value: 10, label: '10 min' },
-						{ value: 20, label: '20 min' },
 						{ value: 30, label: '30 min' },
-						{ value: 60, label: '60 min' },
-						{ value: 120, label: '2 hr' },
+						{ value: 60, label: '1 hr' },
+						{ value: 240, label: '4 hr' },
+						{ value: 480, label: '8 hr' },
+						{ value: 0, label: 'Unlimited' },
 					]}
 					value={autoRunInactivityTimeoutMin}
 					onChange={setAutoRunInactivityTimeoutMin}
 					theme={theme}
 				/>
 				<p className="text-xs opacity-50 mt-2">
-					Auto Run force-kills a task if the agent produces no output for this many minutes.
-					Increase if long refactors or heavy test runs are being killed prematurely.
+					Auto Run force-kills a task if the agent produces no output for this long. Increase for
+					long refactors, heavy test runs, or web-research tasks driving a browser. Choose Unlimited
+					to disable the watchdog entirely.
 				</p>
 			</div>
 

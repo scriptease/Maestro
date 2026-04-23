@@ -152,6 +152,85 @@ function FileTreeLoadingProgress({
 	);
 }
 
+/**
+ * FileTreeTruncatedBanner - surfaces the "scan stopped at the entry cap" state
+ * with two affordances: bump the cap (Load more) or remove it (Load all).
+ *
+ * "Load all" is gated so catastrophically large trees (10M+ files) still need
+ * explicit opt-in.
+ */
+function FileTreeTruncatedBanner({
+	theme,
+	previousCap,
+	onLoadMore,
+	onLoadAll,
+	isRefreshing,
+}: {
+	theme: Theme;
+	previousCap?: number;
+	onLoadMore: () => void;
+	onLoadAll: () => void;
+	isRefreshing: boolean;
+}) {
+	const capLabel =
+		previousCap !== undefined && Number.isFinite(previousCap)
+			? previousCap.toLocaleString()
+			: 'the configured cap';
+	const nextCap =
+		previousCap !== undefined && Number.isFinite(previousCap)
+			? (previousCap * 2).toLocaleString()
+			: 'more';
+
+	return (
+		<div
+			className="flex items-start gap-2 px-3 py-2 rounded border mb-2"
+			style={{
+				borderColor: theme.colors.warning,
+				backgroundColor: `${theme.colors.warning}15`,
+				color: theme.colors.textMain,
+			}}
+		>
+			<AlertTriangle
+				className="w-4 h-4 mt-0.5 flex-shrink-0"
+				style={{ color: theme.colors.warning }}
+			/>
+			<div className="flex-1 min-w-0">
+				<div className="text-xs font-medium">Unable to load all files into the file panel.</div>
+				<div className="text-[11px] opacity-70 mt-0.5">
+					Scan stopped at {capLabel} entries to protect memory. Adjust the cap in Settings → Display
+					→ File Indexing.
+				</div>
+				<div className="flex gap-2 mt-1.5">
+					<button
+						type="button"
+						onClick={onLoadMore}
+						disabled={isRefreshing}
+						className="px-2 py-0.5 rounded text-[11px] font-medium transition-colors disabled:opacity-50"
+						style={{
+							backgroundColor: theme.colors.accent,
+							color: theme.colors.bgMain,
+						}}
+					>
+						Load more ({nextCap})
+					</button>
+					<button
+						type="button"
+						onClick={onLoadAll}
+						disabled={isRefreshing}
+						className="px-2 py-0.5 rounded text-[11px] font-medium border transition-colors disabled:opacity-50"
+						style={{
+							borderColor: theme.colors.border,
+							color: theme.colors.textMain,
+						}}
+					>
+						Load all
+					</button>
+				</div>
+			</div>
+		</div>
+	);
+}
+
 // Auto-refresh interval options in seconds
 const AUTO_REFRESH_OPTIONS = [
 	{ label: 'Every 5 seconds', value: 5 },
@@ -356,7 +435,10 @@ interface FileExplorerPanelProps {
 		activeSessionId: string,
 		setSessions: React.Dispatch<React.SetStateAction<Session[]>>
 	) => Promise<void>;
-	refreshFileTree: (sessionId: string) => Promise<FileTreeChanges | undefined>;
+	refreshFileTree: (
+		sessionId: string,
+		options?: { maxEntriesOverride?: number }
+	) => Promise<FileTreeChanges | undefined>;
 	setSessions: React.Dispatch<React.SetStateAction<Session[]>>;
 	onAutoRefreshChange?: (interval: number) => void;
 	onShowFlash?: (message: string) => void;
@@ -1014,15 +1096,12 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 					onContextMenu={(e) => handleContextMenu(e, node, fullPath, globalIndex)}
 				>
 					{indentGuides}
-					{isFolder ? (
-						isExpanded ? (
+					{isFolder &&
+						(isExpanded ? (
 							<ChevronDown className="w-3 h-3 flex-shrink-0" />
 						) : (
 							<ChevronRight className="w-3 h-3 flex-shrink-0" />
-						)
-					) : (
-						<span className="w-3 h-3 flex-shrink-0" />
-					)}
+						))}
 					<span className="flex-shrink-0">
 						{isFolder
 							? getExplorerFolderIcon(node.name, isExpanded, theme, fileExplorerIconTheme)
@@ -1316,6 +1395,29 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 							theme={theme}
 							progress={session.fileTreeLoadingProgress}
 							isRemote={!!(session.sshRemoteId || session.sessionSshRemoteConfig?.enabled)}
+						/>
+					)}
+					{/* Truncation banner - scan hit the entry cap and stopped early. */}
+					{!session.fileTreeLoading && session.fileTreeTruncated && (
+						<FileTreeTruncatedBanner
+							theme={theme}
+							previousCap={session.fileTreeLoadedCap}
+							isRefreshing={isRefreshing}
+							onLoadMore={() => {
+								const next = (session.fileTreeLoadedCap ?? 100_000) * 2;
+								setIsRefreshing(true);
+								refreshFileTree(session.id, { maxEntriesOverride: next }).finally(() => {
+									setTimeout(() => setIsRefreshing(false), 500);
+								});
+							}}
+							onLoadAll={() => {
+								setIsRefreshing(true);
+								refreshFileTree(session.id, {
+									maxEntriesOverride: Number.POSITIVE_INFINITY,
+								}).finally(() => {
+									setTimeout(() => setIsRefreshing(false), 500);
+								});
+							}}
 						/>
 					)}
 					{/* Show empty state when loading is complete but no files found */}
