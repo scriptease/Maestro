@@ -124,16 +124,29 @@ describe('searchableSettings', () => {
 			}
 		});
 
+		// Each query below is a string a user would naturally type after seeing it
+		// rendered in the Settings UI (section headings, sub-headings, button
+		// labels). When you add a new setting, add the visible strings here so
+		// they remain findable — keyword drift from UI text is silent otherwise.
 		it.each([
 			['Auto Run Inactivity Timeout', 'general-autorun-inactivity-timeout'],
 			['file indexing', 'display-file-indexing'],
+			['file panel', 'display-file-indexing'],
+			['File Panel Settings', 'display-file-indexing'],
+			['max recursion depth', 'display-file-indexing'],
+			['max file entries', 'display-file-indexing'],
+			['load more', 'display-file-indexing'],
 			['idle notification', 'notifications-idle'],
 			['forced parallel execution', 'general-input-behavior'],
 			['custom shell path', 'general-default-shell'],
 			['ignore patterns', 'display-file-indexing'],
 		])('should find "%s" and return id %s', (query, expectedId) => {
 			const results = searchSettings(query);
-			expect(results.some((s) => s.id === expectedId)).toBe(true);
+			expect(
+				results.some((s) => s.id === expectedId),
+				`Expected "${query}" to surface ${expectedId}. ` +
+					`Add the missing terms to that entry's keywords/label/description in searchableSettings.ts.`
+			).toBe(true);
 		});
 	});
 

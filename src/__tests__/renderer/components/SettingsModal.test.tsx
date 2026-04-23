@@ -2551,12 +2551,13 @@ describe('SettingsModal', () => {
 			});
 
 			// The Display-tab "Local Ignore Patterns" entry was merged into the broader
-			// "File Indexing" section (still tagged with the ignore/gitignore keywords).
-			// The SSH-remote entry kept its original label.
+			// "File Indexing & File Panel Settings" section (still tagged with the
+			// ignore/gitignore keywords). The SSH-remote entry kept its original label.
 			expect(
 				screen.getByText(
 					(_content, element) =>
-						element?.textContent === 'File Indexing' && element.tagName === 'DIV'
+						element?.textContent === 'File Indexing & File Panel Settings' &&
+						element.tagName === 'DIV'
 				)
 			).toBeInTheDocument();
 			expect(

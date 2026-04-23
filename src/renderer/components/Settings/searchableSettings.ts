@@ -3,6 +3,13 @@
  *
  * Each tab exports its searchable settings entries. The SettingsModal
  * composes them into a single flat list for cross-tab search.
+ *
+ * When adding or editing an entry, ensure `keywords` covers every visible
+ * string a user would type after seeing the section in the UI — section
+ * headings, sub-headings, and notable button labels. The DOM-parity test in
+ * searchableSettings.test.ts catches missing entries, but it cannot catch
+ * keyword drift from rendered text. Add a query to the `it.each` block in
+ * that test for any new visible string you want guaranteed-findable.
  */
 
 export interface SearchableSetting {
@@ -329,9 +336,9 @@ export const DISPLAY_SETTINGS: SearchableSetting[] = [
 		id: 'display-file-indexing',
 		tab: 'display',
 		tabLabel: 'Display',
-		label: 'File Indexing',
+		label: 'File Indexing & File Panel Settings',
 		description:
-			'Local ignore patterns, gitignore handling, max recursion depth, and max file entries for the file explorer',
+			'Local ignore patterns, gitignore handling, max recursion depth, and max file entries for the Files panel',
 		keywords: [
 			'ignore',
 			'patterns',
@@ -340,12 +347,21 @@ export const DISPLAY_SETTINGS: SearchableSetting[] = [
 			'gitignore',
 			'file indexing',
 			'file explorer',
+			'file panel',
+			'files panel',
+			'files pane',
+			'panel',
+			'pane',
 			'depth',
 			'recursion',
 			'max entries',
+			'max files',
 			'limit',
 			'memory',
 			'load more',
+			'load all',
+			'scan',
+			'indexer',
 		],
 	},
 ];
