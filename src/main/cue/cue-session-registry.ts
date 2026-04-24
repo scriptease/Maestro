@@ -48,18 +48,19 @@ export interface CueSessionRegistry {
 	/**
 	 * Atomically check-and-set the fired flag for an `(session, sub)` startup tuple.
 	 * Returns `true` if this is the first time the subscription has fired this
-	 * process lifecycle, `false` if it was already fired.
+	 * engine cycle, `false` if it was already fired.
 	 */
 	markStartupFired(sessionId: string, subName: string): boolean;
 	/** Drop all `app.startup` fired-keys for a session (on `removeSession`). */
 	clearStartupForSession(sessionId: string): void;
+	/** Drop ALL `app.startup` fired-keys. Called by the engine on `stop()` so that
+	 * re-enabling Cue re-fires startup subscriptions for the new engine cycle. */
+	clearAllStartupKeys(): void;
 
 	/**
 	 * Drop all sessions and clear `time.scheduled` dedup state.
-	 * Matches the old `engine.stop()` semantics: `app.startup` keys are PRESERVED
-	 * across stop/start cycles so toggling Cue off/on does not re-fire startup
-	 * subscriptions. Startup keys only reset when the Electron process restarts
-	 * (i.e., a new registry instance).
+	 * `app.startup` keys are cleared separately via `clearAllStartupKeys()` when
+	 * the engine stops, so re-enabling always re-fires startup subscriptions.
 	 */
 	clear(): void;
 
@@ -151,10 +152,13 @@ export function createCueSessionRegistry(): CueSessionRegistry {
 			}
 		},
 
+		clearAllStartupKeys() {
+			startupFiredKeys.clear();
+		},
+
 		clear() {
 			sessions.clear();
 			scheduledFiredKeys.clear();
-			// startupFiredKeys deliberately preserved across stop/start.
 		},
 
 		sweepStaleScheduledKeys(currentTime: string): number {

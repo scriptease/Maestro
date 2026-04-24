@@ -5,7 +5,11 @@
  * - Fires on system startup (isSystemBoot=true)
  * - Does NOT fire on user feature toggle (isSystemBoot=false)
  * - Deduplication on YAML hot-reload (refreshSession)
- * - Does NOT re-fire on engine stop/start toggle
+ * - Does NOT re-fire on engine stop/start with user-toggle reason
+ * - Re-fires after stop+start with system-boot reason (dedup cleared on stop)
+ * - Fires via refreshSession for sessions discovered after system-boot start
+ * - Dedup prevents re-fire via refreshSession for already-initialized sessions
+ * - Does NOT fire via refreshSession when engine started with user-toggle
  * - Fires again on next system boot after removeSession
  * - enabled: false is respected
  * - agent_id binding is respected
@@ -524,7 +528,7 @@ describe('CueEngine app.startup', () => {
 		expect(deps.onCueRun).not.toHaveBeenCalled();
 	});
 
-	it('isSystemBoot flag persists across stop/start — second system boot still deduplicates', () => {
+	it('re-fires on second system-boot start after stop (startup dedup keys cleared on stop)', () => {
 		const config = createStartupConfig();
 		mockLoadCueConfig.mockReturnValue(config);
 
@@ -535,10 +539,83 @@ describe('CueEngine app.startup', () => {
 		engine.start('system-boot');
 		expect(deps.onCueRun).toHaveBeenCalledTimes(1);
 
-		// Stop and start again as system boot — should NOT fire (keys persisted)
+		// stop() clears startup dedup keys; starting again as system-boot re-fires
 		engine.stop();
 		engine.start('system-boot');
+		expect(deps.onCueRun).toHaveBeenCalledTimes(2);
+
+		engine.stop();
+	});
+
+	// ── Late-discovery (boot scenario) regression tests ─────────────────────────
+	// At real app startup getSessions() is empty when start('system-boot') fires,
+	// because sessions are managed by the renderer and haven't synced yet.
+	// Sessions arrive later via refreshSession(). These tests verify that startup
+	// triggers still fire for those late-arriving sessions.
+
+	it('fires via refreshSession for session discovered after system-boot start', () => {
+		const config = createStartupConfig();
+		mockLoadCueConfig.mockReturnValue(config);
+
+		// No sessions at boot time
+		const session = createMockSession();
+		const getSessions = vi.fn(() => [] as ReturnType<typeof createMockSession>[]);
+		const deps = createMockDeps({ getSessions });
+		const engine = new CueEngine(deps);
+		engine.start('system-boot');
+
+		expect(deps.onCueRun).not.toHaveBeenCalled();
+
+		// Session arrives via renderer discovery
+		getSessions.mockReturnValue([session]);
+		engine.refreshSession('session-1', '/projects/test');
+
 		expect(deps.onCueRun).toHaveBeenCalledTimes(1);
+		expect(deps.onCueRun).toHaveBeenCalledWith(
+			expect.objectContaining({
+				sessionId: 'session-1',
+				subscriptionName: 'init-workspace',
+			})
+		);
+
+		engine.stop();
+	});
+
+	it('dedup prevents app.startup re-fire via refreshSession for already-initialized session', () => {
+		const config = createStartupConfig();
+		mockLoadCueConfig.mockReturnValue(config);
+
+		const session = createMockSession();
+		const getSessions = vi.fn(() => [] as ReturnType<typeof createMockSession>[]);
+		const deps = createMockDeps({ getSessions });
+		const engine = new CueEngine(deps);
+		engine.start('system-boot');
+
+		getSessions.mockReturnValue([session]);
+		engine.refreshSession('session-1', '/projects/test');
+		expect(deps.onCueRun).toHaveBeenCalledTimes(1);
+
+		// Second refresh (e.g. YAML hot-reload) must not re-fire via dedup
+		engine.refreshSession('session-1', '/projects/test');
+		expect(deps.onCueRun).toHaveBeenCalledTimes(1);
+
+		engine.stop();
+	});
+
+	it('does not fire app.startup via refreshSession when engine started with user-toggle', () => {
+		const config = createStartupConfig();
+		mockLoadCueConfig.mockReturnValue(config);
+
+		const session = createMockSession();
+		const getSessions = vi.fn(() => [] as ReturnType<typeof createMockSession>[]);
+		const deps = createMockDeps({ getSessions });
+		const engine = new CueEngine(deps);
+		engine.start(); // user-toggle default — no startReason set
+
+		getSessions.mockReturnValue([session]);
+		engine.refreshSession('session-1', '/projects/test');
+
+		expect(deps.onCueRun).not.toHaveBeenCalled();
 
 		engine.stop();
 	});
