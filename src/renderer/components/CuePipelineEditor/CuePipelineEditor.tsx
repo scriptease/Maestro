@@ -128,7 +128,6 @@ function CuePipelineEditorInner({
 		if (nonce === appliedNonce.current) return;
 		appliedNonce.current = nonce;
 		stateHook.selectPipeline(initialPipelineId!.id);
-		 
 	}, [initialPipelineId?.nonce, stateHook.pipelineState.pipelines.length]);
 
 	// Update ref in render body so next render (and any post-render callback
