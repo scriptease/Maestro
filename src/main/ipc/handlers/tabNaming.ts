@@ -11,6 +11,7 @@
 
 import { ipcMain } from 'electron';
 import Store from 'electron-store';
+import type { AgentConfigsData } from '../../stores/types';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../../utils/logger';
 import {
@@ -21,10 +22,12 @@ import {
 import { buildAgentArgs, applyAgentConfigOverrides } from '../../utils/agent-args';
 import { getSshRemoteConfig, createSshRemoteStoreAdapter } from '../../utils/ssh-remote-resolver';
 import { buildSshCommand } from '../../utils/ssh-command-builder';
-import { tabNamingPrompt } from '../../../prompts';
+import { getPrompt } from '../../prompt-manager';
+import { isWindows } from '../../../shared/platformDetection';
 import type { ProcessManager } from '../../process-manager';
 import type { AgentDetector } from '../../agents';
 import type { MaestroSettings } from './persistence';
+import { captureException } from '../../utils/sentry';
 
 const LOG_CONTEXT = '[TabNaming]';
 
@@ -41,12 +44,7 @@ const handlerOpts = (
 	...extra,
 });
 
-/**
- * Interface for agent configuration store data
- */
-interface AgentConfigsData {
-	configs: Record<string, Record<string, any>>;
-}
+// AgentConfigsData imported from stores/types
 
 /**
  * Dependencies required for tab naming handler registration
@@ -120,7 +118,7 @@ export function registerTabNamingHandlers(deps: TabNamingHandlerDependencies): v
 					}
 
 					// Build the prompt: combine the tab naming prompt with the user's message
-					const fullPrompt = `${tabNamingPrompt}\n\n---\n\nUser's message:\n\n${config.userMessage}`;
+					const fullPrompt = `${getPrompt('tab-naming')}\n\n---\n\nUser's message:\n\n${config.userMessage}`;
 
 					// Build agent arguments - read-only mode, runs in parallel
 					// Filter out --dangerously-skip-permissions from base args since tab naming
@@ -296,6 +294,12 @@ export function registerTabNamingHandlers(deps: TabNamingHandlerDependencies): v
 						processManager.on('data', onData);
 						processManager.on('exit', onExit);
 
+						// On Windows (non-SSH), route the prompt via raw stdin to avoid
+						// cmd.exe's ~8KB command-line limit (ENAMETOOLONG on spawn).
+						// Tab naming concatenates a multi-KB system prompt with the user
+						// message, so a long first message easily exceeds the limit.
+						const sendPromptViaStdinRaw = isWindows() && !config.sessionSshRemoteConfig?.enabled;
+
 						// Spawn the process
 						// When using SSH with stdin, pass the flag so ChildProcessSpawner
 						// sends the prompt via stdin instead of command line args
@@ -307,10 +311,14 @@ export function registerTabNamingHandlers(deps: TabNamingHandlerDependencies): v
 							args: finalArgs,
 							prompt: fullPrompt,
 							customEnvVars,
+							promptArgs: agent.promptArgs,
+							noPromptSeparator: agent.noPromptSeparator,
 							sendPromptViaStdin: shouldSendPromptViaStdin,
+							sendPromptViaStdinRaw,
 						});
 					});
 				} catch (error) {
+					void captureException(error);
 					logger.error('Tab naming request failed', LOG_CONTEXT, {
 						sessionId,
 						error: String(error),

@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useSessionStore } from '../../stores/sessionStore';
+import { useSessionStore, selectActiveSession } from '../../stores/sessionStore';
 import { useGroupChatStore } from '../../stores/groupChatStore';
 import { useModalStore } from '../../stores/modalStore';
 import type {
@@ -94,6 +94,7 @@ export interface AppModalsProps {
 		workingDir: string,
 		name: string,
 		nudgeMessage?: string,
+		newSessionMessage?: string,
 		customPath?: string,
 		customArgs?: string,
 		customEnvVars?: Record<string, string>,
@@ -114,6 +115,7 @@ export interface AppModalsProps {
 		name: string,
 		toolType?: ToolType,
 		nudgeMessage?: string,
+		newSessionMessage?: string,
 		customPath?: string,
 		customArgs?: string,
 		customEnvVars?: Record<string, string>,
@@ -190,6 +192,7 @@ export interface AppModalsProps {
 	setUsageDashboardOpen?: (open: boolean) => void;
 	setActiveRightTab: (tab: RightPanelTab) => void;
 	setAgentSessionsOpen: (open: boolean) => void;
+	setMemoryViewerOpen?: (open: boolean) => void;
 	setActiveAgentSessionId: (id: string | null) => void;
 	setGitDiffPreview: (diff: string | null) => void;
 	setGitLogOpen: (open: boolean) => void;
@@ -213,6 +216,7 @@ export interface AppModalsProps {
 	wizardGoToStep: (step: WizardStep) => void;
 	setDebugWizardModalOpen?: (open: boolean) => void;
 	setDebugPackageModalOpen?: (open: boolean) => void;
+	setDebugApplicationStatsOpen?: (open: boolean) => void;
 	startTour: () => void;
 	setFuzzyFileSearchOpen: (open: boolean) => void;
 	onEditAgent: (session: Session) => void;
@@ -226,6 +230,7 @@ export interface AppModalsProps {
 			| 'supportsSlashCommands'
 			| 'supportsContextMerge'
 			| 'supportsThinkingDisplay'
+			| 'supportsProjectMemory'
 	) => boolean;
 	onOpenMergeSession: () => void;
 	onOpenSendToAgent: () => void;
@@ -289,6 +294,7 @@ export interface AppModalsProps {
 	onTabSelect: (tabId: string) => void;
 	onFileTabSelect?: (tabId: string) => void;
 	onTerminalTabSelect?: (tabId: string) => void;
+	onBrowserTabSelect?: (tabId: string) => void;
 	onNamedSessionSelect: (
 		agentSessionId: string,
 		projectPath: string,
@@ -412,10 +418,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 			setGroups: s.setGroups,
 		}))
 	);
-	const activeSession = useMemo(
-		() => sessions.find((s) => s.id === activeSessionId) ?? null,
-		[sessions, activeSessionId]
-	);
+	const activeSession = useSessionStore(selectActiveSession);
 	const { groupChats, activeGroupChatId } = useGroupChatStore(
 		useShallow((s) => ({
 			groupChats: s.groupChats,
@@ -596,6 +599,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 		setUsageDashboardOpen,
 		setActiveRightTab,
 		setAgentSessionsOpen,
+		setMemoryViewerOpen,
 		setActiveAgentSessionId,
 		setGitDiffPreview,
 		setGitLogOpen,
@@ -619,6 +623,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 		wizardGoToStep,
 		setDebugWizardModalOpen,
 		setDebugPackageModalOpen,
+		setDebugApplicationStatsOpen,
 		startTour,
 		setFuzzyFileSearchOpen,
 		onEditAgent,
@@ -684,6 +689,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 		onTabSelect,
 		onFileTabSelect,
 		onTerminalTabSelect,
+		onBrowserTabSelect,
 		onNamedSessionSelect,
 		filteredFileTree,
 		fileExplorerExpanded,
@@ -924,6 +930,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 				setUsageDashboardOpen={setUsageDashboardOpen}
 				setActiveRightTab={setActiveRightTab}
 				setAgentSessionsOpen={setAgentSessionsOpen}
+				setMemoryViewerOpen={setMemoryViewerOpen}
 				setActiveAgentSessionId={setActiveAgentSessionId}
 				setGitDiffPreview={setGitDiffPreview}
 				setGitLogOpen={setGitLogOpen}
@@ -946,6 +953,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 				wizardGoToStep={wizardGoToStep}
 				setDebugWizardModalOpen={setDebugWizardModalOpen}
 				setDebugPackageModalOpen={setDebugPackageModalOpen}
+				setDebugApplicationStatsOpen={setDebugApplicationStatsOpen}
 				startTour={startTour}
 				setFuzzyFileSearchOpen={setFuzzyFileSearchOpen}
 				onEditAgent={onEditAgent}
@@ -1011,6 +1019,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
 				onTabSelect={onTabSelect}
 				onFileTabSelect={onFileTabSelect}
 				onTerminalTabSelect={onTerminalTabSelect}
+				onBrowserTabSelect={onBrowserTabSelect}
 				onNamedSessionSelect={onNamedSessionSelect}
 				colorBlindMode={colorBlindMode}
 				fuzzyFileSearchOpen={fuzzyFileSearchOpen}

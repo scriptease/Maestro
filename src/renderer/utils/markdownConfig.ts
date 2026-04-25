@@ -23,6 +23,8 @@ import React from 'react';
 import type { Theme } from '../types';
 import { REMARK_GFM_PLUGINS } from '../../shared/markdownPlugins';
 import { extractHexColor } from '../../shared/hexColor';
+import { openUrl } from './openUrl';
+import { BionifyText, getBionifyReadingModeStyles } from './bionifyReadingMode';
 
 // ============================================================================
 // Types
@@ -51,7 +53,7 @@ export interface MarkdownComponentsOptions {
 	/** Callback when internal file link is clicked (maestro-file:// protocol) */
 	onFileClick?: (filePath: string, options?: { openInNewTab?: boolean }) => void;
 	/** Callback when external link is clicked - if not provided, uses default browser behavior */
-	onExternalLinkClick?: (href: string) => void;
+	onExternalLinkClick?: (href: string, options?: { ctrlKey?: boolean }) => void;
 	/** Callback when anchor link is clicked (same-page #section links) */
 	onAnchorClick?: (anchorId: string) => void;
 	/** Container ref for scrolling to anchors - if not provided, uses document.getElementById */
@@ -71,6 +73,12 @@ export interface MarkdownComponentsOptions {
 		borderRadius?: string;
 		backgroundColor?: string;
 	};
+	/** Apply Bionify reading-mode emphasis to readable prose nodes only */
+	enableBionifyReadingMode?: boolean;
+	/** Visual intensity for Bionify emphasis */
+	bionifyIntensity?: number;
+	/** Algorithm string controlling Bionify highlight lengths */
+	bionifyAlgorithm?: string;
 }
 
 /**
@@ -150,7 +158,7 @@ export function generateProseStyles(options: ProseStylesOptions): string {
     ${s} li::marker { color: ${colors.textMain}; }
     ${s} ol li::marker { font-variant-numeric: tabular-nums; font-weight: 400; }
     ${s} li:has(> input[type="checkbox"]) { list-style: none; margin-left: -1.5em; }
-    ${s} code { background-color: ${colors.bgActivity}; color: ${colors.textMain}; padding: 0.2em 0.4em; border-radius: 3px; font-size: 0.9em; }
+    ${s} code { background-color: ${colors.bgActivity}; color: ${colors.textMain}; padding: 0.2em 0.4em; border-radius: 3px; font-size: 0.9em; overflow-wrap: anywhere; }
     ${s} pre { background-color: ${colors.bgActivity}; color: ${colors.textMain}; padding: 1em; border-radius: 6px; overflow-x: auto; ${compactSpacing ? 'margin: 0.35em 0 !important;' : ''} }
     ${s} pre code { background: none; padding: 0; }
     ${s} blockquote { border-left: ${compactSpacing ? '3px' : '4px'} solid ${colors.border}; padding-left: ${compactSpacing ? '0.75em' : '1em'}; margin: ${compactSpacing ? '0.25em 0' : '0.5em 0'} !important; color: ${colors.textDim}; }
@@ -161,6 +169,7 @@ export function generateProseStyles(options: ProseStylesOptions): string {
     ${s} th { background-color: ${colors.bgActivity}; font-weight: bold; }
     ${s} strong { font-weight: bold; }
     ${s} em { font-style: italic; }
+    ${getBionifyReadingModeStyles(s, theme)}
   `.trim();
 
 	// Add checkbox styles if requested
@@ -326,6 +335,36 @@ function highlightSearchMatches(
 	return processChild(children, 0);
 }
 
+export function applyReadableTextTransforms(
+	children: React.ReactNode,
+	options: Pick<
+		MarkdownComponentsOptions,
+		'enableBionifyReadingMode' | 'searchHighlight' | 'bionifyIntensity' | 'bionifyAlgorithm'
+	> & {
+		theme: Theme;
+	}
+): React.ReactNode {
+	const {
+		theme,
+		searchHighlight,
+		enableBionifyReadingMode = false,
+		bionifyIntensity,
+		bionifyAlgorithm,
+	} = options;
+	const highlighted =
+		searchHighlight && searchHighlight.query.trim()
+			? highlightSearchMatches(children, searchHighlight, theme)
+			: children;
+
+	return React.createElement(BionifyText, {
+		enabled: enableBionifyReadingMode,
+		intensity: bionifyIntensity,
+		algorithm: bionifyAlgorithm,
+		theme,
+		children: highlighted,
+	});
+}
+
 export function createMarkdownComponents(options: MarkdownComponentsOptions): Partial<Components> {
 	const {
 		theme,
@@ -337,51 +376,58 @@ export function createMarkdownComponents(options: MarkdownComponentsOptions): Pa
 		containerRef,
 		searchHighlight,
 		codeBlockStyle,
+		enableBionifyReadingMode = false,
+		bionifyIntensity,
+		bionifyAlgorithm,
 	} = options;
 
 	// Reset match counter at start of each render
 	globalMatchCounter = 0;
 
-	// Helper to wrap children with search highlighting
-	const withHighlight = (children: React.ReactNode): React.ReactNode => {
-		if (!searchHighlight || !searchHighlight.query.trim()) {
-			return children;
-		}
-		return highlightSearchMatches(children, searchHighlight, theme);
+	const withReadableTransforms = (children: React.ReactNode): React.ReactNode => {
+		return applyReadableTextTransforms(children, {
+			theme,
+			searchHighlight,
+			enableBionifyReadingMode,
+			bionifyIntensity,
+			bionifyAlgorithm,
+		});
 	};
 
 	const components: Partial<Components> = {
 		// Override paragraph to apply search highlighting
-		p: ({ children }: any) => React.createElement('p', null, withHighlight(children)),
+		p: ({ children }: any) => React.createElement('p', null, withReadableTransforms(children)),
 
-		// Override headings to apply search highlighting (forward id/props for rehype-slug anchors)
+		// Override headings to apply readable transforms (search highlighting + Bionify)
+		// Forward id/props for rehype-slug anchors (rc) while piping through withReadableTransforms (main/Bionify)
 		h1: ({ children, node: _node, ...props }: any) =>
-			React.createElement('h1', props, withHighlight(children)),
+			React.createElement('h1', props, withReadableTransforms(children)),
 		h2: ({ children, node: _node, ...props }: any) =>
-			React.createElement('h2', props, withHighlight(children)),
+			React.createElement('h2', props, withReadableTransforms(children)),
 		h3: ({ children, node: _node, ...props }: any) =>
-			React.createElement('h3', props, withHighlight(children)),
+			React.createElement('h3', props, withReadableTransforms(children)),
 		h4: ({ children, node: _node, ...props }: any) =>
-			React.createElement('h4', props, withHighlight(children)),
+			React.createElement('h4', props, withReadableTransforms(children)),
 		h5: ({ children, node: _node, ...props }: any) =>
-			React.createElement('h5', props, withHighlight(children)),
+			React.createElement('h5', props, withReadableTransforms(children)),
 		h6: ({ children, node: _node, ...props }: any) =>
-			React.createElement('h6', props, withHighlight(children)),
+			React.createElement('h6', props, withReadableTransforms(children)),
 
 		// Override list items to apply search highlighting
-		li: ({ children }: any) => React.createElement('li', null, withHighlight(children)),
+		li: ({ children }: any) => React.createElement('li', null, withReadableTransforms(children)),
 
 		// Override table cells to apply search highlighting
-		td: ({ children }: any) => React.createElement('td', null, withHighlight(children)),
-		th: ({ children }: any) => React.createElement('th', null, withHighlight(children)),
+		td: ({ children }: any) => React.createElement('td', null, withReadableTransforms(children)),
+		th: ({ children }: any) => React.createElement('th', null, withReadableTransforms(children)),
 
 		// Override blockquote to apply search highlighting
 		blockquote: ({ children }: any) =>
-			React.createElement('blockquote', null, withHighlight(children)),
+			React.createElement('blockquote', null, withReadableTransforms(children)),
 
 		// Override strong/em to apply search highlighting
-		strong: ({ children }: any) => React.createElement('strong', null, withHighlight(children)),
-		em: ({ children }: any) => React.createElement('em', null, withHighlight(children)),
+		strong: ({ children }: any) =>
+			React.createElement('strong', null, withReadableTransforms(children)),
+		em: ({ children }: any) => React.createElement('em', null, withReadableTransforms(children)),
 		// Block code: extract code element from <pre><code>...</code></pre> and render with SyntaxHighlighter
 		pre: ({ children }: any) => {
 			const codeElement = React.Children.toArray(children).find(
@@ -506,7 +552,7 @@ export function createMarkdownComponents(options: MarkdownComponentsOptions): Pa
 								}
 							}
 						} else if (href && onExternalLinkClick && /^https?:\/\/|^mailto:/.test(href)) {
-							onExternalLinkClick(href);
+							onExternalLinkClick(href, { ctrlKey: e.ctrlKey });
 						} else if (
 							href &&
 							onFileClick &&
@@ -546,6 +592,7 @@ export function generateInlineWizardPreviewProseStyles(
 ): string {
 	const c = theme.colors;
 	const s = scopeSelector ? `${scopeSelector}.prose, ${scopeSelector} .prose` : '.prose';
+	const bionifySelector = scopeSelector ? `${scopeSelector} .prose` : '.prose';
 	const isStreaming = variant === 'streaming';
 
 	const heading1Size = isStreaming ? '1.75em' : '2em';
@@ -620,6 +667,7 @@ export function generateInlineWizardPreviewProseStyles(
       list-style-type: none;
       margin-left: -1.5em;
     }
+    ${getBionifyReadingModeStyles(bionifySelector, theme)}
   `;
 }
 
@@ -683,9 +731,9 @@ export function createWizardBubbleMarkdownComponents(theme: Theme): Partial<Comp
 					type: 'button',
 					className: 'underline',
 					style: { color: theme.colors.accent },
-					onClick: () => {
+					onClick: (e: React.MouseEvent) => {
 						if (href && /^https?:\/\/|^mailto:/.test(href)) {
-							window.maestro.shell.openExternal(href);
+							openUrl(href, { ctrlKey: e.ctrlKey });
 						}
 					},
 				},
@@ -801,7 +849,7 @@ export function createReleaseNotesMarkdownComponents(theme: Theme): Partial<Comp
 					onClick: (e: React.MouseEvent) => {
 						e.preventDefault();
 						if (href && /^https?:\/\/|^mailto:/.test(href)) {
-							window.maestro.shell.openExternal(href);
+							openUrl(href, { ctrlKey: e.ctrlKey });
 						}
 					},
 					className: 'hover:underline cursor-pointer',
@@ -877,6 +925,7 @@ export function generateTerminalProseStyles(theme: Theme, scopeSelector: string)
     ${s} li > strong:first-child, ${s} li > b:first-child, ${s} li > em:first-child, ${s} li > code:first-child, ${s} li > a:first-child,
     ${s} li > p:first-child > strong:first-child, ${s} li > p:first-child > b:first-child, ${s} li > p:first-child > em:first-child, ${s} li > p:first-child > code:first-child, ${s} li > p:first-child > a:first-child { vertical-align: baseline; line-height: inherit; }
     ${s} li::marker { font-weight: normal; }
+    ${getBionifyReadingModeStyles(s, theme)}
   `;
 }
 

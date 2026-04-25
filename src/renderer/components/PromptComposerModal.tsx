@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
 	X,
 	PenLine,
@@ -13,8 +13,9 @@ import {
 	File,
 	Folder,
 } from 'lucide-react';
+import { GhostIconButton } from './ui/GhostIconButton';
 import type { Theme, ThinkingMode, Session, Group } from '../types';
-import { useLayerStack } from '../contexts/LayerStackContext';
+import { useModalLayer } from '../hooks/ui/useModalLayer';
 import { MODAL_PRIORITIES } from '../constants/modalPriorities';
 import { estimateTokenCount } from '../../shared/formatters';
 import { getReadOnlyModeLabel, getReadOnlyModeTooltip } from '../../shared/agentMetadata';
@@ -110,7 +111,6 @@ export function PromptComposerModal({
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const mentionListRef = useRef<HTMLDivElement>(null);
 	const selectedMentionRef = useRef<HTMLButtonElement>(null);
-	const { registerLayer, unregisterLayer } = useLayerStack();
 	const hasAgentMentions = sessions != null && sessions.length > 0;
 
 	// File @mention completion (same as InputArea)
@@ -126,13 +126,15 @@ export function PromptComposerModal({
 	const showMentionsRef = useRef(showMentions);
 	showMentionsRef.current = showMentions;
 
-	// Sync value when modal opens with new initialValue
+	// Sync value only on mount — while open, the composer owns the value
+	// and syncs back to parent via onSubmit on each keystroke.
+	// Excluding initialValue prevents useDeferredValue lag from overwriting edits.
 	useEffect(() => {
 		if (isOpen) {
 			setValue(initialValue);
 			setShowMentions(false);
 		}
-	}, [isOpen, initialValue]);
+	}, [isOpen]);
 
 	// Focus textarea when modal opens
 	useEffect(() => {
@@ -145,28 +147,21 @@ export function PromptComposerModal({
 	}, [isOpen]);
 
 	// Register with layer stack for Escape handling
-	useEffect(() => {
-		if (isOpen) {
-			const id = registerLayer({
-				type: 'modal',
-				priority: MODAL_PRIORITIES.PROMPT_COMPOSER,
-				blocksLowerLayers: true,
-				capturesFocus: true,
-				focusTrap: 'strict',
-				onEscape: () => {
-					// If mention dropdown is open, close it instead of the modal
-					if (showMentionsRef.current) {
-						setShowMentions(false);
-						return;
-					}
-					// Save the current value back before closing
-					onSubmitRef.current(valueRef.current);
-					onCloseRef.current();
-				},
-			});
-			return () => unregisterLayer(id);
-		}
-	}, [isOpen, registerLayer, unregisterLayer]);
+	useModalLayer(
+		MODAL_PRIORITIES.PROMPT_COMPOSER,
+		undefined,
+		() => {
+			// If mention dropdown is open, close it instead of the modal
+			if (showMentionsRef.current) {
+				setShowMentions(false);
+				return;
+			}
+			// Save the current value back before closing
+			onSubmitRef.current(valueRef.current);
+			onCloseRef.current();
+		},
+		{ enabled: isOpen }
+	);
 
 	// Build agent/group mentionable items (group chat mode)
 	const agentMentionItems = useMemo(() => {
@@ -200,47 +195,40 @@ export function PromptComposerModal({
 		return items;
 	}, [sessions, groups]);
 
-	// Combined filtered mentions: file suggestions + agent/group suggestions
+	// Filtered mentions: file suggestions (agent chat) OR agent/group suggestions (group chat)
 	const filteredMentions = useMemo(() => {
-		const items: MentionItem[] = [];
+		// Group chat mode: show agent/group mentions only
+		if (hasAgentMentions) {
+			if (!mentionFilter) return agentMentionItems;
+			const filterLower = mentionFilter.toLowerCase();
+			return agentMentionItems.filter((item) => {
+				if (item.type === 'group') {
+					return (
+						item.group.name.toLowerCase().includes(filterLower) ||
+						item.mentionName.toLowerCase().includes(filterLower)
+					);
+				}
+				if (item.type === 'agent') {
+					return (
+						item.name.toLowerCase().includes(filterLower) ||
+						item.mentionName.toLowerCase().includes(filterLower)
+					);
+				}
+				return false;
+			});
+		}
 
-		// File suggestions (always available when activeSession exists)
+		// Agent chat mode: show file suggestions only
 		const fileSuggestions = getFileSuggestions(mentionFilter);
-		for (const s of fileSuggestions) {
-			items.push({
+		return fileSuggestions.map(
+			(s): MentionItem => ({
 				type: 'file',
 				fileType: s.type,
 				displayText: s.displayText,
 				fullPath: s.fullPath,
 				source: s.source,
-			});
-		}
-
-		// Agent/group suggestions (group chat mode)
-		if (hasAgentMentions) {
-			const filterLower = mentionFilter.toLowerCase();
-			for (const item of agentMentionItems) {
-				if (!mentionFilter) {
-					items.push(item);
-				} else if (item.type === 'group') {
-					if (
-						item.group.name.toLowerCase().includes(filterLower) ||
-						item.mentionName.toLowerCase().includes(filterLower)
-					) {
-						items.push(item);
-					}
-				} else if (item.type === 'agent') {
-					if (
-						item.name.toLowerCase().includes(filterLower) ||
-						item.mentionName.toLowerCase().includes(filterLower)
-					) {
-						items.push(item);
-					}
-				}
-			}
-		}
-
-		return items;
+			})
+		);
 	}, [mentionFilter, getFileSuggestions, hasAgentMentions, agentMentionItems]);
 
 	// Scroll selected mention into view
@@ -281,6 +269,9 @@ export function PromptComposerModal({
 
 	const handleValueChange = useCallback((newValue: string) => {
 		setValue(newValue);
+		// Sync every keystroke to parent so the composer is transparent —
+		// typing here is equivalent to typing in the standard input box
+		onSubmitRef.current(newValue);
 
 		// Check for @mention trigger (cursor-aware, same as InputArea)
 		const cursorPos = textareaRef.current?.selectionStart ?? newValue.length;
@@ -332,11 +323,20 @@ export function PromptComposerModal({
 			}
 		}
 
-		// Cmd/Ctrl + Enter to send the message
-		if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-			e.preventDefault();
-			handleSend();
-			return;
+		// Send the message. Honors the Expanded AI Interaction Mode setting passed in via `enterToSend`.
+		// When enterToSend === true: plain Enter sends; Shift+Enter inserts newline.
+		// When enterToSend === false: Cmd/Ctrl+Enter sends; plain Enter inserts newline.
+		if (e.key === 'Enter') {
+			if (enterToSend && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+				e.preventDefault();
+				handleSend();
+				return;
+			}
+			if (!enterToSend && (e.metaKey || e.ctrlKey)) {
+				e.preventDefault();
+				handleSend();
+				return;
+			}
 		}
 
 		// Tab key inserts a tab character instead of moving focus
@@ -494,16 +494,16 @@ export function PromptComposerModal({
 						</span>
 					</div>
 					<div className="flex items-center gap-3">
-						<button
+						<GhostIconButton
 							onClick={() => {
 								onSubmit(value);
 								onClose();
 							}}
-							className="p-1.5 rounded hover:bg-white/10 transition-colors"
+							padding="p-1.5"
 							title="Close (Escape)"
 						>
 							<X className="w-5 h-5" style={{ color: theme.colors.textDim }} />
-						</button>
+						</GhostIconButton>
 					</div>
 				</div>
 
@@ -655,7 +655,7 @@ export function PromptComposerModal({
 						style={{ color: theme.colors.textMain }}
 						placeholder={
 							hasAgentMentions
-								? 'Write your prompt here... (@ to mention files or agents)'
+								? 'Write your prompt here... (@ to mention agents)'
 								: 'Write your prompt here... (@ to reference files)'
 						}
 					/>

@@ -45,10 +45,12 @@ interface BrowserTabGuestContents {
 	setWindowOpenHandler: (
 		handler: ({ url }: { url: string }) => { action: 'deny' | 'allow' }
 	) => void;
-	on: (
-		event: string,
+	on(
+		event: 'will-navigate' | 'will-redirect',
 		handler: (event: { preventDefault: () => void }, url: string) => void
-	) => void;
+	): void;
+	on(event: string, handler: (...args: any[]) => void): void;
+	executeJavaScript(code: string): Promise<unknown>;
 }
 
 function isAllowedBrowserTabUrl(rawUrl: string): boolean {
@@ -283,6 +285,81 @@ export function createWindowManager(deps: WindowManagerDependencies): WindowMana
 
 			mainWindow.webContents.on('did-attach-webview', (_event, guestContents) => {
 				attachBrowserTabGuestSecurity(guestContents as BrowserTabGuestContents);
+
+				// Forward app shortcuts from the webview guest process to the renderer.
+				// When a <webview> has focus, keyboard events are trapped in its guest
+				// Chromium process and never reach the renderer's window keydown handler.
+				//
+				// Strategy: inject a bubble-phase keydown listener into the guest page.
+				// After all page handlers have run, if the page did NOT call preventDefault
+				// on a Meta/Ctrl keystroke, it means the page doesn't use that shortcut —
+				// so we forward it to the app. If the page DID preventDefault, the page's
+				// shortcut takes precedence and we leave it alone.
+				const guest = guestContents as BrowserTabGuestContents;
+
+				// Intercept app shortcuts BEFORE Chromium's built-in handlers consume them.
+				// Some keys (e.g. Cmd+L for address bar focus) are handled by Chromium
+				// internally and never reach the injected JS listener below.
+				guest.on('before-input-event', (event, input) => {
+					if (!input.meta && !input.control && !input.alt) return;
+					if (input.type !== 'keyDown') return;
+					const k = input.key.toLowerCase();
+					// Let standard text-editing shortcuts pass through to the page
+					const isTextEditing =
+						(input.meta || input.control) && !input.alt && !input.shift && 'acvxzf'.includes(k);
+					const isRedo = (input.meta || input.control) && !input.alt && input.shift && k === 'z';
+					if (isTextEditing || isRedo) return;
+					event.preventDefault();
+					mainWindow.webContents.send('browser-tab:shortcutKey', {
+						key: input.key,
+						code: input.code,
+						meta: input.meta,
+						control: input.control,
+						alt: input.alt,
+						shift: input.shift,
+					});
+				});
+
+				// Capture-phase listener: intercepts app shortcuts BEFORE the page
+				// can handle them.  We preventDefault+stopPropagation so the page
+				// never sees the event, then forward it to the app via console.log.
+				const shortcutInjection = `(function(){
+					if(window.__maestroShortcutListenerInstalled)return;
+					window.__maestroShortcutListenerInstalled=true;
+					document.addEventListener('keydown',function(e){
+						var hasMod=e.metaKey||e.ctrlKey;
+						var hasAlt=e.altKey;
+						if(!hasMod&&!hasAlt)return;
+						var k=e.key.toLowerCase();
+						var te=hasMod&&!hasAlt&&!e.shiftKey&&'acvxzf'.indexOf(k)!==-1;
+						var re=hasMod&&!hasAlt&&e.shiftKey&&k==='z';
+						if(te||re)return;
+						e.preventDefault();
+						e.stopPropagation();
+						console.log('__MAESTRO_KEY__'+JSON.stringify({
+							key:e.key,code:e.code,
+							meta:e.metaKey,control:e.ctrlKey,
+							alt:e.altKey,shift:e.shiftKey
+						}));
+					},true);
+				})();`;
+				const injectShortcutListener = () => {
+					guest.executeJavaScript(shortcutInjection).catch(() => {});
+				};
+				guest.on('dom-ready', injectShortcutListener);
+				guest.on('did-navigate', injectShortcutListener);
+				// console-message args: (event, level, message, line, sourceId)
+				guest.on('console-message', (...args: unknown[]) => {
+					const message = typeof args[2] === 'string' ? args[2] : String(args[2] ?? '');
+					const prefix = '__MAESTRO_KEY__';
+					if (!message.startsWith(prefix)) return;
+					try {
+						const input = JSON.parse(message.slice(prefix.length));
+						mainWindow.webContents.send('browser-tab:shortcutKey', input);
+					} catch {
+						// Malformed message, ignore
+					}
+				});
 			});
 
 			// Deny all popup/new-window requests — external links use IPC shell:openExternal

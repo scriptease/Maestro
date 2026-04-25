@@ -1,5 +1,6 @@
 import React from 'react';
-import { Loader2 } from 'lucide-react';
+
+import { Spinner } from '../ui/Spinner';
 import { TerminalOutput } from '../TerminalOutput';
 import {
 	TerminalView,
@@ -20,6 +21,7 @@ import type {
 	BrowserTab,
 	FilePreviewTab,
 	ThinkingItem,
+	QueuedItem,
 } from '../../types';
 import type { SlashCommand } from './types';
 import type { TabCompletionSuggestion, TabCompletionFilter } from '../../hooks';
@@ -50,12 +52,14 @@ export interface MainPanelContentProps {
 	filePreviewRef: React.RefObject<FilePreviewHandle>;
 	handleFilePreviewClose: () => void;
 	handleFilePreviewEditModeChange: (editMode: boolean) => void;
-	handleFilePreviewSave: (path: string, content: string) => Promise<void>;
+	handleFilePreviewSave: (path: string, content: string) => Promise<boolean | void>;
 	handleFilePreviewEditContentChange: (content: string) => void;
 	handleFilePreviewScrollPositionChange: (scrollTop: number) => void;
 	handleFilePreviewSearchQueryChange: (searchQuery: string) => void;
 	handleFilePreviewReload: () => void;
 	handleBrowserTabUpdate?: (sessionId: string, tabId: string, updates: Partial<BrowserTab>) => void;
+	/** Ref registry for the currently-mounted BrowserTabView — used to extract the active tab's content */
+	browserViewRef?: React.MutableRefObject<import('./BrowserTabView').BrowserTabViewHandle | null>;
 
 	// Terminal mounting props
 	terminalViewRefs: React.MutableRefObject<
@@ -65,6 +69,10 @@ export interface MainPanelContentProps {
 	mountedTerminalSessionsRef: React.MutableRefObject<Map<string, Session>>;
 	terminalSearchOpen: boolean;
 	setTerminalSearchOpen: (open: boolean) => void;
+	/** Copy a highlighted terminal selection to the clipboard (right-click menu handler). */
+	onTerminalCopySelection?: (text: string) => void;
+	/** Send a highlighted terminal selection to another agent (right-click menu handler). */
+	onTerminalSendSelectionToAgent?: (tabId: string, text: string) => void;
 
 	// Layout
 	isMobileLandscape: boolean;
@@ -143,6 +151,11 @@ export interface MainPanelContentProps {
 	thinkingItems: ThinkingItem[];
 	onStopBatchRun?: (sessionId?: string) => void;
 	onRemoveQueuedItem?: (itemId: string) => void;
+	onForceSendQueuedItem?: (itemId: string) => void;
+	forcedParallelEnabled?: boolean;
+	getForceSendContext?: (
+		item: QueuedItem
+	) => { targetTabBusy: boolean; otherBusyTabs: { id: string; displayName: string }[] } | null;
 	onOpenQueueBrowser?: () => void;
 	showFlashNotification?: (message: string) => void;
 
@@ -173,6 +186,7 @@ export interface MainPanelContentProps {
 	onInputBlur?: () => void;
 	onOpenPromptComposer?: () => void;
 	onReplayMessage?: (text: string, images?: string[]) => void;
+	onForkConversation?: (logId: string) => void;
 	fileTree?: FileNode[];
 	onFileClick?: (relativePath: string, options?: { openInNewTab?: boolean }) => void;
 	refreshFileTree?: (
@@ -199,7 +213,7 @@ export interface MainPanelContentProps {
 	onPublishGist?: () => void;
 	hasGist?: boolean;
 	onOpenInGraph?: () => void;
-	onPublishMessageGist?: (text: string) => void;
+	onPublishMessageGist?: (text: string, messageId?: string) => void;
 	onToggleTabReadOnlyMode?: () => void;
 	onToggleTabSaveToHistory?: () => void;
 	onToggleTabShowThinking?: () => void;
@@ -246,11 +260,14 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 		handleFilePreviewSearchQueryChange,
 		handleFilePreviewReload,
 		handleBrowserTabUpdate,
+		browserViewRef,
 		terminalViewRefs,
 		mountedTerminalSessionIds,
 		mountedTerminalSessionsRef,
 		terminalSearchOpen,
 		setTerminalSearchOpen,
+		onTerminalCopySelection,
+		onTerminalSendSelectionToAgent,
 		isMobileLandscape,
 		activeTabContextUsage,
 		contextWarningsEnabled,
@@ -305,6 +322,9 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 		thinkingItems,
 		onStopBatchRun,
 		onRemoveQueuedItem,
+		onForceSendQueuedItem,
+		forcedParallelEnabled,
+		getForceSendContext,
 		onOpenQueueBrowser,
 		showFlashNotification,
 		summarizeProgress,
@@ -327,6 +347,7 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 		onInputBlur,
 		onOpenPromptComposer,
 		onReplayMessage,
+		onForkConversation,
 		fileTree,
 		onFileClick,
 		refreshFileTree,
@@ -380,6 +401,7 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 	const activeFocus = useUIStore((s) => s.activeFocus);
 	const outputSearchOpen = useUIStore((s) => s.outputSearchOpen);
 	const outputSearchQuery = useUIStore((s) => s.outputSearchQuery);
+	const outputSearchRegex = useUIStore((s) => s.outputSearchRegex);
 
 	return (
 		/* Content area: Show FilePreview when file tab is active, otherwise show terminal output */
@@ -390,6 +412,9 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 			{/* Skip rendering when loading remote file - loading state takes over entire main area */}
 			{activeSession.inputMode === 'ai' && activeBrowserTabId && activeBrowserTab ? (
 				<BrowserTabView
+					ref={(handle) => {
+						if (browserViewRef) browserViewRef.current = handle;
+					}}
 					tab={activeBrowserTab}
 					theme={theme}
 					onUpdateTab={(tabId, updates) =>
@@ -403,7 +428,7 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 					style={{ backgroundColor: theme.colors.bgMain }}
 				>
 					<div className="flex flex-col items-center gap-3">
-						<Loader2 className="w-8 h-8 animate-spin" style={{ color: theme.colors.accent }} />
+						<Spinner size={32} color={theme.colors.accent} />
 						<div className="text-center">
 							<div className="text-sm font-medium" style={{ color: theme.colors.textMain }}>
 								Loading{' '}
@@ -531,8 +556,10 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 								activeFocus={activeFocus}
 								outputSearchOpen={outputSearchOpen}
 								outputSearchQuery={outputSearchQuery}
+								outputSearchRegex={outputSearchRegex}
 								setOutputSearchOpen={useUIStore.getState().setOutputSearchOpen}
 								setOutputSearchQuery={useUIStore.getState().setOutputSearchQuery}
+								setOutputSearchRegex={useUIStore.getState().setOutputSearchRegex}
 								setActiveFocus={useUIStore.getState().setActiveFocus}
 								setLightboxImage={setLightboxImage}
 								inputRef={inputRef}
@@ -540,6 +567,9 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 								maxOutputLines={maxOutputLines}
 								onDeleteLog={onDeleteLog}
 								onRemoveQueuedItem={onRemoveQueuedItem}
+								onForceSendQueuedItem={onForceSendQueuedItem}
+								forcedParallelEnabled={forcedParallelEnabled}
+								getForceSendContext={getForceSendContext}
 								onInterrupt={handleInterrupt}
 								onScrollPositionChange={onScrollPositionChange}
 								onAtBottomChange={onAtBottomChange}
@@ -547,6 +577,7 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 								markdownEditMode={chatRawTextMode}
 								setMarkdownEditMode={useSettingsStore.getState().setChatRawTextMode}
 								onReplayMessage={onReplayMessage}
+								onForkConversation={onForkConversation}
 								fileTree={fileTree}
 								cwd={
 									activeSession.cwd?.startsWith(activeSession.fullPath)
@@ -711,6 +742,8 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 							searchOpen={isCurrentSession ? terminalSearchOpen : false}
 							onSearchClose={isCurrentSession ? () => setTerminalSearchOpen(false) : undefined}
 							isVisible={isTerminalVisible}
+							onCopySelection={onTerminalCopySelection}
+							onSendSelectionToAgent={onTerminalSendSelectionToAgent}
 						/>
 					</div>
 				);

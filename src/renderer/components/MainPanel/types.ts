@@ -8,6 +8,7 @@ import type {
 	BrowserTab,
 	ThinkingItem,
 	AgentError,
+	QueuedItem,
 } from '../../types';
 
 export interface SlashCommand {
@@ -29,12 +30,17 @@ export interface MainPanelHandle {
 	focusActiveTerminal: () => void;
 	/** Open the terminal search overlay */
 	openTerminalSearch: () => void;
+	/** Focus the browser address bar in the active browser tab */
+	focusBrowserAddressBar: () => void;
+	/** Reload the active browser tab (or stop loading if in progress) */
+	reloadBrowserTab: () => void;
 }
 
 export interface MainPanelProps {
 	// State
 	logViewerOpen: boolean;
 	agentSessionsOpen: boolean;
+	memoryViewerOpen: boolean;
 	activeAgentSessionId: string | null;
 	activeSession: Session | null;
 	// PERF: Receive pre-filtered thinkingItems instead of full sessions array.
@@ -72,6 +78,7 @@ export interface MainPanelProps {
 	setGitDiffPreview: (preview: string | null) => void;
 	setLogViewerOpen: (open: boolean) => void;
 	setAgentSessionsOpen: (open: boolean) => void;
+	setMemoryViewerOpen: (open: boolean) => void;
 	setActiveAgentSessionId: (id: string | null) => void;
 	onResumeAgentSession: (
 		agentSessionId: string,
@@ -120,6 +127,11 @@ export interface MainPanelProps {
 	setActiveSessionId: (id: string) => void;
 	onDeleteLog?: (logId: string) => number | null;
 	onRemoveQueuedItem?: (itemId: string) => void;
+	onForceSendQueuedItem?: (itemId: string) => void;
+	forcedParallelEnabled?: boolean;
+	getForceSendContext?: (
+		item: QueuedItem
+	) => { targetTabBusy: boolean; otherBusyTabs: { id: string; displayName: string }[] } | null;
 	onOpenQueueBrowser?: () => void;
 
 	// Auto mode props
@@ -160,6 +172,7 @@ export interface MainPanelProps {
 	activeBrowserTab?: BrowserTab | null;
 	onFileTabSelect?: (tabId: string) => void;
 	onFileTabClose?: (tabId: string) => void;
+	onNewFileTab?: () => void;
 	onNewBrowserTab?: () => void;
 	onBrowserTabSelect?: (tabId: string) => void;
 	onBrowserTabClose?: (tabId: string) => void;
@@ -196,6 +209,7 @@ export interface MainPanelProps {
 	onOpenPromptComposer?: () => void;
 	// Replay a user message (AI mode)
 	onReplayMessage?: (text: string, images?: string[]) => void;
+	onForkConversation?: (logId: string) => void;
 	// File tree for linking file references in AI responses
 	fileTree?: import('../../types/fileTree').FileNode[];
 	// Callback when a file link is clicked in AI response
@@ -244,6 +258,12 @@ export interface MainPanelProps {
 	onCopyContext?: (tabId: string) => void;
 	onExportHtml?: (tabId: string) => void;
 	onPublishTabGist?: (tabId: string) => void;
+	/** Copy arbitrary text to the clipboard (wired by MainPanel for terminal buffer actions). */
+	onCopyText?: (text: string, subject?: string) => void;
+	/** Queue arbitrary text for the Gist modal (wired by MainPanel for terminal buffer actions). */
+	onPublishTextAsGist?: (text: string, filenameStem: string) => void;
+	/** Queue arbitrary text for Send to Agent (wired by MainPanel for terminal buffer actions). */
+	onSendTextToAgent?: (text: string, sourceName: string) => void;
 
 	// Summarization progress props (non-blocking, per-tab)
 	summarizeProgress?: import('../../types/contextMerge').SummarizeProgress | null;
@@ -270,7 +290,7 @@ export interface MainPanelProps {
 	/** Whether the current preview file has been published as a gist */
 	hasGist?: boolean;
 	/** Publish a single AI message as a GitHub Gist */
-	onPublishMessageGist?: (text: string) => void;
+	onPublishMessageGist?: (text: string, messageId?: string) => void;
 
 	// Document Graph
 	onOpenInGraph?: () => void;
