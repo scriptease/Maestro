@@ -14,6 +14,7 @@ import type { Session, Theme, AITab } from '../../types';
 import { useTabStore } from '../../stores/tabStore';
 import { formatLogsForClipboard } from '../../utils/contextExtractor';
 import { notifyToast } from '../../stores/notificationStore';
+import { logger } from '../../utils/logger';
 import { getModalActions } from '../../stores/modalStore';
 
 // ============================================================================
@@ -93,7 +94,7 @@ export function useTabExportHandlers(deps: UseTabExportHandlersDeps): UseTabExpo
 				});
 			})
 			.catch((err) => {
-				console.error('Failed to copy context:', err);
+				logger.error('Failed to copy context:', undefined, err);
 				notifyToast({
 					type: 'error',
 					title: 'Copy Failed',
@@ -125,7 +126,7 @@ export function useTabExportHandlers(deps: UseTabExportHandlersDeps): UseTabExpo
 				message: 'Conversation exported as HTML.',
 			});
 		} catch (err) {
-			console.error('Failed to export tab:', err);
+			logger.error('Failed to export tab:', undefined, err);
 			notifyToast({
 				type: 'error',
 				title: 'Export Failed',

@@ -69,6 +69,7 @@ export interface WebClientMessage {
 	newName?: string;
 	filePath?: string;
 	focus?: boolean;
+	force?: boolean;
 	[key: string]: unknown;
 }
 
@@ -122,6 +123,12 @@ export interface MessageHandlerCallbacks {
 	toggleBookmark: (sessionId: string) => Promise<boolean>;
 	openFileTab: (sessionId: string, filePath: string) => Promise<boolean>;
 	refreshFileTree: (sessionId: string) => Promise<boolean>;
+	openBrowserTab: (sessionId: string, url: string) => Promise<boolean>;
+	openTerminalTab: (
+		sessionId: string,
+		config: { cwd?: string; shell?: string; name?: string | null }
+	) => Promise<boolean>;
+	newAITabWithPrompt: (sessionId: string, prompt: string) => Promise<boolean>;
 	refreshAutoRunDocs: (sessionId: string) => Promise<boolean>;
 	configureAutoRun: (
 		sessionId: string,
@@ -303,6 +310,18 @@ export class WebSocketMessageHandler {
 
 			case 'open_file_tab':
 				this.handleOpenFileTab(client, message);
+				break;
+
+			case 'open_browser_tab':
+				this.handleOpenBrowserTab(client, message);
+				break;
+
+			case 'open_terminal_tab':
+				this.handleOpenTerminalTab(client, message);
+				break;
+
+			case 'new_ai_tab_with_prompt':
+				this.handleNewAITabWithPrompt(client, message);
 				break;
 
 			case 'refresh_file_tree':
@@ -491,6 +510,10 @@ export class WebSocketMessageHandler {
 		const command = message.command as string;
 		// inputMode from web client - use this instead of server state to avoid sync issues
 		const clientInputMode = message.inputMode as 'ai' | 'terminal' | undefined;
+		// force=true bypasses the busy-state guard below, allowing callers to
+		// dispatch concurrent writes to an already-running agent. Used by
+		// `maestro-cli send --live --force`.
+		const force = message.force === true;
 
 		logger.info(
 			`[Web Command] Received: sessionId=${sessionId}, inputMode=${clientInputMode}, command=${command?.substring(0, 50)}`,
@@ -513,8 +536,9 @@ export class WebSocketMessageHandler {
 			return;
 		}
 
-		// Check if session is busy - prevent race conditions between desktop and web
-		if (sessionDetail.state === 'busy') {
+		// Check if session is busy - prevent race conditions between desktop and web.
+		// `force: true` opts out of this guard (see `maestro-cli send --live --force`).
+		if (sessionDetail.state === 'busy' && !force) {
 			this.sendError(
 				client,
 				'Session is busy - please wait for the current operation to complete',
@@ -524,6 +548,9 @@ export class WebSocketMessageHandler {
 			);
 			logger.debug(`Command rejected - session ${sessionId} is busy`, LOG_CONTEXT);
 			return;
+		}
+		if (sessionDetail.state === 'busy' && force) {
+			logger.info(`[Web Command] Force-dispatching to busy session ${sessionId}`, LOG_CONTEXT);
 		}
 
 		// Use client's inputMode if provided, otherwise fall back to server state
@@ -1402,6 +1429,246 @@ export class WebSocketMessageHandler {
 			})
 			.catch((error) => {
 				sendErrorResult(`Failed to open file tab: ${error.message}`);
+			});
+	}
+
+	/**
+	 * Handle open_browser_tab message - open a URL in a browser tab
+	 */
+	private handleOpenBrowserTab(client: WebClient, message: WebClientMessage): void {
+		const sessionId = typeof message.sessionId === 'string' ? message.sessionId : '';
+		const url = typeof message.url === 'string' ? message.url : '';
+		// URLs can embed bearer tokens or session IDs — log length only.
+		logger.info(
+			`[Web] Received open_browser_tab message: session=${sessionId}, urlLength=${url.length}`,
+			LOG_CONTEXT
+		);
+
+		const sendErrorResult = (error: string) => {
+			this.send(client, {
+				type: 'open_browser_tab_result',
+				success: false,
+				error,
+				sessionId,
+				requestId: message.requestId,
+			});
+		};
+
+		if (!sessionId || !url) {
+			sendErrorResult('Missing sessionId or url');
+			return;
+		}
+
+		const session = this.callbacks.getSessions?.().find((s) => s.id === sessionId);
+		if (!session) {
+			sendErrorResult('Session not found');
+			return;
+		}
+
+		// Only http(s) URLs are allowed in browser tabs; everything else is rejected
+		// (mailto:, file:, javascript:, etc. would be unsafe or nonsensical here).
+		// Normalize bare host:port inputs (e.g. `localhost:3000`) to http:// so
+		// WHATWG URL parsing doesn't mistake the host for a protocol.
+		const trimmedUrl = url.trim();
+		const hasExplicitScheme = trimmedUrl.includes('://');
+		const candidate = hasExplicitScheme ? trimmedUrl : `http://${trimmedUrl}`;
+		let parsed: URL;
+		try {
+			parsed = new URL(candidate);
+		} catch {
+			sendErrorResult('Invalid URL');
+			return;
+		}
+		if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+			sendErrorResult(`Unsupported URL protocol: ${parsed.protocol}`);
+			return;
+		}
+		// A bare input that parses with userinfo is almost certainly malformed
+		// (e.g. `foo:bar@baz` accidentally looking like `user:pass@host`).
+		if (!hasExplicitScheme && (parsed.username || parsed.password)) {
+			sendErrorResult('Invalid URL');
+			return;
+		}
+
+		if (!this.callbacks.openBrowserTab) {
+			sendErrorResult('Browser tab opening not configured');
+			return;
+		}
+
+		this.callbacks
+			.openBrowserTab(sessionId, parsed.toString())
+			.then((success) => {
+				this.send(client, {
+					type: 'open_browser_tab_result',
+					success,
+					sessionId,
+					url: parsed.toString(),
+					requestId: message.requestId,
+				});
+			})
+			.catch((error) => {
+				sendErrorResult(`Failed to open browser tab: ${error.message}`);
+			});
+	}
+
+	/**
+	 * Handle open_terminal_tab message - open a new terminal tab
+	 */
+	private async handleOpenTerminalTab(client: WebClient, message: WebClientMessage): Promise<void> {
+		const sessionId = typeof message.sessionId === 'string' ? message.sessionId : '';
+		const rawCwd = message.cwd;
+		const rawShell = message.shell;
+		const rawName = message.name;
+		// cwd/shell/name can leak local usernames or project names — log
+		// presence flags only.
+		logger.info(
+			`[Web] Received open_terminal_tab message: session=${sessionId}, cwdProvided=${
+				typeof rawCwd === 'string' && rawCwd.length > 0
+			}, shellProvided=${
+				typeof rawShell === 'string' && rawShell.length > 0
+			}, nameProvided=${rawName !== undefined}`,
+			LOG_CONTEXT
+		);
+
+		const sendErrorResult = (error: string) => {
+			this.send(client, {
+				type: 'open_terminal_tab_result',
+				success: false,
+				error,
+				sessionId,
+				requestId: message.requestId,
+			});
+		};
+
+		if (!sessionId) {
+			sendErrorResult('Missing sessionId');
+			return;
+		}
+
+		// Reject malformed optional fields rather than silently defaulting them,
+		// which could spawn a terminal in the wrong cwd or with the wrong shell.
+		if (rawCwd !== undefined && typeof rawCwd !== 'string') {
+			sendErrorResult('Invalid cwd: must be a string');
+			return;
+		}
+		if (rawShell !== undefined && typeof rawShell !== 'string') {
+			sendErrorResult('Invalid shell: must be a string');
+			return;
+		}
+		if (rawName !== undefined && rawName !== null && typeof rawName !== 'string') {
+			sendErrorResult('Invalid name: must be a string or null');
+			return;
+		}
+		const cwd = typeof rawCwd === 'string' ? rawCwd : undefined;
+		const shell = typeof rawShell === 'string' ? rawShell : undefined;
+		const name = typeof rawName === 'string' ? rawName : rawName === null ? null : undefined;
+
+		const session = this.callbacks.getSessions?.().find((s) => s.id === sessionId);
+		if (!session) {
+			sendErrorResult('Session not found');
+			return;
+		}
+
+		// If a cwd is provided, confine it to the agent working directory
+		// (same rule as open_file_tab — prevents spawning a shell outside scope).
+		// Resolve symlinks via fs.realpath so a `link-to-outside` inside the
+		// session root can't slip past the lexical prefix check.
+		let resolvedCwd: string | undefined;
+		if (cwd) {
+			if (!session.cwd) {
+				sendErrorResult('Session has no working directory');
+				return;
+			}
+			let sessionRoot: string;
+			let resolved: string;
+			try {
+				sessionRoot = await fs.realpath(path.resolve(session.cwd));
+				resolved = await fs.realpath(path.resolve(sessionRoot, cwd));
+			} catch {
+				sendErrorResult('Invalid cwd');
+				return;
+			}
+			if (!resolved.startsWith(sessionRoot + path.sep) && resolved !== sessionRoot) {
+				sendErrorResult('Invalid cwd: path is outside the agent working directory');
+				return;
+			}
+			resolvedCwd = resolved;
+		}
+
+		if (!this.callbacks.openTerminalTab) {
+			sendErrorResult('Terminal tab opening not configured');
+			return;
+		}
+
+		this.callbacks
+			.openTerminalTab(sessionId, { cwd: resolvedCwd, shell, name })
+			.then((success) => {
+				this.send(client, {
+					type: 'open_terminal_tab_result',
+					success,
+					sessionId,
+					requestId: message.requestId,
+				});
+			})
+			.catch((error) => {
+				sendErrorResult(`Failed to open terminal tab: ${error.message}`);
+			});
+	}
+
+	/**
+	 * Handle new_ai_tab_with_prompt message - atomically create a new AI tab
+	 * and dispatch an initial prompt into it. Used by `send --live --new-tab`
+	 * to guarantee a fresh conversation rather than writing into whichever tab
+	 * happens to be active.
+	 */
+	private handleNewAITabWithPrompt(client: WebClient, message: WebClientMessage): void {
+		const sessionId = typeof message.sessionId === 'string' ? message.sessionId : '';
+		const prompt = typeof message.prompt === 'string' ? message.prompt : '';
+		// Prompts can contain user-authored content with secrets or PII —
+		// log length only rather than a raw preview.
+		logger.info(
+			`[Web] Received new_ai_tab_with_prompt message: session=${sessionId}, promptLength=${prompt.length}`,
+			LOG_CONTEXT
+		);
+
+		const sendErrorResult = (error: string) => {
+			this.send(client, {
+				type: 'new_ai_tab_with_prompt_result',
+				success: false,
+				error,
+				sessionId,
+				requestId: message.requestId,
+			});
+		};
+
+		if (!sessionId || !prompt) {
+			sendErrorResult('Missing sessionId or prompt');
+			return;
+		}
+
+		const session = this.callbacks.getSessions?.().find((s) => s.id === sessionId);
+		if (!session) {
+			sendErrorResult('Session not found');
+			return;
+		}
+
+		if (!this.callbacks.newAITabWithPrompt) {
+			sendErrorResult('New AI tab with prompt not configured');
+			return;
+		}
+
+		this.callbacks
+			.newAITabWithPrompt(sessionId, prompt)
+			.then((success) => {
+				this.send(client, {
+					type: 'new_ai_tab_with_prompt_result',
+					success,
+					sessionId,
+					requestId: message.requestId,
+				});
+			})
+			.catch((error) => {
+				sendErrorResult(`Failed to create AI tab with prompt: ${error.message}`);
 			});
 	}
 

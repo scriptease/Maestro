@@ -15,8 +15,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useCueDirtyStore } from '../../../renderer/stores/cueDirtyStore';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { CueModal } from '../../../renderer/components/CueModal';
-import type { Theme } from '../../../renderer/types';
 
+import { mockTheme } from '../../helpers/mockTheme';
 // Mock LayerStackContext
 const mockRegisterLayer = vi.fn(() => 'layer-cue-modal');
 const mockUnregisterLayer = vi.fn();
@@ -114,27 +114,6 @@ let mockUseCueReturn = { ...defaultUseCueReturn };
 vi.mock('../../../renderer/hooks/useCue', () => ({
 	useCue: () => mockUseCueReturn,
 }));
-
-const mockTheme: Theme = {
-	id: 'dracula',
-	name: 'Dracula',
-	mode: 'dark',
-	colors: {
-		bgMain: '#282a36',
-		bgSidebar: '#21222c',
-		bgActivity: '#343746',
-		textMain: '#f8f8f2',
-		textDim: '#6272a4',
-		accent: '#bd93f9',
-		accentForeground: '#f8f8f2',
-		border: '#44475a',
-		success: '#50fa7b',
-		warning: '#ffb86c',
-		error: '#ff5555',
-		scrollbar: '#44475a',
-		scrollbarHover: '#6272a4',
-	},
-};
 
 const mockSession = {
 	sessionId: 'sess-1',
@@ -288,16 +267,24 @@ describe('CueModal', () => {
 			expect(screen.getByTitle('Stop run')).toBeInTheDocument();
 		});
 
-		it('should call stopRun when stop button is clicked', () => {
+		it('should call stopRun when stop button is clicked and confirmed', () => {
 			mockUseCueReturn = {
 				...defaultUseCueReturn,
 				activeRuns: [mockActiveRun],
 			};
+			// Simulate user confirming the stop-run dialog
+			mockShowConfirmation.mockImplementationOnce((_msg: string, onConfirm: () => void) => {
+				onConfirm();
+			});
 
 			render(<CueModal theme={mockTheme} onClose={mockOnClose} />);
 			fireEvent.click(screen.getByText('Dashboard'));
 
 			fireEvent.click(screen.getByTitle('Stop run'));
+			expect(mockShowConfirmation).toHaveBeenCalledWith(
+				expect.stringContaining('on-save'),
+				expect.any(Function)
+			);
 			expect(mockStopRun).toHaveBeenCalledWith('run-1');
 		});
 

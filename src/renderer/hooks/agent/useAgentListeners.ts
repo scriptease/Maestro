@@ -71,10 +71,20 @@ function getAutorunSynopsisPrompt(): string {
 	return cachedAutorunSynopsisPrompt;
 }
 import { useGroupChatStore } from '../../stores/groupChatStore';
+import { logger } from '../../utils/logger';
+import { buildHiddenProgressLogId } from '../../utils/hiddenProgress';
 
 // ============================================================================
 // Types
 // ============================================================================
+
+type ToolProgressState = NonNullable<LogEntry['metadata']>['toolState'];
+
+function removeHiddenProgressLog(logs: LogEntry[], tabId: string): LogEntry[] {
+	const hiddenLogId = buildHiddenProgressLogId(tabId);
+	const updatedLogs = logs.filter((log) => log.id !== hiddenLogId);
+	return updatedLogs.length === logs.length ? logs : updatedLogs;
+}
 
 /** Batched updater interface (subset used by IPC listeners) */
 export interface BatchedUpdater {
@@ -154,6 +164,29 @@ export interface UseAgentListenersDeps {
 // Helpers
 // ============================================================================
 
+function isMatchingAgentErrorLog(log: LogEntry, agentError: AgentError): boolean {
+	if (log.source !== 'error' || !log.agentError) {
+		return false;
+	}
+
+	return (
+		log.agentError.timestamp === agentError.timestamp &&
+		log.agentError.type === agentError.type &&
+		log.agentError.message === agentError.message &&
+		log.agentError.agentId === agentError.agentId
+	);
+}
+
+function removeMatchingAgentErrorLog(logs: LogEntry[], agentError: AgentError): LogEntry[] {
+	for (let index = logs.length - 1; index >= 0; index -= 1) {
+		if (isMatchingAgentErrorLog(logs[index], agentError)) {
+			return [...logs.slice(0, index), ...logs.slice(index + 1)];
+		}
+	}
+
+	return logs;
+}
+
 /**
  * Get a human-readable title for an agent error type.
  * Used for toast notifications and history entries.
@@ -196,10 +229,14 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 	// Internal refs — only used by IPC listeners, not needed outside this hook
 	const thinkingChunkBufferRef = useRef<Map<string, string>>(new Map());
 	const thinkingChunkRafIdRef = useRef<number | null>(null);
+	const activeHiddenToolRef = useRef<
+		Map<string, { toolName: string; toolState?: ToolProgressState }>
+	>(new Map());
 
 	useEffect(() => {
 		// Copy ref value to local variable for cleanup (React ESLint rule)
 		const thinkingChunkBuffer = thinkingChunkBufferRef.current;
+		const activeHiddenTools = activeHiddenToolRef.current;
 
 		// Stable references from stores (Zustand actions are referentially stable)
 		const setSessions = useSessionStore.getState().setSessions;
@@ -256,11 +293,28 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 			}
 
 			if (!targetTabId) {
-				console.error(
+				logger.error(
 					'[onData] No target tab found - session has no aiTabs, this should not happen'
 				);
 				return;
 			}
+
+			activeHiddenTools.delete(`${actualSessionId}:${targetTabId}`);
+
+			setSessions((prev) =>
+				prev.map((s) => {
+					if (s.id !== actualSessionId) return s;
+					let didChange = false;
+					const updatedTabs = s.aiTabs.map((tab) => {
+						if (tab.id !== targetTabId) return tab;
+						const updatedLogs = removeHiddenProgressLog(tab.logs, targetTabId);
+						if (updatedLogs === tab.logs) return tab;
+						didChange = true;
+						return { ...tab, logs: updatedLogs };
+					});
+					return didChange ? { ...s, aiTabs: updatedTabs } : s;
+				})
+			);
 
 			// Batch the log append, delivery mark, unread mark, and byte tracking
 			deps.batchedUpdater.appendLog(actualSessionId, targetTabId, true, data);
@@ -270,11 +324,23 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 			// Clear error state if session had an error but is now receiving successful data
 			const sessionForErrorCheck = getSessions().find((s) => s.id === actualSessionId);
 			if (sessionForErrorCheck?.agentError) {
+				const activeAgentError = sessionForErrorCheck.agentError;
+				const errorTabId = sessionForErrorCheck.agentErrorTabId ?? targetTabId;
+
 				setSessions((prev) =>
 					prev.map((s) => {
 						if (s.id !== actualSessionId) return s;
 						const updatedAiTabs = s.aiTabs.map((tab) =>
-							tab.id === targetTabId ? { ...tab, agentError: undefined } : tab
+							tab.id === targetTabId || tab.id === errorTabId
+								? {
+										...tab,
+										logs:
+											tab.id === errorTabId
+												? removeMatchingAgentErrorLog(tab.logs, activeAgentError)
+												: tab.logs,
+										agentError: undefined,
+									}
+								: tab
 						);
 						return {
 							...s,
@@ -287,7 +353,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 					})
 				);
 				window.maestro.agentError.clearError(actualSessionId).catch((err) => {
-					console.error('Failed to clear agent error on successful data:', err);
+					logger.error('Failed to clear agent error on successful data:', undefined, err);
 				});
 			}
 
@@ -315,7 +381,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 					return;
 				}
 
-				console.log('[onExit] Process exit event received:', {
+				logger.info('[onExit] Process exit event received:', undefined, {
 					rawSessionId: sessionId,
 					exitCode: code,
 					timestamp: new Date().toISOString(),
@@ -340,20 +406,28 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 					isFromAi = false;
 				}
 
+				if (isFromAi && tabIdFromSession) {
+					activeHiddenTools.delete(`${actualSessionId}:${tabIdFromSession}`);
+				}
+
 				// SAFETY CHECK: Verify the process is actually gone
 				if (isFromAi) {
 					try {
 						const activeProcesses = await window.maestro.process.getActiveProcesses();
 						const processStillRunning = activeProcesses.some((p) => p.sessionId === sessionId);
 						if (processStillRunning) {
-							console.warn('[onExit] Process still running despite exit event, ignoring:', {
-								sessionId,
-								activeProcesses: activeProcesses.map((p) => p.sessionId),
-							});
+							logger.warn(
+								'[onExit] Process still running despite exit event, ignoring:',
+								undefined,
+								{
+									sessionId,
+									activeProcesses: activeProcesses.map((p) => p.sessionId),
+								}
+							);
 							return;
 						}
 					} catch (error) {
-						console.error('[onExit] Failed to verify process status:', error);
+						logger.error('[onExit] Failed to verify process status:', undefined, error);
 					}
 				}
 
@@ -553,6 +627,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 													return tab.id === tabIdFromSession
 														? {
 																...tab,
+																logs: removeHiddenProgressLog(tab.logs, tab.id),
 																state: 'idle' as const,
 																thinkingStartTime: undefined,
 																// Preserve agentSessionId — stale IDs are cleared
@@ -565,6 +640,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 													return tab.state === 'busy'
 														? {
 																...tab,
+																logs: removeHiddenProgressLog(tab.logs, tab.id),
 																state: 'idle' as const,
 																thinkingStartTime: undefined,
 															}
@@ -635,6 +711,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 									if (tabIdFromSession && tab.id === tabIdFromSession) {
 										return {
 											...tab,
+											logs: removeHiddenProgressLog(tab.logs, tab.id),
 											state: 'idle' as const,
 										};
 									}
@@ -679,6 +756,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 												return tab.id === tabIdFromSession
 													? {
 															...tab,
+															logs: removeHiddenProgressLog(tab.logs, tab.id),
 															state: 'idle' as const,
 															thinkingStartTime: undefined,
 															// Preserve agentSessionId for session resume —
@@ -690,6 +768,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 												return tab.state === 'busy'
 													? {
 															...tab,
+															logs: removeHiddenProgressLog(tab.logs, tab.id),
 															state: 'idle' as const,
 															thinkingStartTime: undefined,
 														}
@@ -707,7 +786,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 										: ('idle' as SessionState);
 							const newBusySource = anyTabStillBusy ? s.busySource : undefined;
 
-							console.log('[onExit] Session state transition:', {
+							logger.info('[onExit] Session state transition:', undefined, {
 								sessionId: s.id.substring(0, 8),
 								tabIdFromSession: tabIdFromSession?.substring(0, 8),
 								previousState: s.state,
@@ -817,7 +896,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 							isRemote: toastData.isRemote,
 						})
 						.catch((err) => {
-							console.warn('[onProcessExit] Failed to record query stats:', err);
+							logger.warn('[onProcessExit] Failed to record query stats:', undefined, err);
 						});
 				}
 
@@ -902,8 +981,9 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 								const parsed = parseSynopsis(result.response);
 
 								if (parsed.nothingToReport) {
-									console.log(
+									logger.info(
 										'[onProcessExit] Synopsis returned NOTHING_TO_REPORT - skipping history entry',
+										undefined,
 										{
 											sessionId: synopsisData!.sessionId,
 											agentSessionId: synopsisData!.agentSessionId,
@@ -958,8 +1038,9 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 									deps.rightPanelRef.current.refreshHistoryPanel();
 								}
 							} else if (!result.success) {
-								console.warn(
+								logger.warn(
 									'[onProcessExit] Synopsis generation failed - no history entry created',
+									undefined,
 									{
 										sessionId: synopsisData!.sessionId,
 										agentSessionId: synopsisData!.agentSessionId,
@@ -969,7 +1050,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 							}
 						})
 						.catch((err) => {
-							console.error('[onProcessExit] Synopsis failed:', err);
+							logger.error('[onProcessExit] Synopsis failed:', undefined, err);
 						});
 				}
 			}
@@ -994,7 +1075,9 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 
 					window.maestro.agentSessions
 						.registerSessionOrigin(session.projectRoot, agentSessionId, 'user')
-						.catch((err) => console.error('[onSessionId] Failed to register session origin:', err));
+						.catch((err) =>
+							logger.error('[onSessionId] Failed to register session origin:', undefined, err)
+						);
 
 					return prev.map((s) => {
 						if (s.id !== actualSessionId) return s;
@@ -1008,8 +1091,9 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 							// cross-contaminate an unrelated tab with the closed tab's
 							// agent session.
 							if (!targetTab) {
-								console.log(
+								logger.info(
 									'[onSessionId] Tab was closed, storing session ID at session level only:',
+									undefined,
 									{ tabId: tabId.substring(0, 8), agentSessionId: agentSessionId.substring(0, 8) }
 								);
 								return { ...s, agentSessionId };
@@ -1024,7 +1108,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 						}
 
 						if (!targetTab) {
-							console.error(
+							logger.error(
 								'[onSessionId] No target tab found - session has no aiTabs, storing at session level only'
 							);
 							return { ...s, agentSessionId };
@@ -1060,7 +1144,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 		);
 
 		// ================================================================
-		// onSlashCommands — Handle slash commands from Claude Code init
+		// onSlashCommands — Handle slash commands from agent init/discovery
 		// ================================================================
 		const unsubscribeSlashCommands = window.maestro.process.onSlashCommands(
 			(sessionId: string, slashCommands: string[]) => {
@@ -1069,19 +1153,11 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 				setSessions((prev) =>
 					prev.map((s) => {
 						if (s.id !== actualSessionId) return s;
-						const newCommands = slashCommands.map((cmd) => ({
+						const commands = slashCommands.map((cmd) => ({
 							command: cmd.startsWith('/') ? cmd : `/${cmd}`,
 							description: getSlashCommandDescription(cmd, s.toolType),
 						}));
-						// Merge with existing commands, preserving prompt data from
-						// disk-discovered commands (e.g., OpenCode .md files)
-						const existingByName = new Map((s.agentCommands || []).map((c) => [c.command, c]));
-						for (const cmd of newCommands) {
-							if (!existingByName.has(cmd.command)) {
-								existingByName.set(cmd.command, cmd);
-							}
-						}
-						return { ...s, agentCommands: Array.from(existingByName.values()) };
+						return { ...s, agentCommands: commands };
 					})
 				);
 			}
@@ -1221,7 +1297,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 						? 'moderator'
 						: groupChatParsed.participantName!;
 
-					console.log('[onAgentError] Group chat error received:', {
+					logger.info('[onAgentError] Group chat error received:', undefined, {
 						rawSessionId: sessionId,
 						groupChatId,
 						participantName: isModeratorError ? 'Moderator' : participantOrModerator,
@@ -1231,8 +1307,9 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 					});
 
 					if (agentError.type === 'session_not_found') {
-						console.log(
+						logger.info(
 							'[onAgentError] Suppressing session_not_found for group chat - exit-listener will handle recovery:',
+							undefined,
 							{
 								groupChatId,
 								participantName: isModeratorError ? 'Moderator' : participantOrModerator,
@@ -1268,7 +1345,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 
 				// Synopsis processes — ignore errors
 				if (isSynopsisSession(sessionId)) {
-					console.log('[onAgentError] Ignoring synopsis process error:', {
+					logger.info('[onAgentError] Ignoring synopsis process error:', undefined, {
 						rawSessionId: sessionId,
 						errorType: error.type,
 						message: error.message,
@@ -1280,7 +1357,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 				const actualSessionId = parsed.baseSessionId;
 				const tabIdFromSession = parsed.tabId ?? undefined;
 
-				console.log('[onAgentError] Agent error received:', {
+				logger.info('[onAgentError] Agent error received:', undefined, {
 					rawSessionId: sessionId,
 					actualSessionId,
 					errorType: error.type,
@@ -1298,6 +1375,10 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 					agentError: isSessionNotFound ? undefined : agentError,
 				};
 
+				if (tabIdFromSession) {
+					activeHiddenTools.delete(`${actualSessionId}:${tabIdFromSession}`);
+				}
+
 				setSessions((prev) =>
 					prev.map((s) => {
 						if (s.id !== actualSessionId) return s;
@@ -1310,7 +1391,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 									tab.id === targetTab.id
 										? {
 												...tab,
-												logs: [...tab.logs, errorLogEntry],
+												logs: [...removeHiddenProgressLog(tab.logs, tab.id), errorLogEntry],
 												agentError: isSessionNotFound ? undefined : agentError,
 												// Clear stale agentSessionId on session_not_found so the next
 												// spawn starts a fresh session instead of retrying --resume
@@ -1342,7 +1423,11 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 				if (deps.getBatchStateRef.current && deps.pauseBatchOnErrorRef.current) {
 					const batchState = deps.getBatchStateRef.current(actualSessionId);
 					if (batchState.isRunning && !batchState.errorPaused) {
-						console.log('[onAgentError] Pausing active batch run due to error:', actualSessionId);
+						logger.info(
+							'[onAgentError] Pausing active batch run due to error:',
+							undefined,
+							actualSessionId
+						);
 						const currentDoc = batchState.documents[batchState.currentDocumentIndex];
 						deps.pauseBatchOnErrorRef.current(
 							actualSessionId,
@@ -1454,8 +1539,9 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 									if (!targetTab.showThinking || targetTab.showThinking === 'off') continue;
 
 									if (isLikelyConcatenatedToolNames(bufferedContent)) {
-										console.warn(
+										logger.warn(
 											'[App] Skipping malformed thinking chunk (concatenated tool names):',
+											undefined,
 											bufferedContent.substring(0, 100)
 										);
 										continue;
@@ -1465,7 +1551,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 									if (lastLog?.source === 'thinking') {
 										const combinedText = lastLog.text + bufferedContent;
 										if (isLikelyConcatenatedToolNames(combinedText)) {
-											console.warn(
+											logger.warn(
 												'[App] Detected malformed thinking content, replacing instead of appending'
 											);
 											updatedTabs = updatedTabs.map((tab) =>
@@ -1582,7 +1668,11 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 									);
 								}
 							} catch (err) {
-								console.error(`[SSH] Failed to check git repo status for ${actualSessionId}:`, err);
+								logger.error(
+									`[SSH] Failed to check git repo status for ${actualSessionId}:`,
+									undefined,
+									err
+								);
 							}
 						})();
 					}
@@ -1613,7 +1703,9 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 						if (s.id !== actualSessionId) return s;
 
 						const targetTab = s.aiTabs.find((t) => t.id === tabId);
-						if (!targetTab?.showThinking || targetTab.showThinking === 'off') return s;
+						if (!targetTab) return s;
+
+						if (!targetTab.showThinking || targetTab.showThinking === 'off') return s;
 
 						const toolLog: LogEntry = {
 							id: `tool-${Date.now()}-${toolEvent.toolName}`,
@@ -1662,6 +1754,7 @@ export function useAgentListeners(deps: UseAgentListenersDeps): void {
 				thinkingChunkRafIdRef.current = null;
 			}
 			thinkingChunkBuffer.clear();
+			activeHiddenTools.clear();
 		};
 	}, []);
 }

@@ -10,6 +10,8 @@ import {
 	clearRecentlyCreatedWorktreePath,
 } from '../../utils/worktreeDedup';
 import { captureException } from '../../utils/sentry';
+import { countMarkdownTasks } from './batchUtils';
+import { logger } from '../../utils/logger';
 
 /**
  * Tree node structure for Auto Run document tree
@@ -427,9 +429,7 @@ export function useAutoRunHandlers(
 				sshRemoteId
 			);
 			if (!result.success || !result.content) return 0;
-			// Count unchecked tasks: - [ ] pattern
-			const matches = result.content.match(/^[\s]*-\s*\[\s*\]\s*.+$/gm);
-			return matches ? matches.length : 0;
+			return countMarkdownTasks(result.content).unchecked;
 			// Note: Use primitive values (remoteId) not object refs (sessionSshRemoteConfig) to avoid infinite re-render loops
 		},
 		[
@@ -639,7 +639,7 @@ export function useAutoRunHandlers(
 				}
 				return false;
 			} catch (error) {
-				console.error('Failed to create document:', error);
+				logger.error('Failed to create document:', undefined, error);
 				return false;
 			}
 		},

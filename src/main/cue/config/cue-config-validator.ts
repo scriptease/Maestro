@@ -8,12 +8,83 @@ import {
 } from '../../../shared/cue';
 
 function validateGlobPattern(pattern: string, prefix: string, errors: string[]): void {
+	// Path-traversal guard: the watcher resolves `watchGlob` against `projectRoot`
+	// via chokidar, so any pattern that escapes the project root (via `..`
+	// segments, an absolute POSIX path, or a Windows drive letter) would allow
+	// watching arbitrary files on disk. Reject those shapes up-front — the
+	// runtime guard in `cue-file-watcher.ts` is the defense-in-depth backstop.
+	const segments = pattern.split(/[\\/]/);
+	if (segments.includes('..')) {
+		errors.push(
+			`${prefix}: "watch" pattern "${pattern}" is not allowed (contains ".." path traversal)`
+		);
+		return;
+	}
+	if (pattern.startsWith('/') || pattern.startsWith('\\')) {
+		errors.push(
+			`${prefix}: "watch" pattern "${pattern}" is not allowed (absolute paths are not permitted)`
+		);
+		return;
+	}
+	// Match any leading `X:` drive letter — both drive-absolute (`C:\foo`,
+	// `C:/foo`) and drive-relative (`C:secret\foo`) forms. Drive-relative
+	// paths resolve against Windows' per-drive current-directory table and
+	// can escape the project root just as effectively as the absolute forms.
+	if (/^[A-Za-z]:/.test(pattern)) {
+		errors.push(
+			`${prefix}: "watch" pattern "${pattern}" is not allowed (Windows drive paths are not permitted)`
+		);
+		return;
+	}
 	try {
 		picomatch(pattern);
 	} catch (error) {
 		errors.push(
 			`${prefix}: "watch" value "${pattern}" is not a valid glob pattern: ${error instanceof Error ? error.message : String(error)}`
 		);
+	}
+}
+
+/**
+ * Validate a `command` field, required when `action === 'command'`. Accepts:
+ *   { mode: 'shell', shell: <non-empty string> }
+ *   { mode: 'cli', cli: { command: 'send', target: <non-empty string>, message?: string } }
+ */
+function validateCommandField(value: unknown, prefix: string, errors: string[]): void {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		errors.push(`${prefix}: "command" is required and must be an object when action is "command"`);
+		return;
+	}
+	const cmd = value as Record<string, unknown>;
+	const mode = cmd.mode;
+	if (mode === 'shell') {
+		if (typeof cmd.shell !== 'string' || cmd.shell.trim().length === 0) {
+			errors.push(
+				`${prefix}: "command.shell" is required and must be a non-empty string when command.mode is "shell"`
+			);
+		}
+	} else if (mode === 'cli') {
+		const cli = cmd.cli;
+		if (!cli || typeof cli !== 'object' || Array.isArray(cli)) {
+			errors.push(
+				`${prefix}: "command.cli" is required and must be an object when command.mode is "cli"`
+			);
+			return;
+		}
+		const cliRecord = cli as Record<string, unknown>;
+		if (cliRecord.command !== 'send') {
+			errors.push(
+				`${prefix}: "command.cli.command" must be "send" (only supported maestro-cli sub-command for now)`
+			);
+		}
+		if (typeof cliRecord.target !== 'string' || cliRecord.target.trim().length === 0) {
+			errors.push(`${prefix}: "command.cli.target" is required and must be a non-empty string`);
+		}
+		if (cliRecord.message !== undefined && typeof cliRecord.message !== 'string') {
+			errors.push(`${prefix}: "command.cli.message" must be a string when provided`);
+		}
+	} else {
+		errors.push(`${prefix}: "command.mode" must be "shell" or "cli"`);
 	}
 }
 
@@ -51,43 +122,61 @@ export function validateSubscription(sub: unknown, prefix: string): string[] {
 		errors.push(`${prefix}: "prompt_file" must be a string when provided`);
 	}
 
-	const hasPrompt = typeof subRecord.prompt === 'string';
-	const hasPromptFile = typeof subRecord.prompt_file === 'string';
-	// A fan-out subscription can carry its prompts per-target via
-	// `fan_out_prompt_files` (file references, preferred) or
-	// `fan_out_prompts` (legacy inline array). Either satisfies the "prompt
-	// required" check even when the shared `prompt` / `prompt_file` fields
-	// are absent — otherwise the loader's lenient partition rejects the
-	// subscription and the whole pipeline disappears from the UI on save.
-	//
-	// If either field is *present* we validate its elements strictly and
-	// surface an explicit error on malformed entries — rather than silently
-	// treating a malformed array as "absent" and letting dispatch fall
-	// through to the shared prompt with no indication anything's wrong.
-	let hasFanOutPromptFiles = false;
-	if (subRecord.fan_out_prompt_files !== undefined) {
-		if (!Array.isArray(subRecord.fan_out_prompt_files)) {
-			errors.push(`${prefix}: "fan_out_prompt_files" must be an array of strings when provided`);
-		} else if (!subRecord.fan_out_prompt_files.every((v: unknown) => typeof v === 'string')) {
-			errors.push(`${prefix}: "fan_out_prompt_files" must contain only strings`);
-		} else if (subRecord.fan_out_prompt_files.length > 0) {
-			hasFanOutPromptFiles = true;
-		}
+	const action = subRecord.action;
+	if (action !== undefined && action !== 'prompt' && action !== 'command') {
+		errors.push(`${prefix}: "action" must be "prompt" or "command" when provided`);
 	}
-	let hasFanOutPrompts = false;
-	if (subRecord.fan_out_prompts !== undefined) {
-		if (!Array.isArray(subRecord.fan_out_prompts)) {
-			errors.push(`${prefix}: "fan_out_prompts" must be an array of strings when provided`);
-		} else if (!subRecord.fan_out_prompts.every((v: unknown) => typeof v === 'string')) {
-			errors.push(`${prefix}: "fan_out_prompts" must contain only strings`);
-		} else if (subRecord.fan_out_prompts.length > 0) {
-			hasFanOutPrompts = true;
+
+	const isCommand = action === 'command';
+
+	if (isCommand) {
+		validateCommandField(subRecord.command, prefix, errors);
+		// Fan-out targets sessions, not subscriptions — combining it with
+		// `action: command` would execute the command once per target session,
+		// which is never the user's intent (the pipeline editor already blocks
+		// this; this guard catches hand-edited YAML).
+		if (Array.isArray(subRecord.fan_out) && subRecord.fan_out.length > 0) {
+			errors.push(`${prefix}: "fan_out" is not supported when action is "command"`);
 		}
-	}
-	if (!hasPrompt && !hasPromptFile && !hasFanOutPromptFiles && !hasFanOutPrompts) {
-		errors.push(
-			`${prefix}: "prompt", "prompt_file", "fan_out_prompt_files", or "fan_out_prompts" is required`
-		);
+	} else {
+		const hasPrompt = typeof subRecord.prompt === 'string';
+		const hasPromptFile = typeof subRecord.prompt_file === 'string';
+		// A fan-out subscription can carry its prompts per-target via
+		// `fan_out_prompt_files` (file references, preferred) or
+		// `fan_out_prompts` (legacy inline array). Either satisfies the "prompt
+		// required" check even when the shared `prompt` / `prompt_file` fields
+		// are absent — otherwise the loader's lenient partition rejects the
+		// subscription and the whole pipeline disappears from the UI on save.
+		//
+		// If either field is *present* we validate its elements strictly and
+		// surface an explicit error on malformed entries — rather than silently
+		// treating a malformed array as "absent" and letting dispatch fall
+		// through to the shared prompt with no indication anything's wrong.
+		let hasFanOutPromptFiles = false;
+		if (subRecord.fan_out_prompt_files !== undefined) {
+			if (!Array.isArray(subRecord.fan_out_prompt_files)) {
+				errors.push(`${prefix}: "fan_out_prompt_files" must be an array of strings when provided`);
+			} else if (!subRecord.fan_out_prompt_files.every((v: unknown) => typeof v === 'string')) {
+				errors.push(`${prefix}: "fan_out_prompt_files" must contain only strings`);
+			} else if (subRecord.fan_out_prompt_files.length > 0) {
+				hasFanOutPromptFiles = true;
+			}
+		}
+		let hasFanOutPrompts = false;
+		if (subRecord.fan_out_prompts !== undefined) {
+			if (!Array.isArray(subRecord.fan_out_prompts)) {
+				errors.push(`${prefix}: "fan_out_prompts" must be an array of strings when provided`);
+			} else if (!subRecord.fan_out_prompts.every((v: unknown) => typeof v === 'string')) {
+				errors.push(`${prefix}: "fan_out_prompts" must contain only strings`);
+			} else if (subRecord.fan_out_prompts.length > 0) {
+				hasFanOutPrompts = true;
+			}
+		}
+		if (!hasPrompt && !hasPromptFile && !hasFanOutPromptFiles && !hasFanOutPrompts) {
+			errors.push(
+				`${prefix}: "prompt", "prompt_file", "fan_out_prompt_files", or "fan_out_prompts" is required`
+			);
+		}
 	}
 
 	validateEventSpecificFields(subRecord, prefix, errors);
@@ -205,6 +294,30 @@ function validateEventSpecificFields(
 				);
 			}
 		}
+		// `source_sub` narrows chain matching by the upstream subscription's
+		// `triggeredBy` value. Optional — when absent the chain matches any
+		// run in the source session(s). When present, reject non-string or
+		// empty values so a malformed YAML entry can't silently disable the
+		// self-loop filter and re-introduce the re-trigger class of bugs.
+		if (sub.source_sub !== undefined) {
+			if (typeof sub.source_sub === 'string') {
+				if (sub.source_sub.trim().length === 0) {
+					errors.push(`${prefix}: "source_sub" must be a non-empty string when provided`);
+				}
+			} else if (Array.isArray(sub.source_sub)) {
+				if (sub.source_sub.length === 0) {
+					errors.push(`${prefix}: "source_sub" must be a non-empty array when provided`);
+				} else if (
+					sub.source_sub.some((name) => typeof name !== 'string' || name.trim().length === 0)
+				) {
+					errors.push(
+						`${prefix}: "source_sub" array must contain only non-empty strings when provided`
+					);
+				}
+			} else {
+				errors.push(`${prefix}: "source_sub" must be a string or array of strings when provided`);
+			}
+		}
 	} else if (event === 'task.pending') {
 		if (!sub.watch || typeof sub.watch !== 'string') {
 			errors.push(
@@ -307,7 +420,12 @@ function validateSettings(rawSettings: unknown): string[] {
 export function validateCueConfigDocument(config: unknown): { valid: boolean; errors: string[] } {
 	const errors: string[] = [];
 
-	if (!config || typeof config !== 'object') {
+	// null/undefined = comments-only or empty file → treat as valid empty config
+	if (config === null || config === undefined) {
+		return { valid: true, errors: [] };
+	}
+
+	if (typeof config !== 'object') {
 		return { valid: false, errors: ['Config must be a non-null object'] };
 	}
 
@@ -364,7 +482,12 @@ export function partitionValidSubscriptions(config: unknown): PartitionedValidat
 		subscriptionErrors: [],
 	};
 
-	if (!config || typeof config !== 'object') {
+	if (config === null || config === undefined) {
+		// comments-only or empty file — no config errors, no subscriptions
+		return result;
+	}
+
+	if (typeof config !== 'object') {
 		result.configErrors.push('Config must be a non-null object');
 		return result;
 	}

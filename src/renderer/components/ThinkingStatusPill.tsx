@@ -377,24 +377,18 @@ function ThinkingStatusPillInner({
 	const [isExpanded, setIsExpanded] = useState(false);
 
 	// If AutoRun is active for the current session, show the AutoRun pill
-	// with concurrent thinking items badge for parallel operations
+	// with concurrent thinking items badge for parallel operations.
+	// AutoRun spawns its agent in isolation and does NOT mark any tab as state='busy'
+	// (see useAgentExecution.spawnAgentForSession). Every entry in thinkingItems is
+	// therefore legitimate concurrent work (e.g. a plan-mode / read-only tab, or a
+	// force-parallel write tab) and must surface via the +N badge.
 	if (autoRunState?.isRunning) {
-		// Exclude only ONE item from the active session (the AutoRun tab itself).
-		// Additional busy tabs on the same session (e.g. force-parallel) are concurrent work.
-		let skippedAutoRunTab = false;
-		const concurrentItems = thinkingItems.filter((item) => {
-			if (!skippedAutoRunTab && item.session.id === activeSessionId) {
-				skippedAutoRunTab = true;
-				return false;
-			}
-			return true;
-		});
 		return (
 			<AutoRunPill
 				theme={theme}
 				autoRunState={autoRunState}
 				onStop={onStopAutoRun}
-				thinkingItems={concurrentItems}
+				thinkingItems={thinkingItems}
 				namedSessions={namedSessions}
 				onSessionClick={onSessionClick}
 			/>
@@ -625,25 +619,11 @@ export const ThinkingStatusPill = memo(ThinkingStatusPillInner, (prevProps, next
 		) {
 			return false;
 		}
-		// Also check concurrent thinking items (shown as +N badge on AutoRun pill)
-		// Skip only the first active-session item (AutoRun tab); keep additional same-session tabs
+		// Also check concurrent thinking items (shown as +N badge on AutoRun pill).
+		// AutoRun doesn't mark its tab as busy, so every thinkingItem is a concurrent item.
 		if (prevProps.activeSessionId !== nextProps.activeSessionId) return false;
-		let prevSkipped = false;
-		const prevConcurrent = prevProps.thinkingItems.filter((item) => {
-			if (!prevSkipped && item.session.id === prevProps.activeSessionId) {
-				prevSkipped = true;
-				return false;
-			}
-			return true;
-		});
-		let nextSkipped = false;
-		const nextConcurrent = nextProps.thinkingItems.filter((item) => {
-			if (!nextSkipped && item.session.id === nextProps.activeSessionId) {
-				nextSkipped = true;
-				return false;
-			}
-			return true;
-		});
+		const prevConcurrent = prevProps.thinkingItems;
+		const nextConcurrent = nextProps.thinkingItems;
 		if (prevConcurrent.length !== nextConcurrent.length) return false;
 		for (let i = 0; i < prevConcurrent.length; i++) {
 			const prev = prevConcurrent[i];

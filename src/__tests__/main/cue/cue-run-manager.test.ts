@@ -24,21 +24,33 @@ vi.mock('../../../main/utils/sentry', () => ({
 	captureException: (...args: unknown[]) => mockCaptureException(...args),
 }));
 
-// Mock execFileNoThrow for Phase 3 CLI output delivery
-const mockExecFileNoThrow =
+// Mock runMaestroCliSend for Phase 3 CLI output delivery. We mock the
+// executor-level helper (rather than the low-level execFileNoThrow or `spawn`)
+// so the test stays at the same abstraction level as the run-manager which
+// consumes `runMaestroCliSend` directly. Test assertions still inspect the
+// target/message args the helper was called with.
+interface RunMaestroCliSendResult {
+	ok: boolean;
+	exitCode: number | string;
+	stdout: string;
+	stderr: string;
+	resolvedTarget: string;
+}
+const mockRunMaestroCliSend =
 	vi.fn<
-		(
-			cmd: string,
-			args?: string[],
-			cwd?: string,
-			options?: Record<string, unknown>
-		) => Promise<{ stdout: string; stderr: string; exitCode: number | string }>
+		(target: string, message: string, timeoutMs?: number) => Promise<RunMaestroCliSendResult>
 	>();
-mockExecFileNoThrow.mockResolvedValue({ stdout: '{}', stderr: '', exitCode: 0 });
+mockRunMaestroCliSend.mockResolvedValue({
+	ok: true,
+	exitCode: 0,
+	stdout: '{}',
+	stderr: '',
+	resolvedTarget: '',
+});
 
-vi.mock('../../../main/utils/execFile', () => ({
-	execFileNoThrow: (...args: unknown[]) =>
-		mockExecFileNoThrow(...(args as Parameters<typeof mockExecFileNoThrow>)),
+vi.mock('../../../main/cue/cue-cli-executor', () => ({
+	runMaestroCliSend: (...args: unknown[]) =>
+		mockRunMaestroCliSend(...(args as Parameters<typeof mockRunMaestroCliSend>)),
 }));
 
 let uuidCounter = 0;
@@ -941,10 +953,16 @@ describe('createCueRunManager', () => {
 
 	describe('Phase 3: CLI Output delivery', () => {
 		beforeEach(() => {
-			mockExecFileNoThrow.mockResolvedValue({ stdout: '{}', stderr: '', exitCode: 0 });
+			mockRunMaestroCliSend.mockResolvedValue({
+				ok: true,
+				exitCode: 0,
+				stdout: '{}',
+				stderr: '',
+				resolvedTarget: '',
+			});
 		});
 
-		it('triggers execFile with correct arguments when run succeeds', async () => {
+		it('triggers runMaestroCliSend with correct arguments when run succeeds', async () => {
 			const deps = createDeps();
 			const manager = createCueRunManager(deps);
 
@@ -959,13 +977,8 @@ describe('createCueRunManager', () => {
 			);
 			await vi.advanceTimersByTimeAsync(0);
 
-			expect(mockExecFileNoThrow).toHaveBeenCalledTimes(1);
-			expect(mockExecFileNoThrow).toHaveBeenCalledWith(
-				process.execPath,
-				expect.arrayContaining(['send', 'agent-42', 'output', '--live']),
-				undefined,
-				{ timeout: 30_000 }
-			);
+			expect(mockRunMaestroCliSend).toHaveBeenCalledTimes(1);
+			expect(mockRunMaestroCliSend).toHaveBeenCalledWith('agent-42', 'output');
 		});
 
 		it('skips delivery when target resolves to empty string', async () => {
@@ -978,7 +991,7 @@ describe('createCueRunManager', () => {
 			});
 			await vi.advanceTimersByTimeAsync(0);
 
-			expect(mockExecFileNoThrow).not.toHaveBeenCalled();
+			expect(mockRunMaestroCliSend).not.toHaveBeenCalled();
 			expect(deps.onLog).toHaveBeenCalledWith(
 				'warn',
 				expect.stringContaining('target resolved to empty string')
@@ -996,14 +1009,16 @@ describe('createCueRunManager', () => {
 			});
 			await vi.advanceTimersByTimeAsync(0);
 
-			expect(mockExecFileNoThrow).not.toHaveBeenCalled();
+			expect(mockRunMaestroCliSend).not.toHaveBeenCalled();
 		});
 
 		it('delivery failure does not change run status', async () => {
-			mockExecFileNoThrow.mockResolvedValue({
+			mockRunMaestroCliSend.mockResolvedValue({
+				ok: false,
+				exitCode: 1,
 				stdout: '',
 				stderr: 'Connection refused',
-				exitCode: 1,
+				resolvedTarget: 'agent-42',
 			});
 			const deps = createDeps();
 			const manager = createCueRunManager(deps);
@@ -1038,13 +1053,8 @@ describe('createCueRunManager', () => {
 			});
 			await vi.advanceTimersByTimeAsync(0);
 
-			expect(mockExecFileNoThrow).toHaveBeenCalledTimes(1);
-			expect(mockExecFileNoThrow).toHaveBeenCalledWith(
-				process.execPath,
-				expect.arrayContaining(['send', 'resolved-agent-99', 'output', '--live']),
-				undefined,
-				{ timeout: 30_000 }
-			);
+			expect(mockRunMaestroCliSend).toHaveBeenCalledTimes(1);
+			expect(mockRunMaestroCliSend).toHaveBeenCalledWith('resolved-agent-99', 'output');
 		});
 
 		it('is not called when cliOutput is not provided', async () => {
@@ -1054,10 +1064,14 @@ describe('createCueRunManager', () => {
 			manager.execute('session-1', 'prompt', createEvent(), 'test-sub');
 			await vi.advanceTimersByTimeAsync(0);
 
-			expect(mockExecFileNoThrow).not.toHaveBeenCalled();
+			expect(mockRunMaestroCliSend).not.toHaveBeenCalled();
 		});
 
-		it('truncates stdout to 100,000 characters', async () => {
+		it('forwards the full stdout to runMaestroCliSend (truncation happens in the CLI helper)', async () => {
+			// The run-manager no longer truncates inline — truncation is owned
+			// by `runMaestroCliSend` in cue-cli-executor (capped at
+			// CLI_SEND_OUTPUT_MAX_CHARS = 100_000). Validate the run-manager
+			// forwards the raw output unchanged so the helper can cap it.
 			const longOutput = 'x'.repeat(150_000);
 			const deps = createDeps({
 				onCueRun: vi.fn(async () => makeResult({ stdout: longOutput })),
@@ -1069,11 +1083,8 @@ describe('createCueRunManager', () => {
 			});
 			await vi.advanceTimersByTimeAsync(0);
 
-			expect(mockExecFileNoThrow).toHaveBeenCalledTimes(1);
-			const passedArgs = mockExecFileNoThrow.mock.calls[0][1] as string[];
-			// Args: [cli.js, 'send', target, truncated output, '--live']
-			const outputArg = passedArgs.find((a) => a.length > 1000);
-			expect(outputArg?.length).toBe(100_000);
+			expect(mockRunMaestroCliSend).toHaveBeenCalledTimes(1);
+			expect(mockRunMaestroCliSend).toHaveBeenCalledWith('agent-42', longOutput);
 		});
 
 		it('logs success message on delivery', async () => {
@@ -1103,6 +1114,370 @@ describe('createCueRunManager', () => {
 			await vi.advanceTimersByTimeAsync(0);
 
 			expect(deps.onLog).toHaveBeenCalledWith('cue', expect.stringContaining('Phase 3 skipped'));
+		});
+	});
+
+	// ─── Phase 15A additions ────────────────────────────────────────────────
+	// Output-prompt second-phase scenarios that live in the run-manager (the
+	// executor is a single-phase spawner; the chained "main task → output
+	// prompt" phase is orchestrated here).
+
+	describe('output prompt phase — failure and stop interactions', () => {
+		it('preserves main-task stdout when the output prompt returns a non-completed status', async () => {
+			const onCueRun = vi.fn<(req: { subscriptionName: string }) => Promise<CueRunResult>>();
+			// Call 1 = main task (completes with real stdout). Call 2 = output
+			// prompt phase, returns failed — run-manager must fall back to the
+			// main task output and log a warning instead of overwriting the
+			// result.stdout with the empty output-prompt stdout.
+			onCueRun
+				.mockResolvedValueOnce(makeResult({ status: 'completed', stdout: 'MAIN_TASK_OUTPUT' }))
+				.mockResolvedValueOnce(
+					makeResult({ status: 'failed', stdout: '', stderr: 'output prompt died' })
+				);
+
+			const deps = createDeps({ onCueRun });
+			const manager = createCueRunManager(deps);
+
+			manager.execute('session-1', 'main-prompt', createEvent(), 'test-sub', 'output-prompt-body');
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(onCueRun).toHaveBeenCalledTimes(2);
+			// The second call is the output-prompt phase. The run-manager
+			// builds `contextPrompt = outputPrompt + "\n---\nContext from
+			// completed task:\n" + mainStdout` and passes that as the
+			// `prompt` field. It also stashes the main-task stdout on the
+			// event payload under `sourceOutput` for downstream chain
+			// consumers. Verify both channels carry MAIN_TASK_OUTPUT so a
+			// refactor that drops either one fails fast.
+			const outputPromptRequest = onCueRun.mock.calls[1][0] as {
+				subscriptionName: string;
+				prompt: string;
+				event: { payload: { sourceOutput?: string; outputPromptPhase?: boolean } };
+			};
+			expect(outputPromptRequest.subscriptionName).toBe('test-sub:output');
+			expect(outputPromptRequest.prompt).toContain('output-prompt-body');
+			expect(outputPromptRequest.prompt).toContain('MAIN_TASK_OUTPUT');
+			expect(outputPromptRequest.event.payload.sourceOutput).toBe('MAIN_TASK_OUTPUT');
+			expect(outputPromptRequest.event.payload.outputPromptPhase).toBe(true);
+			// onRunCompleted carries the MAIN task output — not the failed
+			// output-prompt's empty string.
+			expect(deps.onRunCompleted).toHaveBeenCalledWith(
+				'session-1',
+				expect.objectContaining({ stdout: 'MAIN_TASK_OUTPUT', status: 'completed' }),
+				'test-sub',
+				undefined
+			);
+			// Warning explaining the fallback was surfaced to the activity log.
+			expect(
+				(deps.onLog as ReturnType<typeof vi.fn>).mock.calls.some(
+					(call) =>
+						call[0] === 'cue' && typeof call[1] === 'string' && /output prompt failed/.test(call[1])
+				)
+			).toBe(true);
+		});
+
+		it('survives an output-prompt onCueRun that rejects (exception path)', async () => {
+			const onCueRun = vi.fn<(req: { subscriptionName: string }) => Promise<CueRunResult>>();
+			onCueRun
+				.mockResolvedValueOnce(makeResult({ status: 'completed', stdout: 'MAIN_OK' }))
+				.mockRejectedValueOnce(new Error('spawn ENOENT'));
+
+			const deps = createDeps({ onCueRun });
+			const manager = createCueRunManager(deps);
+
+			manager.execute('session-1', 'main', createEvent(), 'test-sub', 'out-prompt');
+			await vi.advanceTimersByTimeAsync(0);
+
+			// The outer catch treats the rejection as a run failure — main task
+			// output is discarded because the `await outputResult` line threw
+			// before the stdout reassignment could happen.
+			expect(deps.onRunCompleted).toHaveBeenCalledWith(
+				'session-1',
+				expect.objectContaining({
+					status: 'failed',
+					stderr: expect.stringContaining('spawn ENOENT'),
+				}),
+				'test-sub',
+				undefined
+			);
+		});
+
+		it('stopRun during output-prompt phase kills BOTH the parent and the output-prompt child process', async () => {
+			const mainDeferred: { resolve?: (r: CueRunResult) => void } = {};
+			const outputDeferred: { resolve?: (r: CueRunResult) => void } = {};
+
+			const onCueRun = vi.fn((req: { runId: string; subscriptionName: string }) => {
+				if (req.subscriptionName === 'test-sub') {
+					return new Promise<CueRunResult>((res) => {
+						mainDeferred.resolve = (r) => res({ ...r, runId: req.runId });
+					});
+				}
+				return new Promise<CueRunResult>((res) => {
+					outputDeferred.resolve = (r) => res({ ...r, runId: req.runId });
+				});
+			});
+
+			const onStopCueRun = vi.fn(() => true);
+			const deps = createDeps({ onCueRun, onStopCueRun });
+			const manager = createCueRunManager(deps);
+
+			manager.execute('session-1', 'main', createEvent(), 'test-sub', 'out-prompt');
+			// Let the main task complete; run-manager now dispatches the
+			// output-prompt phase.
+			mainDeferred.resolve!(makeResult({ status: 'completed', stdout: 'MAIN_OK' }));
+			await vi.advanceTimersByTimeAsync(0);
+			expect(onCueRun).toHaveBeenCalledTimes(2);
+
+			// The output-prompt spawn is now in-flight. The active run carries
+			// the output-prompt child's processRunId so stopRun can signal both.
+			const parentRunId = manager.getActiveRuns()[0].runId;
+			const run = manager.getActiveRunMap().get(parentRunId)!;
+			expect(run.processRunId).toBeDefined();
+			expect(run.processRunId).not.toBe(parentRunId);
+
+			// User hits stop.
+			const stopped = manager.stopRun(parentRunId);
+			expect(stopped).toBe(true);
+			expect(onStopCueRun).toHaveBeenCalledWith(parentRunId);
+			expect(onStopCueRun).toHaveBeenCalledWith(run.processRunId!);
+
+			expect(deps.onRunStopped).toHaveBeenCalledTimes(1);
+			expect(deps.onRunStopped).toHaveBeenCalledWith(
+				expect.objectContaining({ status: 'stopped' })
+			);
+
+			// Output-prompt resolves late — the run-manager must skip
+			// onRunCompleted because stopRun already cleaned up.
+			outputDeferred.resolve!(makeResult({ status: 'completed', stdout: 'LATE' }));
+			await vi.advanceTimersByTimeAsync(0);
+			expect(deps.onRunCompleted).not.toHaveBeenCalled();
+		});
+	});
+
+	// Phase 12A — queue persistence wiring
+	describe('queue persistence (Phase 12A)', () => {
+		function makeMockPersistence() {
+			return {
+				persist: vi.fn(),
+				remove: vi.fn(),
+				clearSession: vi.fn(),
+				clearAll: vi.fn(),
+				restoreAll: vi.fn(() => new Map()),
+			};
+		}
+
+		it('calls queuePersistence.persist when an event is queued', () => {
+			const persistence = makeMockPersistence();
+			const deps = createDeps({
+				onCueRun: vi.fn(() => new Promise(() => {})),
+				getSessionSettings: vi.fn(() => ({
+					...defaultSettings,
+					max_concurrent: 1,
+					queue_size: 5,
+				})),
+				queuePersistence: persistence,
+			});
+			const manager = createCueRunManager(deps);
+			manager.execute('session-1', 'p1', createEvent(), 'sub-1'); // dispatched
+			manager.execute('session-1', 'p2', createEvent(), 'sub-2'); // queued
+			expect(persistence.persist).toHaveBeenCalledTimes(1);
+			expect(persistence.persist).toHaveBeenCalledWith(
+				'session-1',
+				expect.any(String),
+				expect.objectContaining({ subscriptionName: 'sub-2' })
+			);
+		});
+
+		it('calls queuePersistence.remove when a queued event drains', async () => {
+			const persistence = makeMockPersistence();
+			let resolveFirst: ((r: CueRunResult) => void) | null = null;
+			const deps = createDeps({
+				onCueRun: vi
+					.fn()
+					.mockImplementationOnce(() => new Promise<CueRunResult>((r) => (resolveFirst = r)))
+					.mockResolvedValue(makeResult()),
+				getSessionSettings: vi.fn(() => ({
+					...defaultSettings,
+					max_concurrent: 1,
+					queue_size: 5,
+				})),
+				queuePersistence: persistence,
+			});
+			const manager = createCueRunManager(deps);
+			manager.execute('session-1', 'p1', createEvent(), 'sub-1'); // dispatched
+			manager.execute('session-1', 'p2', createEvent(), 'sub-2'); // queued
+			expect(persistence.remove).not.toHaveBeenCalled();
+			// Finish the first run → slot opens → queued event drains
+			resolveFirst!(makeResult());
+			await vi.advanceTimersByTimeAsync(0);
+			// The drain path removes the persisted row before dispatching
+			expect(persistence.remove).toHaveBeenCalled();
+		});
+
+		it('calls queuePersistence.remove on overflow drop', () => {
+			const persistence = makeMockPersistence();
+			const deps = createDeps({
+				onCueRun: vi.fn(() => new Promise(() => {})),
+				getSessionSettings: vi.fn(() => ({
+					...defaultSettings,
+					max_concurrent: 1,
+					queue_size: 1,
+				})),
+				queuePersistence: persistence,
+			});
+			const manager = createCueRunManager(deps);
+			manager.execute('session-1', 'p1', createEvent(), 'sub-1'); // dispatched
+			manager.execute('session-1', 'p2', createEvent(), 'sub-2'); // queued
+			persistence.remove.mockClear();
+			manager.execute('session-1', 'p3', createEvent(), 'sub-3'); // overflow → drops oldest
+			expect(persistence.remove).toHaveBeenCalledTimes(1);
+		});
+
+		it('calls queuePersistence.clearAll on stopAll', () => {
+			const persistence = makeMockPersistence();
+			const deps = createDeps({
+				onCueRun: vi.fn(() => new Promise(() => {})),
+				queuePersistence: persistence,
+			});
+			const manager = createCueRunManager(deps);
+			manager.execute('session-1', 'p1', createEvent(), 'sub-1');
+			manager.stopAll();
+			expect(persistence.clearAll).toHaveBeenCalled();
+		});
+
+		it('calls queuePersistence.clearAll on reset', () => {
+			const persistence = makeMockPersistence();
+			const deps = createDeps({
+				onCueRun: vi.fn(() => new Promise(() => {})),
+				queuePersistence: persistence,
+			});
+			const manager = createCueRunManager(deps);
+			manager.reset();
+			expect(persistence.clearAll).toHaveBeenCalled();
+		});
+
+		it('works without queuePersistence dep (back-compat)', () => {
+			const deps = createDeps({ onCueRun: vi.fn(() => new Promise(() => {})) });
+			const manager = createCueRunManager(deps);
+			expect(() => {
+				manager.execute('session-1', 'p1', createEvent(), 'sub-1');
+				manager.execute('session-1', 'p2', createEvent(), 'sub-2');
+			}).not.toThrow();
+		});
+
+		it('honors queuedAtOverride so restored entries keep their original timestamp', () => {
+			const persistence = makeMockPersistence();
+			const deps = createDeps({
+				onCueRun: vi.fn(() => new Promise(() => {})),
+				getSessionSettings: vi.fn(() => ({
+					...defaultSettings,
+					max_concurrent: 1,
+					queue_size: 5,
+				})),
+				queuePersistence: persistence,
+			});
+			const manager = createCueRunManager(deps);
+			manager.execute('session-1', 'p1', createEvent(), 'sub-1'); // dispatched
+			// Queue with a timestamp from an hour ago (simulating restore).
+			const anHourAgo = Date.now() - 60 * 60 * 1000;
+			manager.execute(
+				'session-1',
+				'p2',
+				createEvent(),
+				'sub-2',
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				anHourAgo
+			);
+			const persistCall = persistence.persist.mock.calls.at(-1);
+			expect(persistCall?.[2].queuedAt).toBe(anHourAgo);
+		});
+	});
+
+	// Phase 12B — onQueueOverflow wiring
+	describe('queue overflow (Phase 12B)', () => {
+		it('invokes onQueueOverflow when the queue saturates, before shifting', async () => {
+			const onQueueOverflow = vi.fn();
+			const deps = createDeps({
+				onCueRun: vi.fn(() => new Promise(() => {})), // never resolves — stays active
+				getSessionSettings: vi.fn(() => ({
+					...defaultSettings,
+					max_concurrent: 1,
+					queue_size: 2,
+				})),
+				onQueueOverflow,
+			});
+			const manager = createCueRunManager(deps);
+
+			// Fill the slot (1 active) + fill the queue (2 queued) = 3 calls total.
+			manager.execute('session-1', 'p1', createEvent(), 'sub-1');
+			manager.execute('session-1', 'p2', createEvent(), 'sub-2');
+			manager.execute('session-1', 'p3', createEvent(), 'sub-3');
+			expect(onQueueOverflow).not.toHaveBeenCalled();
+
+			// Fourth call exceeds queue_size — overflow fires.
+			manager.execute('session-1', 'p4', createEvent(), 'sub-4');
+			expect(onQueueOverflow).toHaveBeenCalledTimes(1);
+			expect(onQueueOverflow).toHaveBeenCalledWith(
+				expect.objectContaining({
+					sessionId: 'session-1',
+					sessionName: 'Test Session',
+					subscriptionName: 'sub-2', // oldest queued
+				})
+			);
+		});
+
+		it('does NOT invoke onQueueOverflow when capacity is available', () => {
+			const onQueueOverflow = vi.fn();
+			const deps = createDeps({
+				onCueRun: vi.fn(() => new Promise(() => {})),
+				onQueueOverflow,
+			});
+			const manager = createCueRunManager(deps);
+			manager.execute('session-1', 'p1', createEvent(), 'sub-1');
+			expect(onQueueOverflow).not.toHaveBeenCalled();
+		});
+
+		it('works without onQueueOverflow dep (back-compat)', () => {
+			const deps = createDeps({
+				onCueRun: vi.fn(() => new Promise(() => {})),
+				getSessionSettings: vi.fn(() => ({
+					...defaultSettings,
+					max_concurrent: 1,
+					queue_size: 1,
+				})),
+				// Intentionally no onQueueOverflow
+			});
+			const manager = createCueRunManager(deps);
+			manager.execute('session-1', 'p1', createEvent(), 'sub-1');
+			manager.execute('session-1', 'p2', createEvent(), 'sub-2');
+			// No throw, normal continuation.
+			expect(() => manager.execute('session-1', 'p3', createEvent(), 'sub-3')).not.toThrow();
+		});
+
+		it('drops the incoming event (not queue[0]) when queue_size is 0', () => {
+			const onQueueOverflow = vi.fn();
+			const deps = createDeps({
+				onCueRun: vi.fn(() => new Promise(() => {})),
+				getSessionSettings: vi.fn(() => ({
+					...defaultSettings,
+					max_concurrent: 1,
+					queue_size: 0,
+				})),
+				onQueueOverflow,
+			});
+			const manager = createCueRunManager(deps);
+			manager.execute('session-1', 'p1', createEvent(), 'sub-active'); // dispatched
+			// Second call would crash pre-guard because queue[0] is undefined.
+			expect(() => manager.execute('session-1', 'p2', createEvent(), 'sub-incoming')).not.toThrow();
+			// Overflow fires for the INCOMING subscription, not a non-existent oldest.
+			expect(onQueueOverflow).toHaveBeenCalledWith(
+				expect.objectContaining({ subscriptionName: 'sub-incoming' })
+			);
+			expect(manager.getQueueStatus().size).toBe(0);
 		});
 	});
 });

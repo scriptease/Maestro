@@ -45,6 +45,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import type { FileExplorerIconTheme } from '../utils/fileExplorerIcons/shared';
 import { Modal, ModalFooter } from './ui/Modal';
 import { FormInput } from './ui/FormInput';
+import { logger } from '../utils/logger';
 
 /**
  * RetryCountdown component - shows time remaining until auto-retry.
@@ -146,6 +147,85 @@ function FileTreeLoadingProgress({
 						scanning: {currentFolder}/
 					</div>
 				)}
+			</div>
+		</div>
+	);
+}
+
+/**
+ * FileTreeTruncatedBanner - surfaces the "scan stopped at the entry cap" state
+ * with two affordances: bump the cap (Load more) or remove it (Load all).
+ *
+ * "Load all" is gated so catastrophically large trees (10M+ files) still need
+ * explicit opt-in.
+ */
+function FileTreeTruncatedBanner({
+	theme,
+	previousCap,
+	onLoadMore,
+	onLoadAll,
+	isRefreshing,
+}: {
+	theme: Theme;
+	previousCap?: number;
+	onLoadMore: () => void;
+	onLoadAll: () => void;
+	isRefreshing: boolean;
+}) {
+	const capLabel =
+		previousCap !== undefined && Number.isFinite(previousCap)
+			? previousCap.toLocaleString()
+			: 'the configured cap';
+	const nextCap =
+		previousCap !== undefined && Number.isFinite(previousCap)
+			? (previousCap * 2).toLocaleString()
+			: 'more';
+
+	return (
+		<div
+			className="flex items-start gap-2 px-3 py-2 rounded border mb-2"
+			style={{
+				borderColor: theme.colors.warning,
+				backgroundColor: `${theme.colors.warning}15`,
+				color: theme.colors.textMain,
+			}}
+		>
+			<AlertTriangle
+				className="w-4 h-4 mt-0.5 flex-shrink-0"
+				style={{ color: theme.colors.warning }}
+			/>
+			<div className="flex-1 min-w-0">
+				<div className="text-xs font-medium">Unable to load all files into the file panel.</div>
+				<div className="text-[11px] opacity-70 mt-0.5">
+					Scan stopped at {capLabel} entries to protect memory. Adjust the cap in Settings → Display
+					→ File Indexing.
+				</div>
+				<div className="flex gap-2 mt-1.5">
+					<button
+						type="button"
+						onClick={onLoadMore}
+						disabled={isRefreshing}
+						className="px-2 py-0.5 rounded text-[11px] font-medium transition-colors disabled:opacity-50"
+						style={{
+							backgroundColor: theme.colors.accent,
+							color: theme.colors.bgMain,
+						}}
+					>
+						Load more ({nextCap})
+					</button>
+					<button
+						type="button"
+						onClick={onLoadAll}
+						disabled={isRefreshing}
+						className="px-2 py-0.5 rounded text-[11px] font-medium border transition-colors disabled:opacity-50"
+						style={{
+							borderColor: theme.colors.border,
+							color: theme.colors.textMain,
+						}}
+					>
+						Load all
+					</button>
+				</div>
 			</div>
 		</div>
 	);
@@ -355,7 +435,10 @@ interface FileExplorerPanelProps {
 		activeSessionId: string,
 		setSessions: React.Dispatch<React.SetStateAction<Session[]>>
 	) => Promise<void>;
-	refreshFileTree: (sessionId: string) => Promise<FileTreeChanges | undefined>;
+	refreshFileTree: (
+		sessionId: string,
+		options?: { maxEntriesOverride?: number }
+	) => Promise<FileTreeChanges | undefined>;
 	setSessions: React.Dispatch<React.SetStateAction<Session[]>>;
 	onAutoRefreshChange?: (interval: number) => void;
 	onShowFlash?: (message: string) => void;
@@ -398,7 +481,7 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 
 	const shortcuts = useSettingsStore((s) => s.shortcuts);
 	const rightPanelWidth = useSettingsStore((s) => s.rightPanelWidth);
-	const compact = rightPanelWidth < 320;
+	const compact = rightPanelWidth < 340;
 
 	const { registerLayer, unregisterLayer, updateLayerHandler } = useLayerStack();
 	const layerIdRef = useRef<string>();
@@ -514,7 +597,7 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 				try {
 					await refreshFileTreeRef.current(sessionIdRef.current);
 				} catch (error) {
-					console.error('[FileExplorer] Auto-refresh failed:', error);
+					logger.error('[FileExplorer] Auto-refresh failed:', undefined, error);
 				} finally {
 					autoRefreshSpinTimeoutRef.current = setTimeout(() => {
 						setIsRefreshing(false);
@@ -888,7 +971,10 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 			for (const node of nodes) {
 				const normalizedName = node.name.normalize('NFC');
 				if (seenNames.has(normalizedName)) {
-					console.warn('[FileExplorer] Duplicate sibling skipped:', currentPath, node.name);
+					logger.warn('[FileExplorer] Duplicate sibling skipped:', undefined, [
+						currentPath,
+						node.name,
+					]);
 					continue;
 				}
 				seenNames.add(normalizedName);
@@ -897,7 +983,7 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 
 				// Guard: skip duplicate paths to prevent React key collisions
 				if (seenPaths.has(fullPath)) {
-					console.warn('[FileExplorer] Duplicate path skipped:', fullPath);
+					logger.warn('[FileExplorer] Duplicate path skipped:', undefined, fullPath);
 					continue;
 				}
 				seenPaths.add(fullPath);
@@ -962,7 +1048,7 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 						key={i}
 						className="absolute top-0 bottom-0 w-px"
 						style={{
-							left: `${12 + i * 16}px`,
+							left: `${12 + i * 20}px`,
 							backgroundColor: theme.colors.border,
 						}}
 					/>
@@ -976,7 +1062,7 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 					style={{
 						height: `${virtualRow.size}px`,
 						transform: `translateY(${virtualRow.start}px)`,
-						paddingLeft: `${8 + (isFolder ? depth : Math.max(0, depth - 1)) * 16}px`,
+						paddingLeft: `${8 + depth * 20}px`,
 						color: change ? theme.colors.textMain : theme.colors.textDim,
 						borderLeftColor: isKeyboardSelected ? theme.colors.accent : 'transparent',
 						backgroundColor: isKeyboardSelected
@@ -1010,15 +1096,12 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 					onContextMenu={(e) => handleContextMenu(e, node, fullPath, globalIndex)}
 				>
 					{indentGuides}
-					{isFolder ? (
-						isExpanded ? (
+					{isFolder &&
+						(isExpanded ? (
 							<ChevronDown className="w-3 h-3 flex-shrink-0" />
 						) : (
 							<ChevronRight className="w-3 h-3 flex-shrink-0" />
-						)
-					) : (
-						<span className="w-3 h-3 flex-shrink-0" />
-					)}
+						))}
 					<span className="flex-shrink-0">
 						{isFolder
 							? getExplorerFolderIcon(node.name, isExpanded, theme, fileExplorerIconTheme)
@@ -1314,6 +1397,29 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 							isRemote={!!(session.sshRemoteId || session.sessionSshRemoteConfig?.enabled)}
 						/>
 					)}
+					{/* Truncation banner - scan hit the entry cap and stopped early. */}
+					{!session.fileTreeLoading && session.fileTreeTruncated && (
+						<FileTreeTruncatedBanner
+							theme={theme}
+							previousCap={session.fileTreeLoadedCap}
+							isRefreshing={isRefreshing}
+							onLoadMore={() => {
+								const next = (session.fileTreeLoadedCap ?? 100_000) * 2;
+								setIsRefreshing(true);
+								refreshFileTree(session.id, { maxEntriesOverride: next }).finally(() => {
+									setTimeout(() => setIsRefreshing(false), 500);
+								});
+							}}
+							onLoadAll={() => {
+								setIsRefreshing(true);
+								refreshFileTree(session.id, {
+									maxEntriesOverride: Number.POSITIVE_INFINITY,
+								}).finally(() => {
+									setTimeout(() => setIsRefreshing(false), 500);
+								});
+							}}
+						/>
+					)}
 					{/* Show empty state when loading is complete but no files found */}
 					{!session.fileTreeLoading &&
 						(!session.fileTree || session.fileTree.length === 0) &&
@@ -1365,7 +1471,7 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 						style={{
 							backgroundColor: theme.colors.bgSidebar,
 							borderColor: theme.colors.border,
-							minWidth: '180px',
+							minWidth: '200px',
 							top: overlayPosition.top,
 							left: overlayPosition.left,
 							transform: 'translateX(-100%)',
@@ -1403,7 +1509,7 @@ function FileExplorerPanelInner(props: FileExplorerPanelProps) {
 												: 'transparent',
 									}}
 								>
-									<span>{option.label}</span>
+									<span className="whitespace-nowrap">{option.label}</span>
 									{autoRefreshInterval === option.value && (
 										<Check className="w-3.5 h-3.5" style={{ color: theme.colors.accent }} />
 									)}

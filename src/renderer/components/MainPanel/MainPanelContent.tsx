@@ -58,6 +58,8 @@ export interface MainPanelContentProps {
 	handleFilePreviewSearchQueryChange: (searchQuery: string) => void;
 	handleFilePreviewReload: () => void;
 	handleBrowserTabUpdate?: (sessionId: string, tabId: string, updates: Partial<BrowserTab>) => void;
+	/** Ref registry for the currently-mounted BrowserTabView — used to extract the active tab's content */
+	browserViewRef?: React.MutableRefObject<import('./BrowserTabView').BrowserTabViewHandle | null>;
 
 	// Terminal mounting props
 	terminalViewRefs: React.MutableRefObject<
@@ -67,6 +69,10 @@ export interface MainPanelContentProps {
 	mountedTerminalSessionsRef: React.MutableRefObject<Map<string, Session>>;
 	terminalSearchOpen: boolean;
 	setTerminalSearchOpen: (open: boolean) => void;
+	/** Copy a highlighted terminal selection to the clipboard (right-click menu handler). */
+	onTerminalCopySelection?: (text: string) => void;
+	/** Send a highlighted terminal selection to another agent (right-click menu handler). */
+	onTerminalSendSelectionToAgent?: (tabId: string, text: string) => void;
 
 	// Layout
 	isMobileLandscape: boolean;
@@ -207,7 +213,7 @@ export interface MainPanelContentProps {
 	onPublishGist?: () => void;
 	hasGist?: boolean;
 	onOpenInGraph?: () => void;
-	onPublishMessageGist?: (text: string) => void;
+	onPublishMessageGist?: (text: string, messageId?: string) => void;
 	onToggleTabReadOnlyMode?: () => void;
 	onToggleTabSaveToHistory?: () => void;
 	onToggleTabShowThinking?: () => void;
@@ -254,11 +260,14 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 		handleFilePreviewSearchQueryChange,
 		handleFilePreviewReload,
 		handleBrowserTabUpdate,
+		browserViewRef,
 		terminalViewRefs,
 		mountedTerminalSessionIds,
 		mountedTerminalSessionsRef,
 		terminalSearchOpen,
 		setTerminalSearchOpen,
+		onTerminalCopySelection,
+		onTerminalSendSelectionToAgent,
 		isMobileLandscape,
 		activeTabContextUsage,
 		contextWarningsEnabled,
@@ -403,6 +412,9 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 			{/* Skip rendering when loading remote file - loading state takes over entire main area */}
 			{activeSession.inputMode === 'ai' && activeBrowserTabId && activeBrowserTab ? (
 				<BrowserTabView
+					ref={(handle) => {
+						if (browserViewRef) browserViewRef.current = handle;
+					}}
 					tab={activeBrowserTab}
 					theme={theme}
 					onUpdateTab={(tabId, updates) =>
@@ -730,6 +742,8 @@ export const MainPanelContent = React.memo(function MainPanelContent(props: Main
 							searchOpen={isCurrentSession ? terminalSearchOpen : false}
 							onSearchClose={isCurrentSession ? () => setTerminalSearchOpen(false) : undefined}
 							isVisible={isTerminalVisible}
+							onCopySelection={onTerminalCopySelection}
+							onSendSelectionToAgent={onTerminalSendSelectionToAgent}
 						/>
 					</div>
 				);

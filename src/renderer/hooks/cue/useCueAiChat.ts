@@ -109,7 +109,6 @@ export function useCueAiChat({
 		try {
 			const appendSystemPrompt = await prepareMaestroSystemPrompt({
 				session,
-				agentSessionId: agentSessionIdRef.current,
 			});
 
 			const spawnConfig = await buildSpawnConfigForAgent({

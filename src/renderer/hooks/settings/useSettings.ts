@@ -34,6 +34,7 @@ import {
 	selectIsLeaderboardRegistered,
 } from '../../stores/settingsStore';
 import type { DocumentGraphLayoutType } from '../../stores/settingsStore';
+import { logger } from '../../utils/logger';
 
 export interface UseSettingsReturn {
 	// Loading state
@@ -80,6 +81,8 @@ export interface UseSettingsReturn {
 	setCustomThemeBaseId: (value: ThemeId) => void;
 	enterToSendAI: boolean;
 	setEnterToSendAI: (value: boolean) => void;
+	enterToSendAIExpanded: boolean;
+	setEnterToSendAIExpanded: (value: boolean) => void;
 	defaultSaveToHistory: boolean;
 	setDefaultSaveToHistory: (value: boolean) => void;
 
@@ -90,10 +93,16 @@ export interface UseSettingsReturn {
 	rightPanelWidth: number;
 	markdownEditMode: boolean;
 	chatRawTextMode: boolean;
+	bionifyReadingMode: boolean;
+	bionifyIntensity: number;
+	bionifyAlgorithm: string;
 	setLeftSidebarWidth: (value: number) => void;
 	setRightPanelWidth: (value: number) => void;
 	setMarkdownEditMode: (value: boolean) => void;
 	setChatRawTextMode: (value: boolean) => void;
+	setBionifyReadingMode: (value: boolean) => void;
+	setBionifyIntensity: (value: number) => void;
+	setBionifyAlgorithm: (value: string) => void;
 	showHiddenFiles: boolean;
 	setShowHiddenFiles: (value: boolean) => void;
 	fileExplorerIconTheme: FileExplorerIconTheme;
@@ -268,6 +277,12 @@ export interface UseSettingsReturn {
 	localHonorGitignore: boolean;
 	setLocalHonorGitignore: (value: boolean) => void;
 
+	// File explorer indexing limits (global)
+	fileExplorerMaxDepth: number;
+	setFileExplorerMaxDepth: (value: number) => void;
+	fileExplorerMaxEntries: number;
+	setFileExplorerMaxEntries: (value: number) => void;
+
 	// SSH Remote file indexing settings
 	sshRemoteIgnorePatterns: string[];
 	setSshRemoteIgnorePatterns: (value: string[]) => void;
@@ -335,6 +350,8 @@ export interface UseSettingsReturn {
 	// Auto Run kill switch
 	autoRunDisabled: boolean;
 	setAutoRunDisabled: (value: boolean) => void;
+	autoRunInactivityTimeoutMin: number;
+	setAutoRunInactivityTimeoutMin: (value: number) => void;
 }
 
 export function useSettings(): UseSettingsReturn {
@@ -353,7 +370,7 @@ export function useSettings(): UseSettingsReturn {
 			return;
 		}
 		const cleanup = window.maestro.app.onSystemResume(() => {
-			console.log('[Settings] System resumed from sleep, reloading settings');
+			logger.info('[Settings] System resumed from sleep, reloading settings');
 			loadAllSettings();
 		});
 		return cleanup;
@@ -365,7 +382,7 @@ export function useSettings(): UseSettingsReturn {
 			return;
 		}
 		const cleanup = window.maestro.settings.onExternalChange(() => {
-			console.log('[Settings] External settings change detected, reloading');
+			logger.info('[Settings] External settings change detected, reloading');
 			loadAllSettings();
 		});
 		return cleanup;

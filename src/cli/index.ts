@@ -14,6 +14,8 @@ import { cleanPlaybooks } from './commands/clean-playbooks';
 import { send } from './commands/send';
 import { listSessions } from './commands/list-sessions';
 import { openFile } from './commands/open-file';
+import { openBrowser } from './commands/open-browser';
+import { openTerminal } from './commands/open-terminal';
 import { refreshFiles } from './commands/refresh-files';
 import { refreshAutoRun } from './commands/refresh-auto-run';
 import { status } from './commands/status';
@@ -141,6 +143,11 @@ program
 	.option('-r, --read-only', 'Run in read-only/plan mode (agent cannot modify files)')
 	.option('-t, --tab', 'Open/focus the session tab in Maestro desktop')
 	.option('-l, --live', 'Send message through Maestro desktop (appears in tab)')
+	.option('--new-tab', 'Create a new AI tab instead of writing to the active one (requires --live)')
+	.option(
+		'-f, --force',
+		'Bypass the busy-state guard when writing to the active tab (requires --live); enables concurrent writes to a single agent'
+	)
 	.action(send);
 
 // Open file command - open a file in the Maestro desktop app
@@ -149,6 +156,23 @@ program
 	.description('Open a file as a preview tab in the Maestro desktop app')
 	.option('-s, --session <id>', 'Target session (defaults to active)')
 	.action(openFile);
+
+// Open browser command - open a URL in a browser tab in the Maestro desktop app
+program
+	.command('open-browser <url>')
+	.description('Open a URL as a browser tab in the Maestro desktop app')
+	.option('-a, --agent <id>', 'Target agent by ID (defaults to active)')
+	.action(openBrowser);
+
+// Open terminal command - open a new terminal tab in the Maestro desktop app
+program
+	.command('open-terminal')
+	.description('Open a new terminal tab in the Maestro desktop app')
+	.option('-a, --agent <id>', 'Target agent by ID (defaults to active)')
+	.option('--cwd <path>', "Working directory for the terminal (must be within the agent's cwd)")
+	.option('--shell <shell>', 'Shell binary to use (default: zsh)')
+	.option('--name <name>', 'Display name for the tab')
+	.action(openTerminal);
 
 // Refresh files command - refresh the file tree in the Maestro desktop app
 program
@@ -245,7 +269,7 @@ program
 	.requiredOption('-d, --cwd <path>', 'Working directory for the agent')
 	.option(
 		'-t, --type <type>',
-		'Agent type (claude-code, codex, opencode, factory-droid, gemini-cli, qwen3-coder, aider)',
+		'Agent type (claude-code, codex, opencode, factory-droid, copilot-cli, gemini-cli, qwen3-coder)',
 		'claude-code'
 	)
 	.option('-g, --group <id>', 'Group ID to assign the agent to')
@@ -388,4 +412,9 @@ prompts
 	.option('--json', 'Output as JSON object with metadata + content')
 	.action(promptsGet);
 
-program.parse();
+// Commander auto-switches to from: 'electron' when process.versions.electron is
+// set, which is still true under ELECTRON_RUN_AS_NODE=1. In that mode Commander
+// only strips argv[0] and treats the script path as the first user command.
+// Force node-style argv parsing so the shim that spawns us via Electron-as-Node
+// (see MaestroCliManager.writeUnixShim / writeWindowsShim) works correctly.
+program.parse(process.argv, { from: 'node' });

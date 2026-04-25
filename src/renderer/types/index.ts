@@ -1,7 +1,5 @@
 // Type definitions for Maestro renderer
 
-import type { AgentCapabilities } from '../../shared/types';
-
 // Re-export context merge types
 export * from './contextMerge';
 
@@ -176,11 +174,7 @@ export interface SessionWizardState {
 	toolExecutions?: Array<{ toolName: string; state?: unknown; timestamp: number }>;
 }
 
-export interface Shortcut {
-	id: string;
-	label: string;
-	keys: string[];
-}
+export type { Shortcut } from '../../shared/shortcut-types';
 
 export interface FileArtifact {
 	path: string;
@@ -213,9 +207,13 @@ export interface LogEntry {
 	// For tool execution entries - stores tool state and details
 	metadata?: {
 		toolState?: {
-			status?: 'running' | 'completed' | 'error';
+			status?: 'running' | 'completed' | 'error' | 'failed';
 			input?: unknown;
 			output?: unknown;
+		};
+		hiddenProgress?: {
+			kind: 'thinking' | 'tool';
+			toolName?: string;
 		};
 	};
 }
@@ -618,6 +616,10 @@ export interface Session {
 		folderCount: number;
 		totalSize: number;
 	};
+	/** True when the last file tree load hit the entry cap and stopped early. */
+	fileTreeTruncated?: boolean;
+	/** Entry cap that was in effect when the file tree was last loaded. */
+	fileTreeLoadedCap?: number;
 	/** Loading progress for file tree (shown during slow SSH connections) */
 	fileTreeLoadingProgress?: {
 		directoriesScanned: number;

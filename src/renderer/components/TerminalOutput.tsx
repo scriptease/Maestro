@@ -34,6 +34,8 @@ import { LogFilterControls } from './LogFilterControls';
 import { SaveMarkdownModal } from './SaveMarkdownModal';
 import { generateTerminalProseStyles } from '../utils/markdownConfig';
 import { safeClipboardWrite } from '../utils/clipboard';
+import { useSettingsStore } from '../stores/settingsStore';
+import { useMessageGistStore } from '../stores/messageGistStore';
 
 // ============================================================================
 // Tool display helpers (pure functions, hoisted out of render path)
@@ -114,6 +116,9 @@ const summarizeToolInput = (input: Record<string, unknown>): ToolSummary | null 
 	return { description, detail: detail ?? '' };
 };
 
+const isHiddenProgressEntry = (log: LogEntry): boolean =>
+	log.source === 'system' && log.id.startsWith('hidden-progress:');
+
 // ============================================================================
 // LogItem - Memoized component for individual log entries
 // ============================================================================
@@ -174,9 +179,13 @@ interface LogItemProps {
 	onSaveToFile?: (text: string) => void;
 	// Publish to GitHub Gist (AI mode only, non-user messages, requires gh CLI)
 	ghCliAvailable?: boolean;
-	onPublishGist?: (text: string) => void;
-	// Fork conversation from this message (AI mode only, user and ai source messages)
+	onPublishGist?: (text: string, messageId?: string) => void;
+	publishedGistUrl?: string;
+	// Fork conversation from this message (AI mode only, user messages and AI responses — source 'user' | 'ai' | 'stdout')
 	onForkConversation?: (logId: string) => void;
+	bionifyReadingMode: boolean;
+	bionifyIntensity: number;
+	bionifyAlgorithm: string;
 	// Message alignment
 	userMessageAlignment: 'left' | 'right';
 }
@@ -218,7 +227,11 @@ const LogItemComponent = memo(
 		onSaveToFile,
 		ghCliAvailable,
 		onPublishGist,
+		publishedGistUrl,
 		onForkConversation,
+		bionifyReadingMode,
+		bionifyIntensity,
+		bionifyAlgorithm,
 		userMessageAlignment,
 	}: LogItemProps) => {
 		// Ref for the log item container - used for scroll-into-view on expand
@@ -496,6 +509,9 @@ const LogItemComponent = memo(
 										content={log.text}
 										theme={theme}
 										onCopy={copyToClipboard}
+										enableBionifyReadingMode={bionifyReadingMode}
+										bionifyIntensity={bionifyIntensity}
+										bionifyAlgorithm={bionifyAlgorithm}
 										fileTree={fileTree}
 										cwd={cwd}
 										projectRoot={projectRoot}
@@ -504,6 +520,52 @@ const LogItemComponent = memo(
 								) : (
 									log.text
 								)}
+							</div>
+						</div>
+					)}
+					{isHiddenProgressEntry(log) && (
+						<div
+							className="px-4 py-1.5 text-xs border-l-2"
+							style={{
+								color: theme.colors.textMain,
+								borderColor: theme.colors.accent,
+							}}
+						>
+							<div className="flex items-start gap-2">
+								<span
+									className="px-1.5 py-0.5 rounded shrink-0"
+									style={{
+										backgroundColor: `${theme.colors.accent}30`,
+										color: theme.colors.accent,
+									}}
+								>
+									{log.metadata?.hiddenProgress?.kind === 'tool'
+										? log.metadata.hiddenProgress.toolName || 'working'
+										: 'thinking'}
+								</span>
+								{log.metadata?.toolState?.status === 'completed' ? (
+									<span className="shrink-0 pt-0.5" style={{ color: theme.colors.success }}>
+										✓
+									</span>
+								) : log.metadata?.toolState?.status === 'failed' ||
+								  log.metadata?.toolState?.status === 'error' ? (
+									<span className="shrink-0 pt-0.5" style={{ color: theme.colors.error }}>
+										!
+									</span>
+								) : (
+									<span
+										className="animate-pulse shrink-0 pt-0.5"
+										style={{ color: theme.colors.warning }}
+									>
+										●
+									</span>
+								)}
+								<span
+									className="break-words whitespace-pre-wrap opacity-80"
+									style={{ color: theme.colors.textMain }}
+								>
+									{log.text}
+								</span>
 							</div>
 						</div>
 					)}
@@ -547,6 +609,11 @@ const LogItemComponent = memo(
 												✓
 											</span>
 										)}
+										{log.metadata?.toolState?.status === 'failed' && (
+											<span className="shrink-0 pt-0.5" style={{ color: theme.colors.error }}>
+												!
+											</span>
+										)}
 										{toolSummary?.description && (
 											<span
 												className="opacity-50 break-words"
@@ -570,7 +637,8 @@ const LogItemComponent = memo(
 								</div>
 							);
 						})()}
-					{log.source !== 'error' &&
+					{!isHiddenProgressEntry(log) &&
+						log.source !== 'error' &&
 						log.source !== 'thinking' &&
 						log.source !== 'tool' &&
 						(hasNoMatches ? (
@@ -605,6 +673,9 @@ const LogItemComponent = memo(
 											content={displayText}
 											theme={theme}
 											onCopy={copyToClipboard}
+											enableBionifyReadingMode={bionifyReadingMode}
+											bionifyIntensity={bionifyIntensity}
+											bionifyAlgorithm={bionifyAlgorithm}
 											fileTree={fileTree}
 											cwd={cwd}
 											projectRoot={projectRoot}
@@ -688,6 +759,9 @@ const LogItemComponent = memo(
 											content={filteredText}
 											theme={theme}
 											onCopy={copyToClipboard}
+											enableBionifyReadingMode={bionifyReadingMode}
+											bionifyIntensity={bionifyIntensity}
+											bionifyAlgorithm={bionifyAlgorithm}
 											fileTree={fileTree}
 											cwd={cwd}
 											projectRoot={projectRoot}
@@ -763,6 +837,9 @@ const LogItemComponent = memo(
 										content={filteredText}
 										theme={theme}
 										onCopy={copyToClipboard}
+										enableBionifyReadingMode={bionifyReadingMode}
+										bionifyIntensity={bionifyIntensity}
+										bionifyAlgorithm={bionifyAlgorithm}
 										fileTree={fileTree}
 										cwd={cwd}
 										projectRoot={projectRoot}
@@ -830,24 +907,34 @@ const LogItemComponent = memo(
 								<Save className="w-3.5 h-3.5" />
 							</button>
 						)}
-						{/* Fork conversation from this message - AI and user messages only */}
-						{(log.source === 'ai' || log.source === 'user') && isAIMode && onForkConversation && (
-							<button
-								onClick={() => onForkConversation(log.id)}
-								className="p-1.5 rounded opacity-0 group-hover:opacity-50 hover:!opacity-100"
-								style={{ color: theme.colors.textDim }}
-								title="Fork conversation from here"
-							>
-								<GitFork className="w-3.5 h-3.5" />
-							</button>
-						)}
+						{/* Fork conversation — user messages and AI responses (source='stdout' in AI mode, or 'ai' if ever set) */}
+						{(log.source === 'user' || log.source === 'ai' || log.source === 'stdout') &&
+							isAIMode &&
+							onForkConversation && (
+								<button
+									onClick={() => onForkConversation(log.id)}
+									className="p-1.5 rounded opacity-0 group-hover:opacity-50 hover:!opacity-100"
+									style={{ color: theme.colors.textDim }}
+									title="Fork conversation from here"
+								>
+									<GitFork className="w-3.5 h-3.5" />
+								</button>
+							)}
 						{/* Publish to GitHub Gist - only for AI responses when gh CLI available */}
 						{log.source !== 'user' && isAIMode && ghCliAvailable && onPublishGist && (
 							<button
-								onClick={() => onPublishGist(log.text)}
-								className="p-1.5 rounded opacity-0 group-hover:opacity-50 hover:!opacity-100"
-								style={{ color: theme.colors.textDim }}
-								title="Publish as GitHub Gist"
+								onClick={() => onPublishGist(log.text, log.id)}
+								className={`p-1.5 rounded hover:!opacity-100 ${
+									publishedGistUrl ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'
+								}`}
+								style={{
+									color: publishedGistUrl ? theme.colors.accent : theme.colors.textDim,
+								}}
+								title={
+									publishedGistUrl
+										? `Published as Gist: ${publishedGistUrl}`
+										: 'Publish as GitHub Gist'
+								}
 							>
 								<Share2 className="w-3.5 h-3.5" />
 							</button>
@@ -904,6 +991,15 @@ const LogItemComponent = memo(
 									<Trash2 className="w-3.5 h-3.5" />
 								</button>
 							))}
+						{/* Read-only mode indicator for messages sent in read-only/plan mode */}
+						{isUserMessage && isAIMode && log.readOnly && (
+							<span title="Sent in read-only mode" className="flex items-center">
+								<Eye
+									className="w-3.5 h-3.5"
+									style={{ color: theme.colors.warning, opacity: 0.7 }}
+								/>
+							</span>
+						)}
 						{/* Force parallel indicator for messages sent via Cmd+Shift+Enter */}
 						{isUserMessage && isAIMode && log.forceParallel && (
 							<span
@@ -939,6 +1035,8 @@ const LogItemComponent = memo(
 			prevProps.log.delivered === nextProps.log.delivered &&
 			prevProps.log.readOnly === nextProps.log.readOnly &&
 			prevProps.log.forceParallel === nextProps.log.forceParallel &&
+			prevProps.log.metadata?.hiddenProgress === nextProps.log.metadata?.hiddenProgress &&
+			prevProps.log.metadata?.toolState?.status === nextProps.log.metadata?.toolState?.status &&
 			prevProps.isExpanded === nextProps.isExpanded &&
 			prevProps.localFilterQuery === nextProps.localFilterQuery &&
 			prevProps.filterMode.mode === nextProps.filterMode.mode &&
@@ -948,10 +1046,14 @@ const LogItemComponent = memo(
 			prevProps.theme === nextProps.theme &&
 			prevProps.maxOutputLines === nextProps.maxOutputLines &&
 			prevProps.markdownEditMode === nextProps.markdownEditMode &&
+			prevProps.bionifyReadingMode === nextProps.bionifyReadingMode &&
+			prevProps.bionifyIntensity === nextProps.bionifyIntensity &&
+			prevProps.bionifyAlgorithm === nextProps.bionifyAlgorithm &&
 			prevProps.fontFamily === nextProps.fontFamily &&
 			prevProps.userMessageAlignment === nextProps.userMessageAlignment &&
 			prevProps.ghCliAvailable === nextProps.ghCliAvailable &&
-			prevProps.onForkConversation === nextProps.onForkConversation
+			prevProps.onForkConversation === nextProps.onForkConversation &&
+			prevProps.publishedGistUrl === nextProps.publishedGistUrl
 		);
 	}
 );
@@ -1001,7 +1103,7 @@ interface TerminalOutputProps {
 	onFileSaved?: () => void; // Callback when markdown content is saved to file (e.g., to refresh file list)
 	userMessageAlignment?: 'left' | 'right'; // User message bubble alignment (default: right)
 	ghCliAvailable?: boolean; // Whether gh CLI is available for gist publishing
-	onPublishMessageGist?: (text: string) => void; // Callback to publish a single message as a gist
+	onPublishMessageGist?: (text: string, messageId?: string) => void; // Callback to publish a single message as a gist
 	onOpenInTab?: (file: {
 		path: string;
 		name: string;
@@ -1055,6 +1157,10 @@ export const TerminalOutput = memo(
 			ghCliAvailable,
 			onPublishMessageGist,
 		} = props;
+		const globalBionifyReadingMode = useSettingsStore((s) => s.bionifyReadingMode);
+		const globalBionifyIntensity = useSettingsStore((s) => s.bionifyIntensity);
+		const publishedGists = useMessageGistStore((s) => s.published);
+		const globalBionifyAlgorithm = useSettingsStore((s) => s.bionifyAlgorithm);
 
 		// Use the forwarded ref if provided, otherwise create a local one
 		const localRef = useRef<HTMLDivElement>(null);
@@ -1808,7 +1914,7 @@ export const TerminalOutput = memo(
 						<div className="flex items-center gap-2">
 							<button
 								onClick={() => setOutputSearchRegex(!outputSearchRegex)}
-								className="flex items-center gap-1 px-2 rounded border text-xs font-medium whitespace-nowrap transition-colors self-stretch"
+								className="flex items-center gap-1.5 pl-1 pr-2 rounded border text-xs font-medium whitespace-nowrap transition-colors self-stretch"
 								style={{
 									borderColor: outputSearchRegex
 										? theme.colors.accent
@@ -1822,7 +1928,18 @@ export const TerminalOutput = memo(
 								}}
 								title={outputSearchRegex ? 'Switch to plain-text search' : 'Switch to regex search'}
 							>
-								<span>.*</span>
+								{/* Pill marker: bg/fg inverted vs. the surrounding button */}
+								<span
+									className="px-1.5 py-0.5 rounded font-mono leading-none"
+									style={{
+										backgroundColor: outputSearchRegex ? theme.colors.accent : theme.colors.textDim,
+										color: outputSearchRegex
+											? theme.colors.accentForeground
+											: theme.colors.bgSidebar,
+									}}
+								>
+									{outputSearchRegex ? '.*' : 'Aa'}
+								</span>
 								<span>{outputSearchRegex ? 'Regex' : 'Plain Text'}</span>
 							</button>
 							<input
@@ -1948,6 +2065,10 @@ export const TerminalOutput = memo(
 							onSaveToFile={handleSaveToFile}
 							ghCliAvailable={ghCliAvailable}
 							onPublishGist={onPublishMessageGist}
+							publishedGistUrl={publishedGists[log.id]?.gistUrl}
+							bionifyReadingMode={globalBionifyReadingMode}
+							bionifyIntensity={globalBionifyIntensity}
+							bionifyAlgorithm={globalBionifyAlgorithm}
 							userMessageAlignment={userMessageAlignment}
 						/>
 					))}

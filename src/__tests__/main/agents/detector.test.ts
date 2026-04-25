@@ -322,7 +322,7 @@ describe('agent-detector', () => {
 
 			const agents = await detector.detectAgents();
 
-			// Should have all 8 agents (terminal, claude-code, codex, gemini-cli, qwen3-coder, opencode, factory-droid, aider)
+			// Should have all 8 agents (terminal, claude-code, codex, gemini-cli, qwen3-coder, opencode, factory-droid, copilot-cli)
 			expect(agents.length).toBe(8);
 
 			const agentIds = agents.map((a) => a.id);
@@ -333,7 +333,7 @@ describe('agent-detector', () => {
 			expect(agentIds).toContain('qwen3-coder');
 			expect(agentIds).toContain('opencode');
 			expect(agentIds).toContain('factory-droid');
-			expect(agentIds).toContain('aider');
+			expect(agentIds).toContain('copilot-cli');
 		});
 
 		it('should mark agents as available when binary is found', async () => {
@@ -968,7 +968,7 @@ describe('agent-detector', () => {
 
 			const result = await detectPromise;
 			expect(result).toBeDefined();
-			// Should have all 8 agents (terminal, claude-code, codex, gemini-cli, qwen3-coder, opencode, factory-droid, aider)
+			// Should have all 8 agents (terminal, claude-code, codex, gemini-cli, qwen3-coder, opencode, factory-droid, copilot-cli)
 			expect(result.length).toBe(8);
 		});
 

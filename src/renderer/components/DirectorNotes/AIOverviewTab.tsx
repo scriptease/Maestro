@@ -50,7 +50,6 @@ function fireSynopsisReadyToast() {
 		type: 'success',
 		title: "Director's Notes",
 		message: 'AI Synopsis is ready. Click to view.',
-		skipCustomNotification: true,
 		onClick: () => {
 			useModalStore.getState().openModal('directorNotes', { initialTab: 'ai-overview' });
 		},
@@ -58,7 +57,7 @@ function fireSynopsisReadyToast() {
 }
 
 export function AIOverviewTab({ theme, onSynopsisReady }: AIOverviewTabProps) {
-	const { directorNotesSettings } = useSettings();
+	const { directorNotesSettings, bionifyReadingMode } = useSettings();
 	const [lookbackDays, setLookbackDays] = useState(directorNotesSettings.defaultLookbackDays);
 	const [synopsis, setSynopsis] = useState<string>(cachedSynopsis?.content ?? '');
 	const [generatedAt, setGeneratedAt] = useState<number | null>(
@@ -358,6 +357,7 @@ export function AIOverviewTab({ theme, onSynopsisReady }: AIOverviewTabProps) {
 							content={synopsis}
 							theme={theme}
 							onCopy={(text) => safeClipboardWrite(text)}
+							enableBionifyReadingMode={bionifyReadingMode}
 						/>
 					</div>
 				) : isGenerating ? (

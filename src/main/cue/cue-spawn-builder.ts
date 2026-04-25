@@ -11,6 +11,7 @@ import type { CueExecutionConfig } from './cue-executor';
 import { getAgentDefinition, getAgentCapabilities } from '../agents';
 import { buildAgentArgs, applyAgentConfigOverrides } from '../utils/agent-args';
 import { wrapSpawnWithSsh, type SshSpawnWrapConfig } from '../utils/ssh-spawn-wrapper';
+import { sanitizeCustomEnvVars } from './cue-env-sanitizer';
 
 // ─── Types ──────���────────────────────────────────────────────────────────────
 
@@ -90,6 +91,13 @@ export async function buildSpawnSpec(
 		prompt: substitutedPrompt,
 		cwd: projectRoot,
 		yoloMode: true, // Cue runs always use YOLO mode like Auto Run
+		// Cue spawns with `stdio: ['ignore', 'pipe', 'pipe']` and no TTY, so the
+		// agent must run in batch mode every time. Without this, a prompt that
+		// substituted to `""` (e.g. `{{CUE_SOURCE_OUTPUT}}` when the upstream
+		// agent produced no parseable stdout) would silently drop the batch-mode
+		// args — e.g. Codex loses its `exec` subcommand and launches its TUI,
+		// which immediately dies with "Error: stdin is not a terminal".
+		forceBatchMode: true,
 	});
 
 	// 3. Apply config overrides (custom model, custom args, custom env vars)
@@ -101,13 +109,27 @@ export async function buildSpawnSpec(
 		sessionCustomEnvVars: customEnvVars,
 	});
 	finalArgs = configResolution.args;
-	const effectiveEnvVars = configResolution.effectiveCustomEnvVars;
+	// Sanitize custom env vars BEFORE they reach the spawn environment. This
+	// drops blocklisted names (PATH, HOME, USER, SHELL, LD_PRELOAD,
+	// DYLD_INSERT_LIBRARIES, NODE_OPTIONS) and any name that does not match the
+	// POSIX identifier regex. Keeping this in the spawn-builder means SSH
+	// wrapping below inherits the sanitized map automatically via
+	// `sshWrapConfig.customEnvVars`.
+	const sanitizedResult = sanitizeCustomEnvVars(
+		configResolution.effectiveCustomEnvVars,
+		config.onLog
+	);
+	const effectiveEnvVars = sanitizedResult.sanitized;
 
 	// Determine command
 	let command = customPath || agentDef.command;
 	let spawnArgs = finalArgs;
 	let spawnCwd = projectRoot;
-	let spawnEnvVars = effectiveEnvVars;
+	// `sshResult.customEnvVars` (assigned below in the SSH path) is
+	// `Record<string, string> | undefined`, so the inferred type for
+	// `spawnEnvVars` needs to allow undefined. Explicitly type it; the spread
+	// at the end of the function already handles the undefined case via `|| {}`.
+	let spawnEnvVars: Record<string, string> | undefined = effectiveEnvVars;
 	let sshStdinScript: string | undefined;
 	let stdinPrompt: string | undefined;
 	let sshRemoteUsed: SpawnSpec['sshRemoteUsed'];

@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import type {
 	CuePipelineState,
 	CuePipeline,
@@ -26,6 +27,7 @@ import { captureException } from '../../utils/sentry';
 import { notifyToast } from '../../stores/notificationStore';
 import type { CuePipelineSessionInfo as SessionInfo } from '../../../shared/cue-pipeline-types';
 import { computeCommonAncestorPath, isDescendantOrEqual } from '../../../shared/cue-path-utils';
+import { flushAllPendingEdits } from './pendingEditsRegistry';
 
 const SAVE_SUCCESS_IDLE_DELAY_MS = 2000;
 const SAVE_ERROR_IDLE_DELAY_MS = 3000;
@@ -35,6 +37,14 @@ export type SaveStatus = 'idle' | 'saving' | 'success' | 'error';
 export interface UsePipelinePersistenceParams {
 	state: {
 		pipelineState: CuePipelineState;
+		/**
+		 * Live mirror of pipelineState.pipelines updated during render by the
+		 * composition hook. handleSave reads through this ref AFTER yielding
+		 * to the microtask queue so it observes setState writes produced by
+		 * `flushAllPendingEdits()` — which are batched and invisible in a
+		 * closure-captured `pipelineState.pipelines`.
+		 */
+		pipelinesRef: React.MutableRefObject<CuePipelineState['pipelines']>;
 		savedStateRef: React.MutableRefObject<string>;
 		lastWrittenRootsRef: React.MutableRefObject<Set<string>>;
 	};
@@ -67,7 +77,7 @@ export function usePipelinePersistence({
 	deps,
 	actions,
 }: UsePipelinePersistenceParams): UsePipelinePersistenceReturn {
-	const { pipelineState, savedStateRef, lastWrittenRootsRef } = state;
+	const { pipelinesRef, savedStateRef, lastWrittenRootsRef } = state;
 	const { sessions, cueSettings, settingsLoaded } = deps;
 	const { setPipelineState, setIsDirty, persistLayout, onSaveSuccess } = actions;
 
@@ -111,12 +121,27 @@ export function usePipelinePersistence({
 			return;
 		}
 
+		// Flush pending debounced prompt edits from the config panels so the
+		// save reads up-to-date state. Clicking Save within the 300ms debounce
+		// window used to persist stale (often empty) prompts, which produced
+		// YAML that failed validation on next load — the user saw their
+		// pipeline "vanish" after a tab switch, plus a "make sure each agent
+		// has a prompt" error on the manual Play button. Wrapping the flush
+		// in `flushSync` forces React to process the setState writes produced
+		// by each panel's debounced callback synchronously, so the composition
+		// hook's render-time `pipelinesRef.current = …` assignment has run by
+		// the time we read it on the next line.
+		flushSync(() => {
+			flushAllPendingEdits();
+		});
+		const currentPipelines = pipelinesRef.current;
+
 		// Block save when any pipeline contains an unresolved-agent error node.
 		// These are emitted by yamlToPipeline when `agent_id` / `source_session_ids`
 		// reference deleted sessions. Persisting a pipeline in that state would
 		// let the heuristic fallback silently pick a wrong agent (the "two
 		// agents swapped" failure mode). Surface a toast and refuse to write.
-		const pipelinesWithErrors = pipelineState.pipelines.filter((p) =>
+		const pipelinesWithErrors = currentPipelines.filter((p) =>
 			p.nodes.some((n) => n.type === 'error')
 		);
 		if (pipelinesWithErrors.length > 0) {
@@ -137,7 +162,7 @@ export function usePipelinePersistence({
 		}
 
 		// Validate graph shape first
-		const errors = validatePipelines(pipelineState.pipelines);
+		const errors = validatePipelines(currentPipelines);
 
 		// Build session lookup maps. Prefer sessionId since agents can be
 		// renamed, but fall back to sessionName for pipelines loaded from older
@@ -164,7 +189,7 @@ export function usePipelinePersistence({
 		const pipelinesByRoot = new Map<string, CuePipeline[]>();
 		const unresolvedPipelines: string[] = [];
 
-		for (const pipeline of pipelineState.pipelines) {
+		for (const pipeline of currentPipelines) {
 			const agents = pipeline.nodes.filter((n) => n.type === 'agent');
 			if (agents.length === 0) continue; // validatePipelines already flagged this
 
@@ -223,7 +248,7 @@ export function usePipelinePersistence({
 		// Safety net: if the editor has pipelines but nothing will be written and
 		// no previously-saved root needs clearing, the save would silently succeed
 		// with no effect. Surface that rather than masking it as "Saved".
-		if (pipelineState.pipelines.length > 0 && pipelinesByRoot.size === 0 && errors.length === 0) {
+		if (currentPipelines.length > 0 && pipelinesByRoot.size === 0 && errors.length === 0) {
 			errors.push(
 				'Nothing to save — pipelines are empty. Add a trigger and an agent, then try again.'
 			);
@@ -272,21 +297,19 @@ export function usePipelinePersistence({
 				totalPipelinesWritten += rootPipelines.length;
 			}
 
-			// Clear any root whose pipelines were all removed this save. Use the
-			// same write-and-verify path as non-empty writes so an empty YAML
-			// clear can never be a silent no-op (the user would see the deleted
-			// pipeline reappear on next launch).
+			// Delete cue.yaml (and clean up prompts + .maestro/) for any root
+			// whose last pipeline was removed this save. Deleting the file is
+			// the correct behaviour — writing an empty YAML left a stale
+			// .maestro/cue.yaml on disk that confused users and the engine.
 			for (const root of previousRoots) {
 				if (currentRoots.has(root)) continue;
-				const { yaml: emptyYaml } = pipelinesToYaml([], cueSettings);
-				await cueService.writeYaml(root, emptyYaml, {});
+				await cueService.deleteYaml(root);
+				// Verify the file is gone so a silent IPC failure surfaces as an
+				// error instead of a ghost pipeline reappearing on next launch.
 				const onDisk = await cueService.readYaml(root);
-				if (onDisk === null) {
-					throw new Error(`writeYaml clear of "${root}" did not persist: no file on disk`);
-				}
-				if (onDisk !== emptyYaml) {
+				if (onDisk !== null) {
 					throw new Error(
-						`writeYaml clear of "${root}" did not persist the expected content (${onDisk.length} bytes on disk vs ${emptyYaml.length} expected)`
+						`deleteYaml of "${root}" did not remove the file — cue.yaml still present on disk`
 					);
 				}
 				rootsCleared++;
@@ -309,7 +332,7 @@ export function usePipelinePersistence({
 			// Refs MUST update before setIsDirty(false) — the dirty-tracking
 			// effect compares against savedStateRef.current, so flipping dirty
 			// false before the ref is fresh would immediately flip it back true.
-			savedStateRef.current = JSON.stringify(pipelineState.pipelines);
+			savedStateRef.current = JSON.stringify(currentPipelines);
 			lastWrittenRootsRef.current = new Set(currentRoots);
 			setIsDirty(false);
 			setSaveStatus('success');
@@ -346,7 +369,7 @@ export function usePipelinePersistence({
 			});
 		}
 	}, [
-		pipelineState.pipelines,
+		pipelinesRef,
 		sessions,
 		cueSettings,
 		settingsLoaded,

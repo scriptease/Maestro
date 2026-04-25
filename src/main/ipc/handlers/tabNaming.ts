@@ -27,6 +27,7 @@ import { isWindows } from '../../../shared/platformDetection';
 import type { ProcessManager } from '../../process-manager';
 import type { AgentDetector } from '../../agents';
 import type { MaestroSettings } from './persistence';
+import { captureException } from '../../utils/sentry';
 
 const LOG_CONTEXT = '[TabNaming]';
 
@@ -310,11 +311,14 @@ export function registerTabNamingHandlers(deps: TabNamingHandlerDependencies): v
 							args: finalArgs,
 							prompt: fullPrompt,
 							customEnvVars,
+							promptArgs: agent.promptArgs,
+							noPromptSeparator: agent.noPromptSeparator,
 							sendPromptViaStdin: shouldSendPromptViaStdin,
 							sendPromptViaStdinRaw,
 						});
 					});
 				} catch (error) {
+					void captureException(error);
 					logger.error('Tab naming request failed', LOG_CONTEXT, {
 						sessionId,
 						error: String(error),

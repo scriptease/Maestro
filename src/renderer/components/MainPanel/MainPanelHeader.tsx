@@ -13,6 +13,7 @@ import {
 	Settings2,
 	Server,
 	Bookmark,
+	Brain,
 } from 'lucide-react';
 import { GhostIconButton } from '../ui/GhostIconButton';
 import { Spinner } from '../ui/Spinner';
@@ -25,6 +26,7 @@ import { useUIStore } from '../../stores/uiStore';
 import type { Session, Theme, BatchRunState, AITab } from '../../types';
 import type { AgentCapabilities } from '../../hooks/agent/useAgentCapabilities';
 import { openUrl } from '../../utils/openUrl';
+import { calculateDisplayInputTokens } from '../../utils/contextUsage';
 
 export interface MainPanelHeaderProps {
 	activeSession: Session;
@@ -52,6 +54,7 @@ export interface MainPanelHeaderProps {
 	getContextColor: (usage: number, theme: Theme) => string;
 	setGitLogOpen?: (open: boolean) => void;
 	setAgentSessionsOpen: (open: boolean) => void;
+	setMemoryViewerOpen: (open: boolean) => void;
 	setActiveAgentSessionId: (id: string | null) => void;
 	onStopBatchRun?: (sessionId?: string) => void;
 	onOpenWorktreeConfig?: () => void;
@@ -79,6 +82,7 @@ export const MainPanelHeader = React.memo(function MainPanelHeader({
 	getContextColor,
 	setGitLogOpen,
 	setAgentSessionsOpen,
+	setMemoryViewerOpen,
 	setActiveAgentSessionId,
 	onStopBatchRun,
 	onOpenWorktreeConfig,
@@ -508,7 +512,10 @@ export const MainPanelHeader = React.memo(function MainPanelHeader({
 														className="text-xs font-mono"
 														style={{ color: theme.colors.textMain }}
 													>
-														{(activeTab?.usageStats?.inputTokens ?? 0).toLocaleString('en-US')}
+														{calculateDisplayInputTokens(
+															activeTab?.usageStats ?? {},
+															activeSession.toolType
+														).toLocaleString('en-US')}
 													</span>
 												</div>
 												<div className="flex justify-between items-center">
@@ -625,6 +632,18 @@ export const MainPanelHeader = React.memo(function MainPanelHeader({
 							)}
 						</div>
 					)}
+
+				{/* Memory Viewer Button - only show if agent maintains per-project memory */}
+				{hasCapability('supportsProjectMemory') && (
+					<button
+						onClick={() => setMemoryViewerOpen(true)}
+						className="p-2 rounded hover:bg-white/5"
+						title={`Memory Viewer (${shortcuts.openMemoryViewer ? formatShortcutKeys(shortcuts.openMemoryViewer.keys) : formatShortcutKeys(['Meta', 'Shift', 'm'])})`}
+						data-tour="memory-viewer-button"
+					>
+						<Brain className="w-4 h-4" style={{ color: theme.colors.textDim }} />
+					</button>
+				)}
 
 				{/* Agent Sessions Button - only show if agent supports session storage */}
 				{hasCapability('supportsSessionStorage') && (

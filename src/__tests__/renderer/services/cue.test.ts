@@ -20,6 +20,8 @@ const mockCue = {
 	getActiveRuns: vi.fn(),
 	getActivityLog: vi.fn(),
 	getQueueStatus: vi.fn(),
+	getMetrics: vi.fn(),
+	getFanInHealth: vi.fn(),
 	readYaml: vi.fn(),
 	loadPipelineLayout: vi.fn(),
 	validateYaml: vi.fn(),
@@ -36,10 +38,13 @@ const mockCue = {
 	onActivityUpdate: vi.fn(),
 };
 
+const mockLogger = {
+	log: vi.fn(),
+};
+
 beforeEach(() => {
 	vi.clearAllMocks();
-	(window as any).maestro = { cue: mockCue };
-	vi.spyOn(console, 'error').mockImplementation(() => {});
+	(window as any).maestro = { cue: mockCue, logger: mockLogger };
 });
 
 // ─── Read methods ─────────────────────────────────────────────────────────────
@@ -55,7 +60,12 @@ describe('cueService — read methods', () => {
 		it('returns empty object on error', async () => {
 			mockCue.getSettings.mockRejectedValue(new Error('fail'));
 			expect(await cueService.getSettings()).toEqual({});
-			expect(console.error).toHaveBeenCalledWith('Cue getSettings error:', expect.any(Error));
+			expect(mockLogger.log).toHaveBeenCalledWith(
+				'error',
+				'Cue getSettings error:',
+				undefined,
+				expect.any(Error)
+			);
 		});
 	});
 
@@ -121,6 +131,32 @@ describe('cueService — read methods', () => {
 		it('returns {} on error', async () => {
 			mockCue.getQueueStatus.mockRejectedValue(new Error('fail'));
 			expect(await cueService.getQueueStatus()).toEqual({});
+		});
+	});
+
+	describe('getMetrics', () => {
+		it('passes resolved value through', async () => {
+			const snap = { runsStarted: 3, runsCompleted: 2 } as any;
+			mockCue.getMetrics.mockResolvedValue(snap);
+			expect(await cueService.getMetrics()).toBe(snap);
+		});
+
+		it('returns null on error', async () => {
+			mockCue.getMetrics.mockRejectedValue(new Error('fail'));
+			expect(await cueService.getMetrics()).toBeNull();
+		});
+	});
+
+	describe('getFanInHealth', () => {
+		it('passes resolved value through', async () => {
+			const entries = [{ key: 'x', completedCount: 1, expectedCount: 2 }] as any;
+			mockCue.getFanInHealth.mockResolvedValue(entries);
+			expect(await cueService.getFanInHealth()).toBe(entries);
+		});
+
+		it('returns [] on error', async () => {
+			mockCue.getFanInHealth.mockRejectedValue(new Error('fail'));
+			expect(await cueService.getFanInHealth()).toEqual([]);
 		});
 	});
 

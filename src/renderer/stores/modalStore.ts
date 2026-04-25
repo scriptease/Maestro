@@ -18,6 +18,7 @@ import { create } from 'zustand';
 import type { Session, SettingsTab, AgentError } from '../types';
 import type { SerializableWizardState } from '../components/Wizard';
 import type { ConductorBadge } from '../constants/conductorBadges';
+import { logger } from '../utils/logger';
 
 // ============================================================================
 // Modal Data Types
@@ -200,6 +201,7 @@ export type ModalId =
 	| 'sendToAgent'
 	| 'agentSessions'
 	// Batch & Auto Run
+	| 'memoryViewer'
 	| 'queueBrowser'
 	| 'batchRunner'
 	| 'autoRunSetup'
@@ -224,6 +226,7 @@ export type ModalId =
 	// Debug & Dev
 	| 'debugWizard'
 	| 'debugPackage'
+	| 'debugApplicationStats'
 	| 'playground'
 	| 'logViewer'
 	| 'processMonitor'
@@ -356,7 +359,7 @@ export const useModalStore = create<ModalStore>()((set, get) => ({
 			newModals.set(id, { open: true, data });
 			// DEBUG: Trace rename modal open/close
 			if (id === 'renameTab') {
-				console.log('[DEBUG renameTab] openModal called', {
+				logger.info('[DEBUG renameTab] openModal called', undefined, {
 					data,
 					wasOpen: current?.open,
 					hadData: !!current?.data,
@@ -375,7 +378,7 @@ export const useModalStore = create<ModalStore>()((set, get) => ({
 			newModals.set(id, { open: false, data: undefined });
 			// DEBUG: Trace rename modal close
 			if (id === 'renameTab') {
-				console.log('[DEBUG renameTab] closeModal called', new Error().stack);
+				logger.info('[DEBUG renameTab] closeModal called', undefined, new Error().stack);
 			}
 			return { modals: newModals };
 		});
@@ -593,6 +596,10 @@ export function getModalActions() {
 		setDebugPackageModalOpen: (open: boolean) =>
 			open ? openModal('debugPackage') : closeModal('debugPackage'),
 
+		// Debug Application Stats Modal
+		setDebugApplicationStatsOpen: (open: boolean) =>
+			open ? openModal('debugApplicationStats') : closeModal('debugApplicationStats'),
+
 		// Confirmation Modal
 		setConfirmModalOpen: (open: boolean) => (open ? openModal('confirm') : closeModal('confirm')),
 		setConfirmModalMessage: (message: string) => updateModalData('confirm', { message }),
@@ -694,6 +701,10 @@ export function getModalActions() {
 				: closeModal('agentSessions'),
 		setActiveAgentSessionId: (activeAgentSessionId: string | null) =>
 			updateModalData('agentSessions', { activeAgentSessionId }),
+
+		// Memory Viewer (Claude Code per-project memory)
+		setMemoryViewerOpen: (open: boolean) =>
+			open ? openModal('memoryViewer') : closeModal('memoryViewer'),
 
 		// Execution Queue Browser Modal
 		setQueueBrowserOpen: (open: boolean) =>
@@ -853,6 +864,7 @@ export function useModalActions() {
 	const playgroundOpen = useModalStore(selectModalOpen('playground'));
 	const debugWizardModalOpen = useModalStore(selectModalOpen('debugWizard'));
 	const debugPackageModalOpen = useModalStore(selectModalOpen('debugPackage'));
+	const debugApplicationStatsOpen = useModalStore(selectModalOpen('debugApplicationStats'));
 	const confirmModalOpen = useModalStore(selectModalOpen('confirm'));
 	const confirmData = useModalStore(selectModalData('confirm'));
 	const quitConfirmModalOpen = useModalStore(selectModalOpen('quitConfirm'));
@@ -865,6 +877,7 @@ export function useModalActions() {
 	const renameGroupData = useModalStore(selectModalData('renameGroup'));
 	const agentSessionsOpen = useModalStore(selectModalOpen('agentSessions'));
 	const agentSessionsData = useModalStore(selectModalData('agentSessions'));
+	const memoryViewerOpen = useModalStore(selectModalOpen('memoryViewer'));
 	const queueBrowserOpen = useModalStore(selectModalOpen('queueBrowser'));
 	const batchRunnerModalOpen = useModalStore(selectModalOpen('batchRunner'));
 	const autoRunSetupModalOpen = useModalStore(selectModalOpen('autoRunSetup'));
@@ -970,6 +983,9 @@ export function useModalActions() {
 		// Debug Package Modal
 		debugPackageModalOpen,
 
+		// Debug Application Stats Modal
+		debugApplicationStatsOpen,
+
 		// Confirmation Modal
 		confirmModalOpen,
 		confirmModalMessage: confirmData?.message ?? '',
@@ -1000,6 +1016,9 @@ export function useModalActions() {
 		// Agent Sessions Browser
 		agentSessionsOpen,
 		activeAgentSessionId: agentSessionsData?.activeAgentSessionId ?? null,
+
+		// Memory Viewer (Claude Code per-project memory)
+		memoryViewerOpen,
 
 		// Execution Queue Browser Modal
 		queueBrowserOpen,

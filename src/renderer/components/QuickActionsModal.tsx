@@ -20,6 +20,7 @@ import { useFileExplorerStore } from '../stores/fileExplorerStore';
 import { buildMaestroUrl } from '../utils/buildMaestroUrl';
 import { buildSessionDeepLink } from '../../shared/deep-link-urls';
 import { openUrl } from '../utils/openUrl';
+import { logger } from '../utils/logger';
 
 interface QuickAction {
 	id: string;
@@ -62,6 +63,7 @@ interface QuickActionsModalProps {
 	setProcessMonitorOpen: (open: boolean) => void;
 	setUsageDashboardOpen?: (open: boolean) => void;
 	setAgentSessionsOpen: (open: boolean) => void;
+	setMemoryViewerOpen?: (open: boolean) => void;
 	setActiveAgentSessionId: (id: string | null) => void;
 	setGitDiffPreview: (diff: string | null) => void;
 	setGitLogOpen: (open: boolean) => void;
@@ -81,6 +83,7 @@ interface QuickActionsModalProps {
 	wizardGoToStep?: (step: WizardStep) => void;
 	setDebugWizardModalOpen?: (open: boolean) => void;
 	setDebugPackageModalOpen?: (open: boolean) => void;
+	setDebugApplicationStatsOpen?: (open: boolean) => void;
 	startTour?: () => void;
 	setFuzzyFileSearchOpen?: (open: boolean) => void;
 	onEditAgent?: (session: Session) => void;
@@ -92,7 +95,11 @@ interface QuickActionsModalProps {
 	onDeleteGroupChat?: (id: string) => void;
 	activeGroupChatId?: string | null;
 	hasActiveSessionCapability?: (
-		capability: 'supportsSessionStorage' | 'supportsSlashCommands' | 'supportsContextMerge'
+		capability:
+			| 'supportsSessionStorage'
+			| 'supportsSlashCommands'
+			| 'supportsContextMerge'
+			| 'supportsProjectMemory'
 	) => boolean;
 	// Merge session
 	onOpenMergeSession?: () => void;
@@ -176,6 +183,7 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 		setProcessMonitorOpen,
 		setUsageDashboardOpen,
 		setAgentSessionsOpen,
+		setMemoryViewerOpen,
 		setActiveAgentSessionId,
 		setGitDiffPreview,
 		setGitLogOpen,
@@ -195,6 +203,7 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 		wizardGoToStep: _wizardGoToStep,
 		setDebugWizardModalOpen,
 		setDebugPackageModalOpen,
+		setDebugApplicationStatsOpen,
 		startTour,
 		setFuzzyFileSearchOpen,
 		onEditAgent,
@@ -246,6 +255,8 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 	const setAudioFeedbackEnabled = useSettingsStore((s) => s.setAudioFeedbackEnabled);
 	const idleNotificationEnabled = useSettingsStore((s) => s.idleNotificationEnabled);
 	const setIdleNotificationEnabled = useSettingsStore((s) => s.setIdleNotificationEnabled);
+	const bionifyReadingMode = useSettingsStore((s) => s.bionifyReadingMode);
+	const setBionifyReadingMode = useSettingsStore((s) => s.setBionifyReadingMode);
 	const storeSetHistorySearchFilterOpen = useUIStore((s) => s.setHistorySearchFilterOpen);
 	const setSuccessFlashNotification = useUIStore((s) => s.setSuccessFlashNotification);
 
@@ -610,6 +621,18 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 					},
 				]
 			: []),
+		{
+			id: 'toggleBionifyReadingMode',
+			label: bionifyReadingMode ? 'Turn Off Bionify Emphasis' : 'Turn On Bionify Emphasis',
+			subtext: `Bionify emphasis: ${bionifyReadingMode ? 'enabled' : 'disabled'}`,
+			action: () => {
+				const newState = !bionifyReadingMode;
+				setBionifyReadingMode(newState);
+				setSuccessFlashNotification(newState ? 'Bionify: ON' : 'Bionify: OFF');
+				setTimeout(() => setSuccessFlashNotification(null), 2000);
+				setQuickActionOpen(false);
+			},
+		},
 		{
 			id: 'toggleCustomNotification',
 			label: audioFeedbackEnabled
@@ -1028,6 +1051,21 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 					},
 				]
 			: []),
+		...(activeSession &&
+		setMemoryViewerOpen &&
+		hasActiveSessionCapability?.('supportsProjectMemory')
+			? [
+					{
+						id: 'openMemoryViewer',
+						label: `View Agent Memories for ${activeSession.name}`,
+						shortcut: shortcuts.openMemoryViewer,
+						action: () => {
+							setMemoryViewerOpen(true);
+							setQuickActionOpen(false);
+						},
+					},
+				]
+			: []),
 		...(isAiMode && canSummarizeActiveTab && onSummarizeAndContinue
 			? [
 					{
@@ -1131,7 +1169,7 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 									});
 								}
 							} catch (error) {
-								console.error('Failed to open repository in browser:', error);
+								logger.error('Failed to open repository in browser:', undefined, error);
 								notifyToast({
 									type: 'error',
 									title: 'Error',
@@ -1572,7 +1610,7 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 						})),
 					}))
 				);
-				console.log('[Debug] Reset busy state for all sessions');
+				logger.info('[Debug] Reset busy state for all sessions');
 				setQuickActionOpen(false);
 			},
 		},
@@ -1601,7 +1639,7 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 									};
 								})
 							);
-							console.log('[Debug] Reset busy state for session:', activeSessionId);
+							logger.info('[Debug] Reset busy state for session:', undefined, activeSessionId);
 							setQuickActionOpen(false);
 						},
 					},
@@ -1610,8 +1648,10 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 		{
 			id: 'debugLogSessions',
 			label: 'Debug: Log Session State',
-			subtext: 'Print session state to console',
+			subtext: 'Print session state to DevTools console',
 			action: () => {
+				// console.log (not logger.info) so output lands in the renderer DevTools
+				// console where objects are expandable, not the main process log file.
 				console.log(
 					'[Debug] All sessions:',
 					sessions.map((s) => ({
@@ -1639,6 +1679,19 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 						subtext: 'Open the developer playground',
 						action: () => {
 							setPlaygroundOpen(true);
+							setQuickActionOpen(false);
+						},
+					},
+				]
+			: []),
+		...(setDebugApplicationStatsOpen
+			? [
+					{
+						id: 'debugApplicationStats',
+						label: 'Debug: View Application Stats',
+						subtext: 'Memory and data footprint per loaded agent',
+						action: () => {
+							setDebugApplicationStatsOpen(true);
 							setQuickActionOpen(false);
 						},
 					},
@@ -1680,10 +1733,14 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 					if (installationId) {
 						await safeClipboardWrite(installationId);
 						notifyToast({ type: 'success', title: 'Install GUID Copied', message: installationId });
-						console.log('[Debug] Installation GUID copied to clipboard:', installationId);
+						logger.info(
+							'[Debug] Installation GUID copied to clipboard:',
+							undefined,
+							installationId
+						);
 					} else {
 						notifyToast({ type: 'error', title: 'Error', message: 'No installation GUID found' });
-						console.warn('[Debug] No installation GUID found');
+						logger.warn('[Debug] No installation GUID found');
 					}
 				} catch (err) {
 					notifyToast({
@@ -1691,7 +1748,7 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 						title: 'Error',
 						message: 'Failed to copy installation GUID',
 					});
-					console.error('[Debug] Failed to copy installation GUID:', err);
+					logger.error('[Debug] Failed to copy installation GUID:', undefined, err);
 				}
 				setQuickActionOpen(false);
 			},
@@ -1699,14 +1756,18 @@ export const QuickActionsModal = memo(function QuickActionsModal(props: QuickAct
 	];
 
 	const groupActions: QuickAction[] = [
-		{
-			id: 'back',
-			label: '← Back to main menu',
-			action: () => {
-				setMode('main');
-				setSelectedIndex(0);
-			},
-		},
+		...(initialMode === 'main'
+			? [
+					{
+						id: 'back',
+						label: '← Back to main menu',
+						action: () => {
+							setMode('main');
+							setSelectedIndex(0);
+						},
+					},
+				]
+			: []),
 		{ id: 'no-group', label: '📁 No Group (Root)', action: () => handleMoveToGroup('') },
 		...groups.map((g) => ({
 			id: `group-${g.id}`,

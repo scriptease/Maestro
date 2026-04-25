@@ -236,6 +236,8 @@ function MaestroConsoleInner() {
 		setDebugWizardModalOpen,
 		// Debug Package Modal — debugPackageModalOpen now self-sourced in AppStandaloneModals
 		setDebugPackageModalOpen,
+		// Debug Application Stats Modal — self-sourced in AppStandaloneModals
+		setDebugApplicationStatsOpen,
 		// Windows Warning Modal — windowsWarningModalOpen now self-sourced in AppStandaloneModals
 		// Confirmation Modal
 		confirmModalOpen,
@@ -272,6 +274,9 @@ function MaestroConsoleInner() {
 		setAgentSessionsOpen,
 		activeAgentSessionId,
 		setActiveAgentSessionId,
+		// Memory Viewer (Claude Code per-project memory)
+		memoryViewerOpen,
+		setMemoryViewerOpen,
 		// Batch Runner Modal
 		setBatchRunnerModalOpen,
 		// Auto Run Setup Modal
@@ -377,6 +382,7 @@ function MaestroConsoleInner() {
 		customThemeColors,
 		enterToSendAI,
 		setEnterToSendAI,
+		enterToSendAIExpanded,
 		defaultSaveToHistory,
 		defaultShowThinking,
 		rightPanelWidth,
@@ -1098,13 +1104,8 @@ function MaestroConsoleInner() {
 		setActiveSessionId,
 	});
 
-	// Fork conversation hook - creates a new session from a point in conversation history
-	const handleForkConversation = useForkConversation(
-		sessions,
-		setSessions,
-		activeSessionId,
-		setActiveSessionId
-	);
+	// Fork conversation hook - creates a new tab in the current session from a point in conversation history
+	const handleForkConversation = useForkConversation(sessions, setSessions, activeSessionId);
 
 	// Summarize & Continue hook for context compaction (non-blocking, per-tab)
 	const {
@@ -1800,6 +1801,8 @@ function MaestroConsoleInner() {
 		sshRemoteHonorGitignore: settings.sshRemoteHonorGitignore,
 		localIgnorePatterns: settings.localIgnorePatterns,
 		localHonorGitignore: settings.localHonorGitignore,
+		fileExplorerMaxDepth: settings.fileExplorerMaxDepth,
+		fileExplorerMaxEntries: settings.fileExplorerMaxEntries,
 	});
 
 	// --- FILE EXPLORER EFFECTS ---
@@ -2054,6 +2057,7 @@ function MaestroConsoleInner() {
 		setGitLogOpen,
 		setActiveAgentSessionId,
 		setAgentSessionsOpen,
+		setMemoryViewerOpen,
 		setLogViewerOpen,
 		setProcessMonitorOpen,
 		setUsageDashboardOpen,
@@ -2212,6 +2216,7 @@ function MaestroConsoleInner() {
 		// Core state
 		logViewerOpen,
 		agentSessionsOpen,
+		memoryViewerOpen,
 		activeAgentSessionId,
 		activeSession,
 		thinkingItems,
@@ -2280,6 +2285,7 @@ function MaestroConsoleInner() {
 		setGitDiffPreview,
 		setLogViewerOpen,
 		setAgentSessionsOpen,
+		setMemoryViewerOpen,
 		setActiveAgentSessionId,
 		setInputValue,
 		setStagedImages,
@@ -2747,6 +2753,7 @@ function MaestroConsoleInner() {
 					setUsageDashboardOpen={encoreFeatures.usageStats ? setUsageDashboardOpen : undefined}
 					setActiveRightTab={setActiveRightTab}
 					setAgentSessionsOpen={setAgentSessionsOpen}
+					setMemoryViewerOpen={setMemoryViewerOpen}
 					setActiveAgentSessionId={setActiveAgentSessionId}
 					setGitDiffPreview={setGitDiffPreview}
 					setGitLogOpen={setGitLogOpen}
@@ -2769,6 +2776,7 @@ function MaestroConsoleInner() {
 					wizardGoToStep={wizardGoToStep}
 					setDebugWizardModalOpen={setDebugWizardModalOpen}
 					setDebugPackageModalOpen={setDebugPackageModalOpen}
+					setDebugApplicationStatsOpen={setDebugApplicationStatsOpen}
 					startTour={handleQuickActionsStartTour}
 					setFuzzyFileSearchOpen={setFuzzyFileSearchOpen}
 					onEditAgent={handleQuickActionsEditAgent}
@@ -2882,7 +2890,7 @@ function MaestroConsoleInner() {
 					promptSupportsThinking={
 						!activeGroupChatId && hasActiveSessionCapability('supportsThinkingDisplay')
 					}
-					promptEnterToSend={enterToSendAI}
+					promptEnterToSend={enterToSendAIExpanded}
 					onPromptToggleEnterToSend={handlePromptToggleEnterToSend}
 					onCloseQueueBrowser={handleCloseQueueBrowser}
 					onRemoveQueueItem={handleRemoveQueueItem}
@@ -3115,10 +3123,12 @@ function MaestroConsoleInner() {
 									participantColors={groupChatParticipantColors}
 									messagesRef={groupChatMessagesRef}
 									ghCliAvailable={ghCliAvailable}
-									onPublishMessageGist={(text: string) => {
+									onPublishMessageGist={(text: string, messageId?: string) => {
 										if (!text.trim()) return;
 										const filename = `group_chat_response_${Date.now()}.md`;
-										useTabStore.getState().setTabGistContent({ filename, content: text });
+										useTabStore
+											.getState()
+											.setTabGistContent({ filename, content: text, messageId });
 										setGistPublishModalOpen(true);
 									}}
 								/>

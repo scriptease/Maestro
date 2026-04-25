@@ -65,6 +65,7 @@ import type { PreviousUIState, UseInlineWizardReturn } from '../batch/useInlineW
 import type { WizardState } from '../../components/Wizard/WizardContext';
 import type { HistoryEntryInput } from '../agent/useAgentSessionManagement';
 import type { AgentSpawnResult } from '../agent/useAgentExecution';
+import { logger } from '../../utils/logger';
 
 // ============================================================================
 // Dependencies interface
@@ -198,7 +199,12 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 	useEffect(() => {
 		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession) return;
-		if (currentSession.toolType !== 'claude-code' && currentSession.toolType !== 'opencode') return;
+		if (
+			currentSession.toolType !== 'claude-code' &&
+			currentSession.toolType !== 'opencode' &&
+			currentSession.toolType !== 'copilot-cli'
+		)
+			return;
 		if (currentSession.agentCommands && currentSession.agentCommands.length > 0) return;
 
 		const sessionId = currentSession.id;
@@ -244,7 +250,11 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 				}
 			} catch (error) {
 				if (!cancelled) {
-					console.error('[SlashCommandDiscovery] Failed to fetch custom commands:', error);
+					logger.error(
+						'[SlashCommandDiscovery] Failed to fetch custom commands:',
+						undefined,
+						error
+					);
 				}
 			}
 		};
@@ -279,7 +289,11 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 				}
 			} catch (error) {
 				if (!cancelled) {
-					console.error('[SlashCommandDiscovery] Failed to discover agent commands:', error);
+					logger.error(
+						'[SlashCommandDiscovery] Failed to discover agent commands:',
+						undefined,
+						error
+					);
 				}
 			}
 		};
@@ -511,7 +525,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 	const handleHistoryCommand = useCallback(async () => {
 		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession) {
-			console.warn('[handleHistoryCommand] No active session');
+			logger.warn('[handleHistoryCommand] No active session');
 			return;
 		}
 
@@ -672,7 +686,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 				);
 			}
 		} catch (error) {
-			console.error('[handleHistoryCommand] Error:', error);
+			logger.error('[handleHistoryCommand] Error:', undefined, error);
 			setSessions((prev) =>
 				prev.map((s) => {
 					if (s.id !== currentSession.id) return s;
@@ -701,18 +715,18 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 	const handleSkillsCommand = useCallback(async () => {
 		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession) {
-			console.warn('[handleSkillsCommand] No active session');
+			logger.warn('[handleSkillsCommand] No active session');
 			return;
 		}
 
 		if (currentSession.toolType !== 'claude-code') {
-			console.warn('[handleSkillsCommand] Skills command only available for Claude Code');
+			logger.warn('[handleSkillsCommand] Skills command only available for Claude Code');
 			return;
 		}
 
 		const activeTab = getActiveTab(currentSession);
 		if (!activeTab) {
-			console.warn('[handleSkillsCommand] No active tab');
+			logger.warn('[handleSkillsCommand] No active tab');
 			return;
 		}
 
@@ -787,7 +801,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 			};
 			addLogToTab(currentSession.id, skillsLog);
 		} catch (error) {
-			console.error('[handleSkillsCommand] Error:', error);
+			logger.error('[handleSkillsCommand] Error:', undefined, error);
 			const errorLog: LogEntry = {
 				id: generateId(),
 				timestamp: Date.now(),
@@ -805,13 +819,13 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 		(args: string) => {
 			const currentSession = selectActiveSession(useSessionStore.getState());
 			if (!currentSession) {
-				console.warn('[handleWizardCommand] No active session');
+				logger.warn('[handleWizardCommand] No active session');
 				return;
 			}
 
 			const activeTab = getActiveTab(currentSession);
 			if (!activeTab) {
-				console.warn('[handleWizardCommand] No active tab');
+				logger.warn('[handleWizardCommand] No active tab');
 				return;
 			}
 
@@ -873,7 +887,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 	const handleLaunchWizardTab = useCallback(() => {
 		const currentSession = selectActiveSession(useSessionStore.getState());
 		if (!currentSession) {
-			console.warn('[handleLaunchWizardTab] No active session');
+			logger.warn('[handleLaunchWizardTab] No active session');
 			return;
 		}
 
@@ -884,7 +898,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 			showThinking: currentDefaults.defaultShowThinking,
 		});
 		if (!result) {
-			console.warn('[handleLaunchWizardTab] Failed to create new tab');
+			logger.warn('[handleLaunchWizardTab] Failed to create new tab');
 			return;
 		}
 
@@ -1076,7 +1090,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 			} = wizardState;
 
 			if (!selectedAgent || !directoryPath) {
-				console.error('Wizard launch failed: missing agent or directory');
+				logger.error('Wizard launch failed: missing agent or directory');
 				throw new Error('Missing required wizard data');
 			}
 
@@ -1092,7 +1106,7 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 				currentSessions
 			);
 			if (!validation.valid) {
-				console.error(`Wizard session validation failed: ${validation.error}`);
+				logger.error(`Wizard session validation failed: ${validation.error}`);
 				notifyToast({
 					type: 'error',
 					title: 'Agent Creation Failed',
@@ -1237,8 +1251,9 @@ export function useWizardHandlers(deps: UseWizardHandlersDeps): UseWizardHandler
 				};
 
 				setTimeout(() => {
-					console.log(
+					logger.info(
 						`[Wizard] Auto-starting batch run with ${docsToRun.length} document(s):`,
+						undefined,
 						docsToRun.map((d) => d.filename).join(', ')
 					);
 					startBatchRun(newId, batchConfig, autoRunFolderPath);

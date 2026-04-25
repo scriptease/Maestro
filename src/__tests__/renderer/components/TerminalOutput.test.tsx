@@ -240,6 +240,36 @@ describe('TerminalOutput', () => {
 			expect(screen.getByTitle('Message delivered')).toBeInTheDocument();
 		});
 
+		it('shows read-only eye indicator for messages sent in read-only mode', () => {
+			const logs: LogEntry[] = [
+				createLogEntry({ text: 'Read-only message', source: 'user', readOnly: true }),
+			];
+
+			const session = createDefaultSession({
+				tabs: [{ id: 'tab-1', agentSessionId: 'claude-123', logs, isUnread: false }],
+				activeTabId: 'tab-1',
+			});
+
+			const props = createDefaultProps({ session });
+			render(<TerminalOutput {...props} />);
+
+			expect(screen.getByTitle('Sent in read-only mode')).toBeInTheDocument();
+		});
+
+		it('does not show read-only indicator for messages sent without read-only flag', () => {
+			const logs: LogEntry[] = [createLogEntry({ text: 'Regular message', source: 'user' })];
+
+			const session = createDefaultSession({
+				tabs: [{ id: 'tab-1', agentSessionId: 'claude-123', logs, isUnread: false }],
+				activeTabId: 'tab-1',
+			});
+
+			const props = createDefaultProps({ session });
+			render(<TerminalOutput {...props} />);
+
+			expect(screen.queryByTitle('Sent in read-only mode')).not.toBeInTheDocument();
+		});
+
 		it('collapses consecutive AI responses in AI mode', () => {
 			const logs: LogEntry[] = [
 				createLogEntry({ id: 'user-1', text: 'Question', source: 'user' }),
@@ -1903,6 +1933,68 @@ describe('TerminalOutput', () => {
 			expect(screen.getByText('someWeirdField=true')).toBeInTheDocument();
 		});
 
+		describe('hidden progress rendering', () => {
+			it('renders hidden tool progress with the polished activity treatment', () => {
+				const logs: LogEntry[] = [
+					createLogEntry({
+						id: 'hidden-progress:tab-1',
+						text: 'Reading src/renderer/App.tsx',
+						source: 'system',
+						metadata: {
+							toolState: {
+								status: 'running',
+								input: { path: 'src/renderer/App.tsx' },
+							},
+							hiddenProgress: {
+								kind: 'tool',
+								toolName: 'view',
+							},
+						},
+					}),
+				];
+
+				const session = createDefaultSession({
+					tabs: [{ id: 'tab-1', agentSessionId: 'claude-123', logs, isUnread: false }],
+					activeTabId: 'tab-1',
+				});
+
+				render(<TerminalOutput {...createDefaultProps({ session })} />);
+
+				expect(screen.getByText('view')).toBeInTheDocument();
+				expect(screen.getByText('Reading src/renderer/App.tsx')).toBeInTheDocument();
+				expect(screen.queryByTestId('react-markdown')).not.toBeInTheDocument();
+			});
+
+			it('uses the standard failed icon treatment for hidden progress', () => {
+				const logs: LogEntry[] = [
+					createLogEntry({
+						id: 'hidden-progress:tab-1',
+						text: 'Command failed',
+						source: 'system',
+						metadata: {
+							toolState: {
+								status: 'failed',
+							},
+							hiddenProgress: {
+								kind: 'tool',
+								toolName: 'bash',
+							},
+						},
+					}),
+				];
+
+				const session = createDefaultSession({
+					tabs: [{ id: 'tab-1', agentSessionId: 'claude-123', logs, isUnread: false }],
+					activeTabId: 'tab-1',
+				});
+
+				render(<TerminalOutput {...createDefaultProps({ session })} />);
+
+				expect(screen.getByText('!')).toBeInTheDocument();
+				expect(screen.queryByText('×')).not.toBeInTheDocument();
+			});
+		});
+
 		it('renders any tool with string input fields generically', () => {
 			const logs: LogEntry[] = [
 				createLogEntry({
@@ -2522,7 +2614,7 @@ describe('memoization behavior', () => {
 			const gistButton = screen.getByTitle('Publish as GitHub Gist');
 			fireEvent.click(gistButton);
 
-			expect(onPublishMessageGist).toHaveBeenCalledWith('AI response to share');
+			expect(onPublishMessageGist).toHaveBeenCalledWith('AI response to share', '1');
 		});
 	});
 });

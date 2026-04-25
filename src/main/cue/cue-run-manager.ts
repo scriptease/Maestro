@@ -12,14 +12,16 @@
 
 import * as crypto from 'crypto';
 import type { MainLogLevel } from '../../shared/logger-types';
-import type { CueEvent, CueRunResult, CueSettings, CueSubscription } from './cue-types';
+import type { CueLogPayload } from '../../shared/cue-log-types';
+import type { CueCommand, CueEvent, CueRunResult, CueSettings, CueSubscription } from './cue-types';
 import { updateCueEventStatus, safeRecordCueEvent, safeUpdateCueEventStatus } from './cue-db';
+import type { CueQueuePersistence } from './cue-queue-persistence';
 import { SOURCE_OUTPUT_MAX_CHARS } from './cue-fan-in-tracker';
 import { sliceHeadByChars } from './cue-text-utils';
 import { captureException } from '../utils/sentry';
-import { execFileNoThrow } from '../utils/execFile';
 import { substituteTemplateVariables, type TemplateContext } from '../../shared/templateVariables';
 import { buildCueTemplateContext } from './cue-template-context-builder';
+import { runMaestroCliSend } from './cue-cli-executor';
 
 /** Phase of a run in the state machine: running → stopping | finished */
 export type RunPhase = 'running' | 'stopping' | 'finished';
@@ -43,6 +45,10 @@ export interface QueuedEvent {
 	queuedAt: number;
 	chainDepth?: number;
 	cliOutput?: { target: string };
+	action?: CueSubscription['action'];
+	command?: CueCommand;
+	/** Phase 12A — DB row id for the persisted copy, when persistence is enabled. */
+	persistId?: string;
 }
 
 export interface CueRunManagerDeps {
@@ -55,6 +61,8 @@ export interface CueRunManagerDeps {
 		subscriptionName: string;
 		event: CueEvent;
 		timeoutMs: number;
+		action?: CueSubscription['action'];
+		command?: CueCommand;
 	}) => Promise<CueRunResult>;
 	onStopCueRun?: (runId: string) => boolean;
 	onLog: (level: MainLogLevel, message: string, data?: unknown) => void;
@@ -71,6 +79,25 @@ export interface CueRunManagerDeps {
 	onPreventSleep?: (reason: string) => void;
 	/** Called to allow system sleep (e.g., when a Cue run ends) */
 	onAllowSleep?: (reason: string) => void;
+	/**
+	 * Phase 12B — called when an event is dropped from the queue due to
+	 * overflow (queue already at `queue_size`). The caller is expected to
+	 * surface this to the user (toast, log banner) so the drop is visible.
+	 */
+	onQueueOverflow?: (payload: {
+		sessionId: string;
+		sessionName: string;
+		subscriptionName: string;
+		queuedAt: number;
+	}) => void;
+	/**
+	 * Phase 12A — optional queue persistence façade. When provided, every
+	 * enqueue writes a row to disk and every drain/drop/clear removes it,
+	 * allowing the queue to survive engine shutdown or a hard app crash. Omit
+	 * to run entirely in-memory (preserves back-compat for tests and for the
+	 * main process if persistence ever needs to be disabled).
+	 */
+	queuePersistence?: CueQueuePersistence;
 }
 
 export interface CueRunManager {
@@ -81,7 +108,18 @@ export interface CueRunManager {
 		subscriptionName: string,
 		outputPrompt?: string,
 		chainDepth?: number,
-		cliOutput?: { target: string }
+		cliOutput?: { target: string },
+		action?: CueSubscription['action'],
+		command?: CueCommand,
+		/**
+		 * Phase 12A — optional pre-existing `queuedAt` used by the engine's
+		 * restore path so re-queued events retain their ORIGINAL wall-clock
+		 * timestamp. Without this, `drainQueue`'s staleness check would
+		 * forever see "just now" for entries that had been waiting for hours
+		 * before the app crashed, effectively converting staleness into a
+		 * free pass across restarts.
+		 */
+		queuedAtOverride?: number
 	): void;
 	stopRun(runId: string): boolean;
 	stopAll(): void;
@@ -134,6 +172,9 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 			// Check for stale events
 			if (ageMs > timeoutMs) {
 				const ageMinutes = Math.round(ageMs / 60000);
+				// Remove the persisted copy — this runtime drain path is the
+				// second half of the stale-drop handling (restore has its own).
+				if (entry.persistId) deps.queuePersistence?.remove(entry.persistId);
 				// Record the dropped event to the activity log so users can see
 				// *why* their queued run never fired — previously these events
 				// disappeared with only a log line, making it look like a bug.
@@ -154,21 +195,30 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 						queuedForMs: ageMs,
 					}),
 				});
+				// Emit as `queueDropped` (stale reason) rather than `runFinished`
+				// with status: 'timeout'. Previously this path incremented
+				// `runsTimedOut` via the metric interceptor, confounding real
+				// runtime timeouts with queue-drain staleness. The DB row
+				// still records status: 'timeout' so the user-facing activity
+				// log shows the same symbol as before — only the internal
+				// metric accounting differs.
 				deps.onLog(
 					'cue',
 					`[CUE] Dropping stale queued event for "${sessionName}" (queued ${ageMinutes}m ago) — recorded as timeout in activity log`,
 					{
-						type: 'runFinished',
-						runId: droppedRunId,
+						type: 'queueDropped',
 						sessionId,
-						subscriptionName: entry.subscriptionName,
-						status: 'timeout',
-					}
+						count: 1,
+						reason: 'stale',
+					} satisfies CueLogPayload
 				);
 				continue;
 			}
 
-			// Dispatch the queued event
+			// Dispatch the queued event. Remove persisted row first — the
+			// dispatch promise may outlive another drain/reset cycle and we
+			// must not leave a ghost row referencing an in-flight run.
+			if (entry.persistId) deps.queuePersistence?.remove(entry.persistId);
 			activeRunCount.set(sessionId, currentCount + 1);
 			doExecuteCueRun(
 				sessionId,
@@ -177,7 +227,9 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 				entry.subscriptionName,
 				entry.outputPrompt,
 				entry.chainDepth,
-				entry.cliOutput
+				entry.cliOutput,
+				entry.action,
+				entry.command
 			);
 		}
 
@@ -194,7 +246,9 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 		subscriptionName: string,
 		outputPrompt?: string,
 		chainDepth?: number,
-		cliOutput?: { target: string }
+		cliOutput?: { target: string },
+		action?: CueSubscription['action'],
+		command?: CueCommand
 	): Promise<void> {
 		const sessionName = getSessionName(sessionId);
 		const settings = deps.getSessionSettings(sessionId);
@@ -233,7 +287,7 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 			runId,
 			sessionId,
 			subscriptionName,
-		});
+		} satisfies CueLogPayload);
 
 		try {
 			const runResult = await deps.onCueRun({
@@ -243,6 +297,8 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 				subscriptionName,
 				event,
 				timeoutMs,
+				action,
+				command,
 			});
 			if (!activeRuns.has(runId)) {
 				// Engine was stopped (or run was cleared) while onCueRun was in
@@ -263,7 +319,7 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 						sessionId,
 						subscriptionName,
 						status: runResult.status,
-					}
+					} satisfies CueLogPayload
 				);
 				return;
 			}
@@ -272,8 +328,10 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 			result.stderr = runResult.stderr;
 			result.exitCode = runResult.exitCode;
 
-			// Execute output prompt if the main task succeeded and an output prompt is configured
-			if (outputPrompt && result.status === 'completed') {
+			// Execute output prompt if the main task succeeded and an output prompt is configured.
+			// Skipped for `action: command` runs — output_prompt is an AI follow-up, not a
+			// shell/cli concept.
+			if (outputPrompt && result.status === 'completed' && action !== 'command') {
 				deps.onLog(
 					'cue',
 					`[CUE] "${subscriptionName}" executing output prompt for downstream handoff`
@@ -364,7 +422,7 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 							sessionId,
 							subscriptionName,
 							status: result.status,
-						}
+						} satisfies CueLogPayload
 					);
 					return;
 				}
@@ -379,8 +437,12 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 				}
 			}
 
-			// Phase 3: CLI Output delivery — shell out to maestro-cli send --live
-			if (cliOutput && result.status === 'completed') {
+			// Phase 3: legacy cli_output delivery — shell out to maestro-cli send --live.
+			// New code should use a downstream `action: command` subscription with
+			// `command.mode: 'cli'` instead; this path remains for YAML files that
+			// haven't been re-saved through the editor yet. Skipped for command actions
+			// (the action itself is the work, not a side effect).
+			if (cliOutput && result.status === 'completed' && action !== 'command') {
 				deps.onLog(
 					'cue',
 					`[CUE] "${subscriptionName}" Phase 3: delivering CLI output to target="${cliOutput.target}" (stdout length=${result.stdout.length})`
@@ -400,26 +462,19 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 						},
 						cue: cueContext,
 					};
-					const resolvedTarget = substituteTemplateVariables(cliOutput.target, templateContext);
-					if (!resolvedTarget || resolvedTarget.trim() === '') {
+					const resolvedTarget = substituteTemplateVariables(
+						cliOutput.target,
+						templateContext
+					).trim();
+					if (!resolvedTarget) {
 						deps.onLog(
 							'warn',
 							`[CUE] "${subscriptionName}" CLI output target resolved to empty string (raw="${cliOutput.target}") — skipping delivery`
 						);
 					} else {
-						const truncatedOutput = sliceHeadByChars(result.stdout, 100_000);
-						const cliScriptPath = require('path').join(
-							process.resourcesPath ?? '',
-							'maestro-cli.js'
-						);
-						const cliResult = await execFileNoThrow(
-							process.execPath,
-							[cliScriptPath, 'send', resolvedTarget, truncatedOutput, '--live'],
-							undefined,
-							{ timeout: 30_000 }
-						);
-						if (cliResult.exitCode !== 0) {
-							throw new Error(`CLI exited with code ${cliResult.exitCode}: ${cliResult.stderr}`);
+						const sendResult = await runMaestroCliSend(resolvedTarget, result.stdout);
+						if (!sendResult.ok) {
+							throw new Error(`CLI exited with code ${sendResult.exitCode}: ${sendResult.stderr}`);
 						}
 						deps.onLog(
 							'cue',
@@ -481,7 +536,7 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 					sessionId,
 					subscriptionName,
 					status: result.status,
-				});
+				} satisfies CueLogPayload);
 
 				// Notify engine of completion (for activity log + chain propagation)
 				deps.onRunCompleted(sessionId, result, subscriptionName, chainDepth);
@@ -497,7 +552,10 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 			subscriptionName: string,
 			outputPrompt?: string,
 			chainDepth?: number,
-			cliOutput?: { target: string }
+			cliOutput?: { target: string },
+			action?: CueSubscription['action'],
+			command?: CueCommand,
+			queuedAtOverride?: number
 		): void {
 			const settings = deps.getSessionSettings(sessionId);
 			const maxConcurrent = settings?.max_concurrent ?? 1;
@@ -507,27 +565,84 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 			if (currentCount >= maxConcurrent) {
 				// At concurrency limit — queue the event
 				const sessionName = getSessionName(sessionId);
+
+				// Guard: queue_size <= 0 means "no buffering allowed". Without
+				// this, the overflow branch below dereferences queue[0] on an
+				// empty queue and crashes. Treat the incoming event itself as
+				// dropped (not the non-existent oldest) and return early.
+				if (queueSize <= 0) {
+					deps.onQueueOverflow?.({
+						sessionId,
+						sessionName,
+						subscriptionName,
+						queuedAt: queuedAtOverride ?? Date.now(),
+					});
+					deps.onLog(
+						'cue',
+						`[CUE] Queue disabled for "${sessionName}" (queue_size=${queueSize}), dropping incoming event`
+					);
+					return;
+				}
+
 				if (!eventQueue.has(sessionId)) {
 					eventQueue.set(sessionId, []);
 				}
 				const queue = eventQueue.get(sessionId)!;
 
 				if (queue.length >= queueSize) {
-					// Drop the oldest entry
+					// Drop the oldest entry. Surface this to the user via the
+					// onQueueOverflow callback (12B) — without it the drop is
+					// invisible except to someone scraping logs.
+					const dropped = queue[0];
+					deps.onQueueOverflow?.({
+						sessionId,
+						sessionName,
+						subscriptionName: dropped.subscriptionName,
+						queuedAt: dropped.queuedAt,
+					});
+					// Remove the persisted row before shifting from memory so
+					// persistence and in-memory stay in lockstep.
+					if (dropped.persistId) deps.queuePersistence?.remove(dropped.persistId);
 					queue.shift();
 					deps.onLog('cue', `[CUE] Queue full for "${sessionName}", dropping oldest event`);
 				}
 
-				queue.push({
+				const persistId = deps.queuePersistence ? crypto.randomUUID() : undefined;
+				// Preserve the original queuedAt when the engine restores a
+				// persisted row so the staleness check in drainQueue still
+				// behaves correctly relative to the user's actual wait time.
+				const queuedAt = queuedAtOverride ?? Date.now();
+				const queuedEntry: QueuedEvent = {
 					event,
 					subscription: { name: subscriptionName, event: event.type, enabled: true, prompt },
 					prompt,
 					outputPrompt,
 					subscriptionName,
-					queuedAt: Date.now(),
+					queuedAt,
 					chainDepth,
 					cliOutput,
-				});
+					action,
+					command,
+					persistId,
+				};
+				queue.push(queuedEntry);
+
+				// Persist AFTER the in-memory push so the row appears only for
+				// entries that actually made it into the live queue. Safe
+				// wrappers mean a persist failure cannot break the live queue.
+				if (deps.queuePersistence && persistId) {
+					deps.queuePersistence.persist(sessionId, persistId, {
+						event,
+						subscriptionName,
+						prompt,
+						outputPrompt,
+						cliOutput,
+						action,
+						command,
+						chainDepth,
+						queuedAt,
+					});
+				}
 
 				deps.onLog(
 					'cue',
@@ -545,7 +660,9 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 				subscriptionName,
 				outputPrompt,
 				chainDepth,
-				cliOutput
+				cliOutput,
+				action,
+				command
 			);
 		},
 
@@ -592,15 +709,24 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 				runId,
 				sessionId: run.result.sessionId,
 				subscriptionName: run.result.subscriptionName,
-			});
+			} satisfies CueLogPayload);
 			return true;
 		},
 
 		stopAll(): void {
+			// Clear the queue FIRST, then stop active runs. stopRun calls
+			// drainQueue internally when it releases a concurrency slot; if
+			// the queue still has entries at that point, the drain dispatches
+			// a fresh run that escapes this stopAll invocation. Clearing the
+			// queue up-front makes every nested drain a no-op, so after this
+			// function returns there are zero active runs AND zero queued
+			// events — the contract callers (engine shutdown / Cue toggle
+			// off) actually need.
+			eventQueue.clear();
+			deps.queuePersistence?.clearAll();
 			for (const runId of [...activeRuns.keys()]) {
 				this.stopRun(runId);
 			}
-			eventQueue.clear();
 		},
 
 		getActiveRuns(): CueRunResult[] {
@@ -627,12 +753,26 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 
 		clearQueue(sessionId: string, preserveStartup = false): void {
 			if (!preserveStartup) {
+				// Mirror the in-memory clear on disk so persisted rows don't
+				// outlive the live queue they represent.
+				const queue = eventQueue.get(sessionId);
+				if (queue) {
+					for (const entry of queue) {
+						if (entry.persistId) deps.queuePersistence?.remove(entry.persistId);
+					}
+				}
 				eventQueue.delete(sessionId);
 				return;
 			}
 			const queue = eventQueue.get(sessionId);
 			if (!queue) return;
 			const kept = queue.filter((e) => e.event.type === 'app.startup');
+			// Remove persisted rows for entries we are dropping (non-startup).
+			for (const entry of queue) {
+				if (entry.event.type !== 'app.startup' && entry.persistId) {
+					deps.queuePersistence?.remove(entry.persistId);
+				}
+			}
 			if (kept.length === 0) {
 				eventQueue.delete(sessionId);
 			} else {
@@ -647,6 +787,9 @@ export function createCueRunManager(deps: CueRunManagerDeps): CueRunManager {
 			activeRuns.clear();
 			activeRunCount.clear();
 			eventQueue.clear();
+			// Reset tears down everything — persisted copies too. Any re-enqueue
+			// after reset() will generate fresh persist IDs.
+			deps.queuePersistence?.clearAll();
 		},
 	};
 }

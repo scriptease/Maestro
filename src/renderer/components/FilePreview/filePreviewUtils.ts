@@ -42,6 +42,7 @@ const LANGUAGE_MAP: Record<string, string> = {
 	jsx: 'jsx',
 	json: 'json',
 	md: 'markdown',
+	mdx: 'markdown',
 	py: 'python',
 	rb: 'ruby',
 	go: 'go',
@@ -71,6 +72,41 @@ export const getLanguageFromFilename = (filename: string): string => {
 	const ext = filename.split('.').pop()?.toLowerCase();
 	return LANGUAGE_MAP[ext || ''] || 'text';
 };
+
+// ─── Readable Text Detection ──────────────────────────────────────────────────
+
+/** Plain prose extensions that should be rendered as readable text (supporting Bionify). */
+export const READABLE_TEXT_EXTENSIONS = new Set(['txt', 'text', 'rst', 'adoc', 'asc']);
+
+/** Basenames (no extension) typically treated as readable prose. */
+export const READABLE_TEXT_BASENAMES = new Set([
+	'readme',
+	'changelog',
+	'contributing',
+	'license',
+	'copying',
+	'authors',
+	'notice',
+	'todo',
+]);
+
+/**
+ * Whether a filename should render in the readable-text preview branch
+ * (plain prose that benefits from Bionify). Files with an extension are
+ * matched against the readable-text extension set first; only extensionless
+ * files fall back to the basename set (so `README.ts` is NOT readable text).
+ */
+export function isReadableTextPreview(filename: string): boolean {
+	const lowerFilename = filename.toLowerCase();
+	const dotIndex = lowerFilename.lastIndexOf('.');
+
+	if (dotIndex !== -1) {
+		const ext = lowerFilename.slice(dotIndex + 1);
+		return READABLE_TEXT_EXTENSIONS.has(ext);
+	}
+
+	return READABLE_TEXT_BASENAMES.has(lowerFilename);
+}
 
 // ─── Binary Detection ─────────────────────────────────────────────────────────
 

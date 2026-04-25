@@ -55,7 +55,7 @@ export interface CueSessionRuntimeServiceDeps {
 		event: CueEvent,
 		sourceSessionName: string,
 		chainDepth?: number
-	) => void;
+	) => number;
 	clearQueue: (sessionId: string, preserveStartup?: boolean) => void;
 	clearFanInState: (sessionId: string) => void;
 }
@@ -79,7 +79,8 @@ export interface CueSessionRuntimeService {
 	initSession(session: SessionInfo, opts: InitSessionOptions): InitSessionOutcome;
 	refreshSession(
 		sessionId: string,
-		projectRoot: string
+		projectRoot: string,
+		reason?: SessionInitReason
 	): {
 		reloaded: boolean;
 		configRemoved: boolean;
@@ -89,6 +90,8 @@ export interface CueSessionRuntimeService {
 	removeSession(sessionId: string): void;
 	teardownSession(sessionId: string): void;
 	clearAll(): void;
+	/** Drop ALL app.startup dedup keys. Delegated from engine.stop(). */
+	clearAllStartupKeys(): void;
 }
 
 export function createCueSessionRuntimeService(
@@ -119,10 +122,31 @@ export function createCueSessionRuntimeService(
 		let loadResult = loadCueConfigDetailed(session.projectRoot);
 		let ancestorRoot: string | undefined;
 
-		// When the session's own directory has no cue.yaml, check ancestor
-		// directories. This enables sub-agents (e.g. project/Digest) to
-		// participate in pipelines defined at a parent root (e.g. project/).
-		if (!loadResult.ok && loadResult.reason === 'missing') {
+		// Walk to an ancestor cue.yaml when the session's own directory has
+		// no pipelines to contribute. This enables sub-agents (e.g.
+		// project/Digest) to participate in pipelines defined at a parent
+		// root (e.g. project/).
+		//
+		// Both shapes of "no local pipelines" must trigger the walk:
+		//   1. Local cue.yaml is missing entirely (fresh sub-agent dir).
+		//   2. Local cue.yaml exists but `subscriptions: []`. This is the
+		//      shape `handleSave` writes when it clears a project whose
+		//      pipelines have moved elsewhere (usually consolidated onto a
+		//      common-ancestor root). Without this branch, the empty-but-
+		//      parseable file short-circuits the fallback — the sub-agent
+		//      sees zero subscriptions even though the ancestor has subs
+		//      explicitly targeting it, and manual triggers dispatch 0.
+		//
+		// A user who deliberately wants an empty-subs file to opt OUT of
+		// ancestor pipelines can set `no_ancestor_fallback: true` on the
+		// local cue.yaml. The fallback also logs whenever it overrides an
+		// existing-but-empty local file so the override is observable.
+		const localFileExistsButEmpty = loadResult.ok && loadResult.config.subscriptions.length === 0;
+		const localOptsOutOfAncestor = loadResult.ok && loadResult.config.no_ancestor_fallback === true;
+		const localHasNoPipelines =
+			((!loadResult.ok && loadResult.reason === 'missing') || localFileExistsButEmpty) &&
+			!localOptsOutOfAncestor;
+		if (localHasNoPipelines) {
 			const ancestor = findAncestorCueConfigRoot(session.projectRoot);
 			if (ancestor) {
 				const ancestorResult = loadCueConfigDetailed(ancestor);
@@ -145,7 +169,9 @@ export function createCueSessionRuntimeService(
 						ancestorRoot = ancestor;
 						deps.onLog(
 							'cue',
-							`[CUE] "${session.name}" using ancestor config from "${ancestor}" (${targeted.length} targeted subscription(s))`
+							localFileExistsButEmpty
+								? `[CUE] "${session.name}" local cue.yaml is empty — overriding with ancestor "${ancestor}" (${targeted.length} targeted subscription(s)). Set no_ancestor_fallback: true on the local file to opt out.`
+								: `[CUE] "${session.name}" using ancestor config from "${ancestor}" (${targeted.length} targeted subscription(s))`
 						);
 					}
 				}
@@ -357,7 +383,8 @@ export function createCueSessionRuntimeService(
 
 	function refreshSession(
 		sessionId: string,
-		projectRoot: string
+		projectRoot: string,
+		reason: SessionInitReason = 'refresh'
 	): { reloaded: boolean; configRemoved: boolean; sessionName?: string; activeCount?: number } {
 		const hadSession = registry.has(sessionId);
 		// Snapshot GitHub-seen IDs BEFORE teardown so we can diff against the
@@ -377,7 +404,7 @@ export function createCueSessionRuntimeService(
 			return { reloaded: false, configRemoved: false };
 		}
 
-		const outcome = initSession({ ...session, projectRoot }, { reason: 'refresh' });
+		const outcome = initSession({ ...session, projectRoot }, { reason });
 		const newState = registry.get(sessionId);
 		if (newState) {
 			// Diff old vs. new GitHub subscription IDs and clear `cue_github_seen`
@@ -480,14 +507,16 @@ export function createCueSessionRuntimeService(
 			for (const [sessionId] of registry.snapshot()) {
 				teardownSession(sessionId);
 			}
-			// Drop session state and time.scheduled keys; preserve startup keys
-			// so toggling Cue off/on does not re-fire app.startup subscriptions.
 			registry.clear();
 
 			for (const [, cleanup] of pendingYamlWatchers) {
 				cleanup();
 			}
 			pendingYamlWatchers.clear();
+		},
+
+		clearAllStartupKeys(): void {
+			registry.clearAllStartupKeys();
 		},
 	};
 }

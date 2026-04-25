@@ -16,7 +16,7 @@
  * null on the first render after the drop.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import {
 	applyNodeChanges,
 	type Node,
@@ -33,6 +33,7 @@ import type {
 	PipelineNode,
 	TriggerNodeData,
 	AgentNodeData,
+	CommandNodeData,
 	CueEventType,
 } from '../../../shared/cue-pipeline-types';
 import { getNextPipelineColor } from '../../components/CuePipelineEditor/pipelineColors';
@@ -231,27 +232,40 @@ export function usePipelineCanvasCallbacks({
 		[isAllPipelinesView, setPipelineState]
 	);
 
+	// Phase 14C — stabilize isValidConnection identity.
+	// ReactFlow re-registers its internal validation bookkeeping whenever the
+	// callback identity changes. Previously nodes/edges were in the dep array,
+	// so every node drag (which produces a new `nodes` array reference via
+	// applyNodeChanges) invalidated the callback. Ref-forwarding keeps the
+	// callback identity stable while still reading the latest state at call
+	// time (isValidConnection is called synchronously during a connection
+	// drag, so the refs are always up to date).
+	const nodesRef = useRef(nodes);
+	nodesRef.current = nodes;
+	const edgesRef = useRef(edges);
+	edgesRef.current = edges;
+
 	const isValidConnection = useCallback(
 		(connection: Connection) => {
 			if (isAllPipelinesView) return false;
 			if (!connection.source || !connection.target) return false;
 			if (connection.source === connection.target) return false;
 
-			const sourceNode = nodes.find((n) => n.id === connection.source);
-			const targetNode = nodes.find((n) => n.id === connection.target);
+			const sourceNode = nodesRef.current.find((n) => n.id === connection.source);
+			const targetNode = nodesRef.current.find((n) => n.id === connection.target);
 			if (!sourceNode || !targetNode) return false;
 
 			if (sourceNode.type === 'trigger' && targetNode.type === 'trigger') return false;
 			if (targetNode.type === 'trigger') return false;
 
-			const exists = edges.some(
+			const exists = edgesRef.current.some(
 				(e) => e.source === connection.source && e.target === connection.target
 			);
 			if (exists) return false;
 
 			return true;
 		},
-		[isAllPipelinesView, nodes, edges]
+		[isAllPipelinesView]
 	);
 
 	const onDragOver = useCallback((event: React.DragEvent) => {
@@ -281,6 +295,8 @@ export function usePipelineCanvasCallbacks({
 				sessionId?: string;
 				sessionName?: string;
 				toolType?: string;
+				owningSessionId?: string;
+				owningSessionName?: string;
 			};
 			try {
 				dropData = JSON.parse(raw);
@@ -350,6 +366,26 @@ export function usePipelineCanvasCallbacks({
 						type: 'agent',
 						position,
 						data: agentData,
+					};
+				} else if (dropData.type === 'command') {
+					// Two drop sources:
+					//   1) standalone "Command" pill — no owningSessionId; the user picks
+					//      the owning agent in CommandConfigPanel after dropping.
+					//   2) legacy per-session terminal pill (no longer rendered) — pre-binds.
+					const suffix = Date.now().toString(36).slice(-5);
+					const ownerId = dropData.owningSessionId ?? '';
+					const commandData: CommandNodeData = {
+						name: `${targetPipeline.name}-cmd-${suffix}`,
+						mode: 'shell',
+						shell: '',
+						owningSessionId: ownerId,
+						owningSessionName: dropData.owningSessionName ?? '',
+					};
+					newNode = {
+						id: `command-${ownerId || 'unbound'}-${Date.now()}`,
+						type: 'command',
+						position,
+						data: commandData,
 					};
 				} else {
 					return prev;

@@ -37,6 +37,7 @@ import { getHomeDir, getHomeDirAsync } from '../../utils/homeDir';
 import remarkFrontmatter from 'remark-frontmatter';
 import { remarkFrontmatterTable } from '../../utils/remarkFrontmatterTable';
 import { REMARK_GFM_PLUGINS, createMarkdownComponents } from '../../utils/markdownConfig';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { openUrl } from '../../utils/openUrl';
 import { isImageFile } from '../../../shared/gitUtils';
 import type { FilePreviewProps, FilePreviewHandle, FileStats } from './types';
@@ -47,9 +48,11 @@ import {
 	formatFileSize,
 	countMarkdownTasks,
 	extractHeadings,
+	isReadableTextPreview,
 	LARGE_FILE_TOKEN_SKIP_THRESHOLD,
 	LARGE_FILE_PREVIEW_LIMIT,
 } from './filePreviewUtils';
+import { BionifyTextBlock } from '../../utils/bionifyReadingMode';
 import { MarkdownImage } from './MarkdownImage';
 import { remarkHighlight } from './remarkHighlight';
 import { useFilePreviewSearch } from '../../hooks/file';
@@ -57,6 +60,7 @@ import { FilePreviewHeader } from './FilePreviewHeader';
 import { ImageViewer } from './ImageViewer';
 import { FilePreviewToc } from './FilePreviewToc';
 import { HighlightedCodeEditor } from './HighlightedCodeEditor';
+import { logger } from '../../utils/logger';
 
 export const FilePreview = React.memo(
 	forwardRef<FilePreviewHandle, FilePreviewProps>(function FilePreview(
@@ -211,6 +215,7 @@ export const FilePreview = React.memo(
 		// Compute derived values - must be before any early returns but after hooks
 		const language = file ? getLanguageFromFilename(file.name) : '';
 		const isMarkdown = language === 'markdown';
+		const isReadableText = file ? !isMarkdown && isReadableTextPreview(file.name) : false;
 		const isCsv = language === 'csv';
 		const isJsonl = language === 'jsonl';
 		const isJson = language === 'json';
@@ -268,6 +273,7 @@ export const FilePreview = React.memo(
 			contentRef,
 			textareaRef,
 			isMarkdown,
+			isReadableText,
 			isImage,
 			isCsv,
 			isJsonl,
@@ -282,6 +288,13 @@ export const FilePreview = React.memo(
 			initialSearchQuery,
 			onSearchQueryChange,
 		});
+
+		// Bionify reading mode follows the global setting; disabled while search highlights are active.
+		const bionifyReadingMode = useSettingsStore((s) => s.bionifyReadingMode);
+		const bionifyIntensity = useSettingsStore((s) => s.bionifyIntensity);
+		const bionifyAlgorithm = useSettingsStore((s) => s.bionifyAlgorithm);
+		const hasActiveSearch = searchQuery.trim().length > 0;
+		const effectiveBionifyReadingMode = bionifyReadingMode && !hasActiveSearch;
 
 		// Close jq help on outside click or Escape
 		useEffect(() => {
@@ -412,6 +425,9 @@ export const FilePreview = React.memo(
 					}
 				},
 				containerRef: markdownContainerRef,
+				enableBionifyReadingMode: effectiveBionifyReadingMode,
+				bionifyIntensity,
+				bionifyAlgorithm,
 			});
 			return {
 				...components,
@@ -452,7 +468,17 @@ export const FilePreview = React.memo(
 				// Fixes MAESTRO-8Q
 				details: ({ node: _node, onToggle: _onToggle, ...props }: any) => <details {...props} />,
 			};
-		}, [onFileClick, theme, cwd, file, showRemoteImages, sshRemoteId]);
+		}, [
+			onFileClick,
+			theme,
+			cwd,
+			file,
+			showRemoteImages,
+			sshRemoteId,
+			effectiveBionifyReadingMode,
+			bionifyIntensity,
+			bionifyAlgorithm,
+		]);
 
 		// Extract directory path without filename
 		const directoryPath = file ? file.path.substring(0, file.path.lastIndexOf('/')) : '';
@@ -460,7 +486,7 @@ export const FilePreview = React.memo(
 		const showPath = showStatsBar && !!directoryPath;
 		const headerIconClass = 'w-4 h-4';
 		const headerBtnClass =
-			'p-2 rounded hover:bg-white/10 transition-colors outline-none focus-visible:ring-1 focus-visible:ring-white/30';
+			'inline-flex min-w-9 min-h-9 items-center justify-center p-2 rounded hover:bg-white/10 transition-colors outline-none focus-visible:ring-1 focus-visible:ring-white/30';
 
 		// Fetch file stats when file changes
 		useEffect(() => {
@@ -475,7 +501,7 @@ export const FilePreview = React.memo(
 						})
 					)
 					.catch((err) => {
-						console.error('Failed to get file stats:', err);
+						logger.error('Failed to get file stats:', undefined, err);
 						setFileStats(null);
 					});
 			}
@@ -495,7 +521,7 @@ export const FilePreview = React.memo(
 					setTokenCount(tokens.length);
 				})
 				.catch((err) => {
-					console.error('Failed to count tokens:', err);
+					logger.error('Failed to count tokens:', undefined, err);
 					setTokenCount(null);
 				});
 		}, [file?.content, isImage, isBinary, isLargeFile]);
@@ -574,7 +600,7 @@ export const FilePreview = React.memo(
 				}
 				showNotification('File Saved');
 			} catch (err) {
-				console.error('Failed to save file:', err);
+				logger.error('Failed to save file:', undefined, err);
 				showNotification('Save Failed');
 			} finally {
 				setIsSaving(false);
@@ -1411,6 +1437,49 @@ export const FilePreview = React.memo(
 							>
 								{file.content}
 							</ReactMarkdown>
+						</div>
+					) : isReadableText && !markdownEditMode ? (
+						<div>
+							{/* Large file truncation banner (readable text) */}
+							{isContentTruncated && (
+								<div
+									className="px-4 py-2 flex items-center gap-2 text-sm"
+									style={{
+										backgroundColor: theme.colors.warning + '20',
+										borderBottom: `1px solid ${theme.colors.warning}40`,
+										color: theme.colors.warning,
+									}}
+								>
+									<AlertTriangle className="w-4 h-4 flex-shrink-0" />
+									<span>
+										Large file preview truncated. Showing first{' '}
+										{formatFileSize(LARGE_FILE_PREVIEW_LIMIT)} of{' '}
+										{formatFileSize(file.content.length)}.
+									</span>
+									<button
+										className="px-2 py-0.5 rounded text-xs font-medium hover:brightness-125 transition-all"
+										style={{
+											backgroundColor: theme.colors.warning + '30',
+											border: `1px solid ${theme.colors.warning}60`,
+											color: theme.colors.warning,
+										}}
+										onClick={() => setShowFullContent(true)}
+									>
+										Load full file
+									</button>
+								</div>
+							)}
+							<BionifyTextBlock
+								ref={markdownContainerRef}
+								className="prose prose-sm max-w-none whitespace-pre-wrap break-words"
+								style={{ color: theme.colors.textMain }}
+								enabled={effectiveBionifyReadingMode}
+								intensity={bionifyIntensity}
+								algorithm={bionifyAlgorithm}
+								theme={theme}
+							>
+								{displayContent}
+							</BionifyTextBlock>
 						</div>
 					) : (
 						<div ref={codeContainerRef}>

@@ -29,6 +29,7 @@ import {
 	ExternalLink,
 	Keyboard,
 	AlertTriangle,
+	Clock,
 } from 'lucide-react';
 import { useSettings } from '../../../hooks';
 import { captureException } from '../../../utils/sentry';
@@ -43,6 +44,7 @@ import { ForcedParallelWarningModal } from '../../ForcedParallelWarningModal';
 import { getOpenInLabel, isLinuxPlatform } from '../../../utils/platformUtils';
 import { ToggleButtonGroup } from '../../ToggleButtonGroup';
 import { SettingCheckbox } from '../../SettingCheckbox';
+import { logger } from '../../../utils/logger';
 
 export interface GeneralTabProps {
 	theme: Theme;
@@ -71,6 +73,8 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 		// Input settings
 		enterToSendAI,
 		setEnterToSendAI,
+		enterToSendAIExpanded,
+		setEnterToSendAIExpanded,
 		defaultSaveToHistory,
 		setDefaultSaveToHistory,
 		defaultShowThinking,
@@ -103,6 +107,9 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 		setForcedParallelExecution,
 		forcedParallelAcknowledged,
 		setForcedParallelAcknowledged,
+		// Auto Run
+		autoRunInactivityTimeoutMin,
+		setAutoRunInactivityTimeoutMin,
 		// Shortcuts
 		shortcuts,
 	} = useSettings();
@@ -218,7 +225,7 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 				setSyncMigratedCount(null);
 			})
 			.catch((err) => {
-				console.error('Failed to load sync settings:', err);
+				logger.error('Failed to load sync settings:', undefined, err);
 				setSyncError('Failed to load storage settings');
 				// Report to Sentry so production failures surface in dashboards
 				// rather than only being visible in the user's console.
@@ -238,7 +245,7 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 				setShellsLoaded(true);
 			}
 		} catch (error) {
-			console.error('Failed to load shells:', error);
+			logger.error('Failed to load shells:', undefined, error);
 		} finally {
 			setShellsLoading(false);
 		}
@@ -263,28 +270,25 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 					communicate with you. As the conductor, you orchestrate the symphony of AI agents.
 					(Optional, max 5000 characters)
 				</p>
-				<div className="relative">
-					<textarea
-						value={conductorProfile}
-						onChange={(e) => setConductorProfile(e.target.value)}
-						placeholder="e.g., I'm a senior developer working on a React/TypeScript project. I prefer concise explanations and clean code patterns..."
-						className="w-full p-3 pb-8 rounded border bg-transparent outline-none text-sm resize-y"
-						style={{
-							borderColor: theme.colors.border,
-							color: theme.colors.textMain,
-							minHeight: '100px',
-						}}
-						maxLength={5000}
-					/>
-					<div
-						className="absolute bottom-2 right-2 text-xs px-1 rounded"
-						style={{
-							color: conductorProfile.length > 4500 ? theme.colors.warning : theme.colors.textDim,
-							backgroundColor: theme.colors.bgSidebar,
-						}}
-					>
-						{conductorProfile.length}/5000
-					</div>
+				<textarea
+					value={conductorProfile}
+					onChange={(e) => setConductorProfile(e.target.value)}
+					placeholder="e.g., I'm a senior developer working on a React/TypeScript project. I prefer concise explanations and clean code patterns..."
+					className="w-full p-3 rounded border bg-transparent outline-none text-sm resize-y"
+					style={{
+						borderColor: theme.colors.border,
+						color: theme.colors.textMain,
+						minHeight: '100px',
+					}}
+					maxLength={5000}
+				/>
+				<div
+					className="text-xs mt-1 text-right"
+					style={{
+						color: conductorProfile.length > 4500 ? theme.colors.warning : theme.colors.textDim,
+					}}
+				>
+					{conductorProfile.length}/5000
 				</div>
 			</div>
 
@@ -717,6 +721,34 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 					</p>
 				</div>
 
+				{/* Expanded AI Mode Setting (Prompt Composer) */}
+				<div
+					className="mb-4 p-3 rounded border"
+					style={{ borderColor: theme.colors.border, backgroundColor: theme.colors.bgMain }}
+				>
+					<div className="flex items-center justify-between mb-2">
+						<div className="text-sm font-medium">Expanded AI Interaction Mode</div>
+						<button
+							onClick={() => setEnterToSendAIExpanded(!enterToSendAIExpanded)}
+							className="px-3 py-1.5 rounded text-xs font-mono transition-all"
+							style={{
+								backgroundColor: enterToSendAIExpanded
+									? theme.colors.accentDim
+									: theme.colors.bgActivity,
+								color: theme.colors.textMain,
+								border: `1px solid ${theme.colors.border}`,
+							}}
+						>
+							{formatEnterToSend(enterToSendAIExpanded)}
+						</button>
+					</div>
+					<p className="text-xs opacity-50">
+						{enterToSendAIExpanded
+							? 'In the expanded Prompt Composer, press Enter to send. Use Shift+Enter for new line.'
+							: `In the expanded Prompt Composer, press ${formatMetaKey()}+Enter to send. Enter creates new line.`}
+					</p>
+				</div>
+
 				{/* Forced Parallel Execution */}
 				<div
 					className="mt-4 p-3 rounded border"
@@ -790,6 +822,31 @@ export function GeneralTab({ theme, isOpen }: GeneralTabProps) {
 					onCancel={handleForcedParallelCancel}
 					theme={theme}
 				/>
+			</div>
+
+			{/* Auto Run Inactivity Timeout */}
+			<div data-setting-id="general-autorun-inactivity-timeout">
+				<div className="block text-xs font-bold opacity-70 uppercase mb-2 flex items-center gap-2">
+					<Clock className="w-3 h-3" />
+					Auto Run Inactivity Timeout
+				</div>
+				<ToggleButtonGroup
+					options={[
+						{ value: 30, label: '30 min' },
+						{ value: 60, label: '1 hr' },
+						{ value: 240, label: '4 hr' },
+						{ value: 480, label: '8 hr' },
+						{ value: 0, label: 'Unlimited' },
+					]}
+					value={autoRunInactivityTimeoutMin}
+					onChange={setAutoRunInactivityTimeoutMin}
+					theme={theme}
+				/>
+				<p className="text-xs opacity-50 mt-2">
+					Auto Run force-kills a task if the agent produces no output for this long. Increase for
+					long refactors, heavy test runs, or web-research tasks driving a browser. Choose Unlimited
+					to disable the watchdog entirely.
+				</p>
 			</div>
 
 			{/* Default History Toggle */}

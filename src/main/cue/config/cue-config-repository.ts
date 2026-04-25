@@ -18,6 +18,7 @@ import {
 	MAESTRO_DIR,
 } from '../../../shared/maestro-paths';
 import { captureException } from '../../utils/sentry';
+import { logger } from '../../utils/logger';
 
 /**
  * Resolve the cue config file path, preferring `.maestro/cue.yaml`
@@ -100,6 +101,33 @@ export function removeEmptyPromptsDir(projectRoot: string): boolean {
 		captureException(err, {
 			operation: 'removeEmptyPromptsDir',
 			dir: promptsDir,
+		});
+		return false;
+	}
+}
+
+/**
+ * Remove `.maestro/` if it exists and is completely empty. Called after
+ * deleting `cue.yaml` (and after pruning prompts) so the project's footprint
+ * collapses fully when there is nothing left to own. Non-empty directories
+ * are left untouched — user-placed files (memories, other configs) are none
+ * of Cue's business.
+ *
+ * Returns `true` if the directory was removed, `false` otherwise. Swallows
+ * errors (reports to Sentry) so callers can use this as best-effort cleanup.
+ */
+export function removeEmptyMaestroDir(projectRoot: string): boolean {
+	const maestroDir = path.resolve(path.join(projectRoot, MAESTRO_DIR));
+	if (!fs.existsSync(maestroDir)) return false;
+	try {
+		const entries = fs.readdirSync(maestroDir);
+		if (entries.length > 0) return false;
+		fs.rmdirSync(maestroDir);
+		return true;
+	} catch (err) {
+		captureException(err, {
+			operation: 'removeEmptyMaestroDir',
+			dir: maestroDir,
 		});
 		return false;
 	}
@@ -233,6 +261,16 @@ export function watchCueConfigFile(
 	const watcher = chokidar.watch([canonicalPath, legacyPath], {
 		persistent: true,
 		ignoreInitial: true,
+	});
+
+	// Swallow chokidar errors (EISDIR on WSL network paths, ENOENT races, permission
+	// changes). Without a listener, these bubble as unhandled promise rejections and
+	// crash the main process. The watcher recovers on its own for transient issues.
+	watcher.on('error', (error) => {
+		logger.warn(
+			`[Cue] Config file watcher error for ${projectRoot}: ${String(error)}`,
+			'CueConfig'
+		);
 	});
 
 	const debouncedOnChange = () => {

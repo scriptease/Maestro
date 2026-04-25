@@ -23,9 +23,14 @@ import type {
 	ToggleBookmarkCallback,
 	OpenFileTabCallback,
 	RefreshFileTreeCallback,
+	OpenBrowserTabCallback,
+	OpenTerminalTabCallback,
+	OpenTerminalTabConfig,
+	NewAITabWithPromptCallback,
 	RefreshAutoRunDocsCallback,
 	ConfigureAutoRunCallback,
 	GetThemeCallback,
+	GetBionifyReadingModeCallback,
 	GetCustomCommandsCallback,
 	GetHistoryCallback,
 	GetAutoRunDocsCallback,
@@ -82,6 +87,7 @@ export interface WebServerCallbacks {
 	getSessions: GetSessionsCallback | null;
 	getSessionDetail: GetSessionDetailCallback | null;
 	getTheme: GetThemeCallback | null;
+	getBionifyReadingMode: GetBionifyReadingModeCallback | null;
 	getCustomCommands: GetCustomCommandsCallback | null;
 	writeToSession: WriteToSessionCallback | null;
 	executeCommand: ExecuteCommandCallback | null;
@@ -97,6 +103,9 @@ export interface WebServerCallbacks {
 	toggleBookmark: ToggleBookmarkCallback | null;
 	openFileTab: OpenFileTabCallback | null;
 	refreshFileTree: RefreshFileTreeCallback | null;
+	openBrowserTab: OpenBrowserTabCallback | null;
+	openTerminalTab: OpenTerminalTabCallback | null;
+	newAITabWithPrompt: NewAITabWithPromptCallback | null;
 	refreshAutoRunDocs: RefreshAutoRunDocsCallback | null;
 	configureAutoRun: ConfigureAutoRunCallback | null;
 	getHistory: GetHistoryCallback | null;
@@ -138,6 +147,7 @@ export class CallbackRegistry {
 		getSessions: null,
 		getSessionDetail: null,
 		getTheme: null,
+		getBionifyReadingMode: null,
 		getCustomCommands: null,
 		writeToSession: null,
 		executeCommand: null,
@@ -153,6 +163,9 @@ export class CallbackRegistry {
 		toggleBookmark: null,
 		openFileTab: null,
 		refreshFileTree: null,
+		openBrowserTab: null,
+		openTerminalTab: null,
+		newAITabWithPrompt: null,
 		refreshAutoRunDocs: null,
 		configureAutoRun: null,
 		getHistory: null,
@@ -201,6 +214,10 @@ export class CallbackRegistry {
 
 	getTheme(): ReturnType<GetThemeCallback> | null {
 		return this.callbacks.getTheme?.() ?? null;
+	}
+
+	getBionifyReadingMode(): ReturnType<GetBionifyReadingModeCallback> {
+		return this.callbacks.getBionifyReadingMode?.() ?? false;
 	}
 
 	getCustomCommands(): ReturnType<GetCustomCommandsCallback> | [] {
@@ -279,6 +296,21 @@ export class CallbackRegistry {
 		return this.callbacks.refreshFileTree(sessionId);
 	}
 
+	async openBrowserTab(sessionId: string, url: string): Promise<boolean> {
+		if (!this.callbacks.openBrowserTab) return false;
+		return this.callbacks.openBrowserTab(sessionId, url);
+	}
+
+	async openTerminalTab(sessionId: string, config: OpenTerminalTabConfig): Promise<boolean> {
+		if (!this.callbacks.openTerminalTab) return false;
+		return this.callbacks.openTerminalTab(sessionId, config);
+	}
+
+	async newAITabWithPrompt(sessionId: string, prompt: string): Promise<boolean> {
+		if (!this.callbacks.newAITabWithPrompt) return false;
+		return this.callbacks.newAITabWithPrompt(sessionId, prompt);
+	}
+
 	async refreshAutoRunDocs(sessionId: string): Promise<boolean> {
 		if (!this.callbacks.refreshAutoRunDocs) return false;
 		return this.callbacks.refreshAutoRunDocs(sessionId);
@@ -345,6 +377,7 @@ export class CallbackRegistry {
 			audioFeedbackEnabled: false,
 			colorBlindMode: 'false',
 			conductorProfile: '',
+			shortcuts: {},
 		};
 	}
 
@@ -519,6 +552,10 @@ export class CallbackRegistry {
 		this.callbacks.getTheme = callback;
 	}
 
+	setGetBionifyReadingModeCallback(callback: GetBionifyReadingModeCallback): void {
+		this.callbacks.getBionifyReadingMode = callback;
+	}
+
 	setGetCustomCommandsCallback(callback: GetCustomCommandsCallback): void {
 		this.callbacks.getCustomCommands = callback;
 	}
@@ -583,6 +620,18 @@ export class CallbackRegistry {
 
 	setRefreshFileTreeCallback(callback: RefreshFileTreeCallback): void {
 		this.callbacks.refreshFileTree = callback;
+	}
+
+	setOpenBrowserTabCallback(callback: OpenBrowserTabCallback): void {
+		this.callbacks.openBrowserTab = callback;
+	}
+
+	setOpenTerminalTabCallback(callback: OpenTerminalTabCallback): void {
+		this.callbacks.openTerminalTab = callback;
+	}
+
+	setNewAITabWithPromptCallback(callback: NewAITabWithPromptCallback): void {
+		this.callbacks.newAITabWithPrompt = callback;
 	}
 
 	setRefreshAutoRunDocsCallback(callback: RefreshAutoRunDocsCallback): void {

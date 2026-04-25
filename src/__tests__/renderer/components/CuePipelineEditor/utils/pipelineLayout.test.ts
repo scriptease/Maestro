@@ -348,7 +348,7 @@ describe('mergePipelinesWithSavedLayout', () => {
 			expect(result.pipelines[0].nodes[0].position).toEqual({ x: 777, y: 888 });
 		});
 
-		it('matches cli_output position by target even after id regeneration', () => {
+		it('matches command node position by subscription name even after id regeneration', () => {
 			const savedLayout: PipelineLayoutState = {
 				pipelines: [
 					{
@@ -357,10 +357,17 @@ describe('mergePipelinesWithSavedLayout', () => {
 						color: '#06b6d4',
 						nodes: [
 							{
-								id: 'cli-output-ui-id',
-								type: 'cli_output',
+								id: 'command-ui-id',
+								type: 'command',
 								position: { x: 900, y: 100 },
-								data: { target: 'stdout' },
+								data: {
+									name: 'forward-to-reviewer',
+									mode: 'cli',
+									cliCommand: 'send',
+									cliTarget: 'reviewer',
+									owningSessionId: 'sess-1',
+									owningSessionName: 'owner',
+								},
 							},
 						],
 						edges: [],
@@ -375,10 +382,17 @@ describe('mergePipelinesWithSavedLayout', () => {
 					color: '#06b6d4',
 					nodes: [
 						{
-							id: 'cli-output-0', // yamlToPipeline-generated
-							type: 'cli_output',
+							id: 'command-0', // yamlToPipeline-generated
+							type: 'command',
 							position: { x: 0, y: 0 },
-							data: { target: 'stdout' },
+							data: {
+								name: 'forward-to-reviewer',
+								mode: 'cli',
+								cliCommand: 'send',
+								cliTarget: 'reviewer',
+								owningSessionId: 'sess-1',
+								owningSessionName: 'owner',
+							},
 						},
 					],
 					edges: [],

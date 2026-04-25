@@ -5,6 +5,7 @@
 
 import type { WebSocket } from 'ws';
 import type { Theme } from '../../shared/theme-types';
+import type { Shortcut } from '../../shared/shortcut-types';
 
 // Re-export Theme for convenience
 export type { Theme } from '../../shared/theme-types';
@@ -294,6 +295,17 @@ export type ReorderTabCallback = (
 export type ToggleBookmarkCallback = (sessionId: string) => Promise<boolean>;
 export type OpenFileTabCallback = (sessionId: string, filePath: string) => Promise<boolean>;
 export type RefreshFileTreeCallback = (sessionId: string) => Promise<boolean>;
+export type NewAITabWithPromptCallback = (sessionId: string, prompt: string) => Promise<boolean>;
+export type OpenBrowserTabCallback = (sessionId: string, url: string) => Promise<boolean>;
+export interface OpenTerminalTabConfig {
+	cwd?: string;
+	shell?: string;
+	name?: string | null;
+}
+export type OpenTerminalTabCallback = (
+	sessionId: string,
+	config: OpenTerminalTabConfig
+) => Promise<boolean>;
 export type RefreshAutoRunDocsCallback = (sessionId: string) => Promise<boolean>;
 export type ConfigureAutoRunCallback = (
 	sessionId: string,
@@ -318,6 +330,11 @@ export type ConfigureAutoRunCallback = (
  * Callback type for fetching current theme.
  */
 export type GetThemeCallback = () => Theme | null;
+
+/**
+ * Callback type for fetching the current global Bionify reading-mode setting.
+ */
+export type GetBionifyReadingModeCallback = () => boolean;
 
 /**
  * Callback type for fetching custom AI commands.
@@ -361,6 +378,8 @@ export interface WebSettings {
 	audioFeedbackEnabled: boolean;
 	colorBlindMode: string;
 	conductorProfile: string;
+	/** User-customized keyboard shortcuts (partial overrides of DEFAULT_SHORTCUTS). */
+	shortcuts: Record<string, Shortcut>;
 }
 
 /**

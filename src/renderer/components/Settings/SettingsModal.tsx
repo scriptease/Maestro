@@ -135,27 +135,44 @@ export const SettingsModal = memo(function SettingsModal(props: SettingsModalPro
 		setSearchActive(active);
 	}, []);
 
-	const search = useSettingsSearch({ isOpen, onSearchActiveChange: handleSearchActiveChange });
+	// Hold setQuery in a ref so handleSearchNavigate doesn't depend on `search`
+	// (which is created below and itself takes onNavigate as input).
+	const setQueryRef = useRef<(q: string) => void>(() => {});
 
-	const handleSearchNavigate = useCallback(
-		(tab: SearchableSetting['tab'], settingId: string) => {
-			search.setQuery('');
-			setActiveTab(tab);
-			// Double-RAF to ensure DOM has rendered the new tab content before scrolling
+	// Stash theme accent in a ref so handleSearchNavigate stays stable across renders
+	const jumpAccentRef = useRef(theme.colors.accent);
+	jumpAccentRef.current = theme.colors.accent;
+
+	const handleSearchNavigate = useCallback((tab: SearchableSetting['tab'], settingId: string) => {
+		setQueryRef.current('');
+		setActiveTab(tab);
+		// Double-RAF to ensure DOM has rendered the new tab content before scrolling
+		requestAnimationFrame(() => {
 			requestAnimationFrame(() => {
-				requestAnimationFrame(() => {
-					const el = contentRef.current?.querySelector(`[data-setting-id="${settingId}"]`);
-					if (el) {
-						el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-						// Brief highlight flash
-						el.classList.add('settings-search-highlight');
-						setTimeout(() => el.classList.remove('settings-search-highlight'), 1500);
-					}
-				});
+				const el = contentRef.current?.querySelector<HTMLElement>(
+					`[data-setting-id="${settingId}"]`
+				);
+				if (el) {
+					el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+					// Themed arrow indicator + outline flash; duration must match the
+					// 3s animations in .settings-search-highlight / ::before.
+					el.style.setProperty('--settings-search-jump-color', jumpAccentRef.current);
+					el.classList.add('settings-search-highlight');
+					setTimeout(() => {
+						el.classList.remove('settings-search-highlight');
+						el.style.removeProperty('--settings-search-jump-color');
+					}, 3000);
+				}
 			});
-		},
-		[search]
-	);
+		});
+	}, []);
+
+	const search = useSettingsSearch({
+		isOpen,
+		onSearchActiveChange: handleSearchActiveChange,
+		onNavigate: handleSearchNavigate,
+	});
+	setQueryRef.current = search.setQuery;
 
 	// Layer stack integration
 	const isRecordingShortcutRef = useRef(false);
@@ -416,6 +433,8 @@ export const SettingsModal = memo(function SettingsModal(props: SettingsModalPro
 						query={search.query}
 						results={search.results}
 						onNavigate={handleSearchNavigate}
+						selectedIndex={search.selectedIndex}
+						setSelectedIndex={search.setSelectedIndex}
 					/>
 				)}
 

@@ -20,7 +20,6 @@ import { MODAL_PRIORITIES } from '../constants/modalPriorities';
 import { Modal, ModalFooter, FormInput } from './ui';
 import { AGENT_TILES } from './Wizard/screens/AgentSelectionScreen';
 import { AgentConfigPanel } from './shared/AgentConfigPanel';
-import { SshRemoteSelector } from './shared/SshRemoteSelector';
 import { useAgentConfiguration } from '../hooks/agent';
 
 interface GroupChatModalCreateProps {
@@ -457,18 +456,6 @@ export function GroupChatModal(props: GroupChatModalProps): JSX.Element | null {
 						</div>
 					)}
 				</div>
-
-				{/* SSH Remote Execution - Top Level */}
-				{ac.sshRemotes.length > 0 && (
-					<div className="mb-6">
-						<SshRemoteSelector
-							theme={theme}
-							sshRemotes={ac.sshRemotes}
-							sshRemoteConfig={ac.sshRemoteConfig}
-							onSshRemoteConfigChange={ac.setSshRemoteConfig}
-						/>
-					</div>
-				)}
 
 				{/* Warning about changing moderator (edit mode only) */}
 				{mode === 'edit' && groupChat && ac.selectedAgent !== groupChat.moderatorAgentId && (

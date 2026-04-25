@@ -108,6 +108,11 @@ export function SessionsTable({
 											{colors.map((color, i) => (
 												<PipelineDot key={color} color={color} name={pipelineNames[i] ?? ''} />
 											))}
+											{colors.length > 1 && (
+												<span style={{ color: theme.colors.textDim, fontSize: '0.7rem' }}>
+													×{colors.length}
+												</span>
+											)}
 										</span>
 									);
 								})()}

@@ -1,5 +1,6 @@
 import { useRef, useEffect, memo } from 'react';
 import { createPortal } from 'react-dom';
+import { Bell, Volume2, Coffee, type LucideIcon } from 'lucide-react';
 import type { Theme } from '../types';
 import { ToggleSwitch } from './ui/ToggleSwitch';
 import { useClickOutside } from '../hooks/ui/useClickOutside';
@@ -62,23 +63,31 @@ export const NotificationPopover = memo(function NotificationPopover({
 		color: theme.colors.textMain,
 	};
 
-	const items = [
+	const items: ReadonlyArray<{
+		label: string;
+		icon: LucideIcon;
+		checked: boolean;
+		onChange: (value: boolean) => void;
+	}> = [
 		{
 			label: 'OS Notifications',
+			icon: Bell,
 			checked: osNotificationsEnabled,
 			onChange: setOsNotificationsEnabled,
 		},
 		{
 			label: 'Custom Notifications',
+			icon: Volume2,
 			checked: audioFeedbackEnabled,
 			onChange: setAudioFeedbackEnabled,
 		},
 		{
 			label: 'Idle Notifications',
+			icon: Coffee,
 			checked: idleNotificationEnabled,
 			onChange: setIdleNotificationEnabled,
 		},
-	] as const;
+	];
 
 	return createPortal(
 		<div
@@ -87,23 +96,30 @@ export const NotificationPopover = memo(function NotificationPopover({
 			style={style}
 			tabIndex={-1}
 		>
-			{items.map((item) => (
-				<div
-					key={item.label}
-					className="flex items-center justify-between gap-4 py-1.5"
-					style={{ minWidth: 200 }}
-				>
-					<span className="text-xs whitespace-nowrap" style={{ color: theme.colors.textDim }}>
-						{item.label}
-					</span>
-					<ToggleSwitch
-						checked={item.checked}
-						onChange={item.onChange}
-						theme={theme}
-						ariaLabel={item.label}
-					/>
-				</div>
-			))}
+			{items.map((item) => {
+				const Icon = item.icon;
+				return (
+					<div
+						key={item.label}
+						className="flex items-center justify-between gap-4 py-1.5"
+						style={{ minWidth: 200 }}
+					>
+						<span
+							className="flex items-center gap-2 text-xs whitespace-nowrap"
+							style={{ color: theme.colors.textDim }}
+						>
+							<Icon className="w-3.5 h-3.5" />
+							{item.label}
+						</span>
+						<ToggleSwitch
+							checked={item.checked}
+							onChange={item.onChange}
+							theme={theme}
+							ariaLabel={item.label}
+						/>
+					</div>
+				);
+			})}
 		</div>,
 		document.body
 	);
